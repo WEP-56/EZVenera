@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../plugin_runtime/models.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
+import 'reader_page.dart';
 
 class ComicDetailsPage extends StatefulWidget {
   const ComicDetailsPage({required this.comic, super.key});
@@ -52,7 +53,12 @@ class _ComicDetailsPageState extends State<ComicDetailsPage> {
             );
           }
 
-          return _ComicDetailsBody(summary: widget.comic, details: details);
+          return _ComicDetailsBody(
+            summary: widget.comic,
+            details: details,
+            onRead: () => _openReader(_firstChapter(details)),
+            onChapterSelected: _openReader,
+          );
         },
       ),
     );
@@ -79,13 +85,52 @@ class _ComicDetailsPageState extends State<ComicDetailsPage> {
       _future = _loadComicDetails();
     });
   }
+
+  _ChapterSelection _firstChapter(PluginComicDetails details) {
+    final chapters = details.chapters;
+    if (chapters == null) {
+      return const _ChapterSelection(id: null, title: 'Read');
+    }
+
+    if (chapters.isGrouped) {
+      final firstGroup = chapters.groupedChapters!.entries.first;
+      final firstChapter = firstGroup.value.entries.first;
+      return _ChapterSelection(id: firstChapter.key, title: firstChapter.value);
+    }
+
+    final firstChapter = chapters.chapters!.entries.first;
+    return _ChapterSelection(id: firstChapter.key, title: firstChapter.value);
+  }
+
+  void _openReader(_ChapterSelection chapter) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => ReaderPage(
+          sourceKey: widget.comic.sourceKey,
+          comicId: widget.comic.id,
+          comicTitle: detailsTitleFallback(),
+          chapterId: chapter.id,
+          chapterTitle: chapter.title,
+        ),
+      ),
+    );
+  }
+
+  String detailsTitleFallback() => widget.comic.title;
 }
 
 class _ComicDetailsBody extends StatelessWidget {
-  const _ComicDetailsBody({required this.summary, required this.details});
+  const _ComicDetailsBody({
+    required this.summary,
+    required this.details,
+    required this.onRead,
+    required this.onChapterSelected,
+  });
 
   final PluginComic summary;
   final PluginComicDetails details;
+  final VoidCallback onRead;
+  final ValueChanged<_ChapterSelection> onChapterSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -140,8 +185,8 @@ class _ComicDetailsBody extends StatelessWidget {
                   Wrap(
                     spacing: 12,
                     runSpacing: 12,
-                    children: const [
-                      _DisabledActionButton(label: 'Read'),
+                    children: [
+                      _ActionButton(label: 'Read', onPressed: onRead),
                       _DisabledActionButton(label: 'Download'),
                     ],
                   ),
@@ -197,7 +242,10 @@ class _ComicDetailsBody extends StatelessWidget {
           const SizedBox(height: 16),
           _SectionCard(
             title: 'Chapters',
-            child: _ChaptersView(chapters: details.chapters!),
+            child: _ChaptersView(
+              chapters: details.chapters!,
+              onChapterSelected: onChapterSelected,
+            ),
           ),
         ],
       ],
@@ -266,6 +314,18 @@ class _DisabledActionButton extends StatelessWidget {
   }
 }
 
+class _ActionButton extends StatelessWidget {
+  const _ActionButton({required this.label, required this.onPressed});
+
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return FilledButton(onPressed: onPressed, child: Text(label));
+  }
+}
+
 class _SectionCard extends StatelessWidget {
   const _SectionCard({required this.title, required this.child});
 
@@ -301,9 +361,13 @@ class _SectionCard extends StatelessWidget {
 }
 
 class _ChaptersView extends StatelessWidget {
-  const _ChaptersView({required this.chapters});
+  const _ChaptersView({
+    required this.chapters,
+    required this.onChapterSelected,
+  });
 
   final PluginComicChapters chapters;
+  final ValueChanged<_ChapterSelection> onChapterSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -320,6 +384,11 @@ class _ChaptersView extends StatelessWidget {
                 contentPadding: EdgeInsets.zero,
                 title: Text(chapter.value),
                 subtitle: Text(chapter.key),
+                onTap: () {
+                  onChapterSelected(
+                    _ChapterSelection(id: chapter.key, title: chapter.value),
+                  );
+                },
               );
             }).toList(),
           );
@@ -334,10 +403,22 @@ class _ChaptersView extends StatelessWidget {
           contentPadding: EdgeInsets.zero,
           title: Text(entry.value),
           subtitle: Text(entry.key),
+          onTap: () {
+            onChapterSelected(
+              _ChapterSelection(id: entry.key, title: entry.value),
+            );
+          },
         );
       }).toList(),
     );
   }
+}
+
+class _ChapterSelection {
+  const _ChapterSelection({required this.id, required this.title});
+
+  final String? id;
+  final String title;
 }
 
 class _ComicDetailsError extends StatelessWidget {
