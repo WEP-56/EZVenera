@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../plugin_runtime/models.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
+import 'comic_details_page.dart';
 
 class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
@@ -63,7 +64,7 @@ class _SearchPageState extends State<SearchPage> {
           ),
           const SizedBox(height: 20),
           if (searchSources.isEmpty)
-            _EmptySearchState(
+            const _EmptySearchState(
               message:
                   'No searchable sources are installed yet. Add source configs from https://github.com/WEP-56/EZvenera-config first.',
             )
@@ -134,7 +135,7 @@ class _SearchPageState extends State<SearchPage> {
             ),
             if (selectedSource case final source?) ...[
               const SizedBox(height: 16),
-              ..._buildOptionWidgets(context, source),
+              ..._buildOptionWidgets(source),
             ],
             const SizedBox(height: 16),
             Row(
@@ -157,7 +158,7 @@ class _SearchPageState extends State<SearchPage> {
     );
   }
 
-  List<Widget> _buildOptionWidgets(BuildContext context, PluginSource source) {
+  List<Widget> _buildOptionWidgets(PluginSource source) {
     final search = source.search;
     if (search == null || search.options.isEmpty) {
       return const <Widget>[];
@@ -166,7 +167,6 @@ class _SearchPageState extends State<SearchPage> {
     return search.options.indexed.map((entry) {
       final index = entry.$1;
       final option = entry.$2;
-
       return Padding(
         padding: const EdgeInsets.only(bottom: 16),
         child: _SearchOptionField(
@@ -203,12 +203,14 @@ class _SearchPageState extends State<SearchPage> {
     if (sourceKey == null) {
       return;
     }
+
     final source = controller.sources
         .where((item) => item.key == sourceKey)
         .firstOrNull;
     if (source == null) {
       return;
     }
+
     setState(() {
       selectedSource = source;
       optionValues = _defaultOptionsFor(source);
@@ -346,9 +348,9 @@ class _SearchPageState extends State<SearchPage> {
     }
 
     final currentKey = selectedSource?.key;
-    final stillExists = currentKey != null
-        ? searchSources.where((source) => source.key == currentKey).firstOrNull
-        : null;
+    final stillExists = currentKey == null
+        ? null
+        : searchSources.where((source) => source.key == currentKey).firstOrNull;
     final source = stillExists ?? searchSources.first;
 
     selectedSource = source;
@@ -372,9 +374,7 @@ class _SearchPageState extends State<SearchPage> {
     if (!mounted) {
       return;
     }
-    setState(() {
-      _syncSelectedSource();
-    });
+    setState(_syncSelectedSource);
   }
 }
 
@@ -484,7 +484,7 @@ class _SearchResultTile extends StatelessWidget {
             children: [
               if ((comic.subtitle ?? '').isNotEmpty) Text(comic.subtitle!),
               Text(
-                '${comic.sourceKey}  ·  ${comic.id}',
+                '${comic.sourceKey} - ${comic.id}',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -505,9 +505,9 @@ class _SearchResultTile extends StatelessWidget {
           ),
         ),
         onTap: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Comic details page is next in the pipeline.'),
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (context) => ComicDetailsPage(comic: comic),
             ),
           );
         },
@@ -524,6 +524,7 @@ class _EmptySearchState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(

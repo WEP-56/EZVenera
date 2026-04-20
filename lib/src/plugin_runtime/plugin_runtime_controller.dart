@@ -25,6 +25,8 @@ class PluginRuntimeController extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   List<PluginSource> get sources => _runtime.sources;
 
+  PluginSource? find(String key) => _runtime.find(key);
+
   Future<void> initialize() async {
     if (_initialized) {
       return;
