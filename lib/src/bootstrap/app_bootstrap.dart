@@ -4,6 +4,7 @@ import '../downloads/download_controller.dart';
 import '../library/favorite_controller.dart';
 import '../library/history_controller.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
+import '../settings/settings_controller.dart';
 import '../shell/main_shell.dart';
 
 class AppBootstrap extends StatefulWidget {
@@ -17,6 +18,7 @@ class _AppBootstrapState extends State<AppBootstrap> {
   late final Future<void> _future = _initialize();
 
   Future<void> _initialize() async {
+    await SettingsController.instance.initialize();
     await PluginRuntimeController.instance.initialize();
     await DownloadController.instance.initialize();
     await HistoryController.instance.initialize();

@@ -1,9 +1,29 @@
 import 'package:flutter/material.dart';
 
 import 'bootstrap/app_bootstrap.dart';
+import 'settings/settings_controller.dart';
 
-class EZVeneraApp extends StatelessWidget {
+class EZVeneraApp extends StatefulWidget {
   const EZVeneraApp({super.key});
+
+  @override
+  State<EZVeneraApp> createState() => _EZVeneraAppState();
+}
+
+class _EZVeneraAppState extends State<EZVeneraApp> {
+  final settings = SettingsController.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    settings.addListener(_onSettingsChanged);
+  }
+
+  @override
+  void dispose() {
+    settings.removeListener(_onSettingsChanged);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -12,7 +32,7 @@ class EZVeneraApp extends StatelessWidget {
     return MaterialApp(
       title: 'EZVenera',
       debugShowCheckedModeBanner: false,
-      themeMode: ThemeMode.system,
+      themeMode: settings.themeMode,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
           seedColor: seedColor,
@@ -30,5 +50,11 @@ class EZVeneraApp extends StatelessWidget {
       ),
       home: const AppBootstrap(),
     );
+  }
+
+  void _onSettingsChanged() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 }

@@ -1,7 +1,11 @@
+import 'dart:convert';
+
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
 import '../plugin_runtime/models.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
+import '../settings/settings_controller.dart';
 
 class SourcesPage extends StatefulWidget {
   const SourcesPage({super.key});
@@ -12,7 +16,11 @@ class SourcesPage extends StatefulWidget {
 
 class _SourcesPageState extends State<SourcesPage> {
   final controller = PluginRuntimeController.instance;
+  final settings = SettingsController.instance;
   final urlController = TextEditingController();
+  final dio = Dio(
+    BaseOptions(responseType: ResponseType.plain, validateStatus: (_) => true),
+  );
 
   @override
   void initState() {
@@ -107,6 +115,12 @@ class _SourcesPageState extends State<SourcesPage> {
                   icon: const Icon(Icons.refresh),
                   label: const Text('Reload'),
                 ),
+                const SizedBox(width: 12),
+                OutlinedButton.icon(
+                  onPressed: controller.isBusy ? null : _browseRepoIndex,
+                  icon: const Icon(Icons.list_alt_outlined),
+                  label: const Text('Browse Repo'),
+                ),
               ],
             ),
           ],
@@ -189,6 +203,55 @@ class _SourcesPageState extends State<SourcesPage> {
   void _onControllerChanged() {
     if (mounted) {
       setState(() {});
+    }
+  }
+
+  Future<void> _browseRepoIndex() async {
+    try {
+      final response = await dio.get<String>(settings.sourceIndexUrl);
+      if (response.statusCode == null ||
+          response.statusCode! < 200 ||
+          response.statusCode! >= 300 ||
+          response.data == null) {
+        throw StateError(
+          'Failed to load source index: HTTP ${response.statusCode}',
+        );
+      }
+
+      final decoded = jsonDecode(response.data!);
+      if (decoded is! List) {
+        throw StateError('Source index is not a JSON list.');
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      final selectedUrl = await showModalBottomSheet<String>(
+        context: context,
+        isScrollControlled: true,
+        builder: (context) {
+          return _RepoIndexSheet(
+            indexUrl: settings.sourceIndexUrl,
+            items: decoded.whereType<Map>().map((item) {
+              return _RepoIndexItem.fromJson(Map<String, dynamic>.from(item));
+            }).toList(),
+          );
+        },
+      );
+
+      if (selectedUrl == null || !mounted) {
+        return;
+      }
+
+      urlController.text = selectedUrl;
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
     }
   }
 }
@@ -316,5 +379,84 @@ class _SourceCard extends StatelessWidget {
         context,
       ).showSnackBar(const SnackBar(content: Text('Failed to delete source')));
     }
+  }
+}
+
+class _RepoIndexSheet extends StatelessWidget {
+  const _RepoIndexSheet({required this.indexUrl, required this.items});
+
+  final String indexUrl;
+  final List<_RepoIndexItem> items;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            title: const Text('EZVenera-config Index'),
+            subtitle: Text(indexUrl),
+          ),
+          Flexible(
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: items.length,
+              itemBuilder: (context, index) {
+                final item = items[index];
+                return ListTile(
+                  title: Text(item.name),
+                  subtitle: Text('${item.key} - v${item.version}'),
+                  onTap: () =>
+                      Navigator.of(context).pop(item.resolvedUrl(indexUrl)),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RepoIndexItem {
+  const _RepoIndexItem({
+    required this.name,
+    required this.key,
+    required this.version,
+    this.url,
+    this.fileName,
+  });
+
+  final String name;
+  final String key;
+  final String version;
+  final String? url;
+  final String? fileName;
+
+  factory _RepoIndexItem.fromJson(Map<String, dynamic> json) {
+    return _RepoIndexItem(
+      name: json['name']?.toString() ?? '',
+      key: json['key']?.toString() ?? '',
+      version: json['version']?.toString() ?? '',
+      url: json['url']?.toString(),
+      fileName: json['fileName']?.toString() ?? json['filename']?.toString(),
+    );
+  }
+
+  String resolvedUrl(String indexUrl) {
+    if (url != null && url!.isNotEmpty) {
+      return url!;
+    }
+    if (fileName == null || fileName!.isEmpty) {
+      throw StateError('Source entry does not contain url or fileName.');
+    }
+    final uri = Uri.parse(indexUrl);
+    final segments = [...uri.pathSegments];
+    if (segments.isNotEmpty) {
+      segments.removeLast();
+    }
+    final resolved = uri.replace(pathSegments: [...segments, fileName!]);
+    return resolved.toString();
   }
 }

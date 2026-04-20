@@ -5,6 +5,7 @@ import '../navigation/app_destination.dart';
 import '../pages/local_page.dart';
 import '../pages/placeholder_page.dart';
 import '../pages/search_page.dart';
+import '../pages/settings_page.dart';
 import '../pages/sources_page.dart';
 
 class MainShell extends StatefulWidget {
@@ -173,6 +174,9 @@ Widget _buildPage(AppDestination destination) {
   }
   if (destination == AppDestination.sources) {
     return const SourcesPage();
+  }
+  if (destination == AppDestination.settings) {
+    return const SettingsPage();
   }
   return PlaceholderPage(
     key: ValueKey(destination.name),
