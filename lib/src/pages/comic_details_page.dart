@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../downloads/download_controller.dart';
 import '../downloads/download_models.dart';
+import '../library/favorite_controller.dart';
+import '../library/favorite_models.dart';
 import '../plugin_runtime/models.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
 import 'reader_page.dart';
@@ -17,11 +19,19 @@ class ComicDetailsPage extends StatefulWidget {
 
 class _ComicDetailsPageState extends State<ComicDetailsPage> {
   late Future<PluginComicDetails> _future;
+  final favoriteController = FavoriteController.instance;
 
   @override
   void initState() {
     super.initState();
+    favoriteController.addListener(_onFavoriteChanged);
     _future = _loadComicDetails();
+  }
+
+  @override
+  void dispose() {
+    favoriteController.removeListener(_onFavoriteChanged);
+    super.dispose();
   }
 
   @override
@@ -60,6 +70,11 @@ class _ComicDetailsPageState extends State<ComicDetailsPage> {
             details: details,
             onRead: () => _openReader(_firstChapter(details)),
             onDownload: () => _downloadComic(details),
+            onFavorite: () => _toggleFavorite(details),
+            isFavorite: favoriteController.contains(
+              widget.comic.sourceKey,
+              widget.comic.id,
+            ),
             onChapterSelected: _openReader,
           );
         },
@@ -152,6 +167,26 @@ class _ComicDetailsPageState extends State<ComicDetailsPage> {
     }
   }
 
+  Future<void> _toggleFavorite(PluginComicDetails details) async {
+    final entry = LocalFavoriteEntry(
+      sourceKey: widget.comic.sourceKey,
+      comicId: widget.comic.id,
+      title: details.title,
+      subtitle: details.subtitle ?? widget.comic.subtitle,
+      cover: details.cover.isNotEmpty ? details.cover : widget.comic.cover,
+      description: details.description ?? widget.comic.description,
+      tags: widget.comic.tags ?? const <String>[],
+      createdAt: DateTime.now(),
+    );
+    await favoriteController.toggle(entry);
+  }
+
+  void _onFavoriteChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
   Future<List<ChapterDownloadRequest>?> _showDownloadOptions(
     PluginComicDetails details,
   ) {
@@ -212,6 +247,8 @@ class _ComicDetailsBody extends StatelessWidget {
     required this.details,
     required this.onRead,
     required this.onDownload,
+    required this.onFavorite,
+    required this.isFavorite,
     required this.onChapterSelected,
   });
 
@@ -219,6 +256,8 @@ class _ComicDetailsBody extends StatelessWidget {
   final PluginComicDetails details;
   final VoidCallback onRead;
   final VoidCallback onDownload;
+  final VoidCallback onFavorite;
+  final bool isFavorite;
   final ValueChanged<_ChapterSelection> onChapterSelected;
 
   @override
@@ -277,6 +316,10 @@ class _ComicDetailsBody extends StatelessWidget {
                     children: [
                       _ActionButton(label: 'Read', onPressed: onRead),
                       _ActionButton(label: 'Download', onPressed: onDownload),
+                      _ActionButton(
+                        label: isFavorite ? 'Favorited' : 'Favorite',
+                        onPressed: onFavorite,
+                      ),
                     ],
                   ),
                 ],

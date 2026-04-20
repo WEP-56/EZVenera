@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../downloads/download_controller.dart';
+import '../library/favorite_controller.dart';
+import '../library/history_controller.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
 import '../shell/main_shell.dart';
 
@@ -17,6 +19,8 @@ class _AppBootstrapState extends State<AppBootstrap> {
   Future<void> _initialize() async {
     await PluginRuntimeController.instance.initialize();
     await DownloadController.instance.initialize();
+    await HistoryController.instance.initialize();
+    await FavoriteController.instance.initialize();
   }
 
   @override

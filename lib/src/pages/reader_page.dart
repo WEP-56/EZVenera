@@ -2,6 +2,8 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import '../library/history_controller.dart';
+import '../library/history_models.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
 import '../plugin_runtime/services/plugin_image_loader.dart';
 
@@ -90,6 +92,16 @@ class _ReaderPageState extends State<ReaderPage> {
     if (response.isError) {
       throw StateError(response.errorMessage!);
     }
+    await HistoryController.instance.record(
+      ReadingHistoryEntry(
+        sourceKey: widget.sourceKey,
+        comicId: widget.comicId,
+        title: widget.comicTitle,
+        chapterId: widget.chapterId,
+        chapterTitle: widget.chapterTitle,
+        timestamp: DateTime.now(),
+      ),
+    );
     return response.data;
   }
 

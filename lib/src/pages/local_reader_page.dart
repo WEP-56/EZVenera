@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../downloads/download_models.dart';
+import '../library/history_controller.dart';
+import '../library/history_models.dart';
 
 class LocalReaderPage extends StatefulWidget {
   const LocalReaderPage({required this.comic, super.key});
@@ -15,6 +17,12 @@ class LocalReaderPage extends StatefulWidget {
 
 class _LocalReaderPageState extends State<LocalReaderPage> {
   late DownloadedChapter selectedChapter = widget.comic.chapters.first;
+
+  @override
+  void initState() {
+    super.initState();
+    _recordHistory(selectedChapter);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -42,6 +50,7 @@ class _LocalReaderPageState extends State<LocalReaderPage> {
                       setState(() {
                         selectedChapter = chapter;
                       });
+                      _recordHistory(chapter);
                     },
                   );
                 },
@@ -94,5 +103,21 @@ class _LocalReaderPageState extends State<LocalReaderPage> {
         .toList();
     files.sort((a, b) => a.path.compareTo(b.path));
     return files;
+  }
+
+  void _recordHistory(DownloadedChapter chapter) {
+    HistoryController.instance.record(
+      ReadingHistoryEntry(
+        sourceKey: widget.comic.sourceKey,
+        comicId: widget.comic.comicId,
+        title: widget.comic.title,
+        subtitle: widget.comic.subtitle,
+        cover: widget.comic.coverPath,
+        chapterId: chapter.id,
+        chapterTitle: chapter.title,
+        timestamp: DateTime.now(),
+        isLocal: true,
+      ),
+    );
   }
 }
