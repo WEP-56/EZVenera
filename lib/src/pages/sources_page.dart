@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../plugin_runtime/models.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
 import '../settings/settings_controller.dart';
+import 'plugin_webview_login_page.dart';
 
 class SourcesPage extends StatefulWidget {
   const SourcesPage({super.key});
@@ -279,6 +280,7 @@ class _SourceCard extends StatefulWidget {
 
 class _SourceCardState extends State<_SourceCard> {
   PluginSource get source => widget.source;
+  bool isExpanded = false;
 
   @override
   Widget build(BuildContext context) {
@@ -291,80 +293,113 @@ class _SourceCardState extends State<_SourceCard> {
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: theme.colorScheme.outlineVariant),
       ),
-      child: ExpansionTile(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        collapsedShape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(24),
-        ),
-        tilePadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-        title: Row(
-          children: [
-            Expanded(
-              child: Text(
-                source.name,
-                style: theme.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+      child: Column(
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(24),
+            onTap: () {
+              setState(() {
+                isExpanded = !isExpanded;
+              });
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                source.name,
+                                style: theme.textTheme.titleLarge?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            Chip(label: Text(source.version)),
+                            const SizedBox(width: 8),
+                            Icon(
+                              isExpanded
+                                  ? Icons.expand_less
+                                  : Icons.expand_more,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: _capabilities(
+                            source,
+                          ).map((label) => Chip(label: Text(label))).toList(),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
-            Chip(label: Text(source.version)),
-          ],
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _capabilities(
-              source,
-            ).map((label) => Chip(label: Text(label))).toList(),
           ),
-        ),
-        children: [
-          const Divider(height: 1),
-          if (source.settings.isNotEmpty) ...[
-            _SectionTitle(title: 'Settings'),
-            ...source.settings.entries.map((entry) {
-              return _SourceSettingTile(
-                source: source,
-                setting: entry.value,
-                onChanged: () {
-                  setState(() {});
-                },
-              );
-            }),
-          ],
-          if (source.account != null) ...[
-            _SectionTitle(title: 'Account'),
-            _SourceAccountTile(source: source),
-          ],
-          ListTile(
-            title: const Text('Path'),
-            subtitle: Text(
-              source.filePath,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: [
-                OutlinedButton.icon(
-                  onPressed: source.url.trim().isEmpty
-                      ? null
-                      : () => _updateSource(context, source),
-                  icon: const Icon(Icons.update),
-                  label: const Text('Update'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () => _deleteSource(context, source),
-                  icon: const Icon(Icons.delete_outline),
-                  label: const Text('Delete'),
-                ),
-              ],
+          ClipRect(
+            child: AnimatedAlign(
+              alignment: Alignment.topCenter,
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOut,
+              heightFactor: isExpanded ? 1 : 0,
+              child: Column(
+                children: [
+                  const Divider(height: 1),
+                  if (source.settings.isNotEmpty) ...[
+                    _SectionTitle(title: 'Settings'),
+                    ...source.settings.entries.map((entry) {
+                      return _SourceSettingTile(
+                        source: source,
+                        setting: entry.value,
+                        onChanged: () {
+                          setState(() {});
+                        },
+                      );
+                    }),
+                  ],
+                  if (source.account != null) ...[
+                    _SectionTitle(title: 'Account'),
+                    _SourceAccountTile(source: source),
+                  ],
+                  ListTile(
+                    title: const Text('Path'),
+                    subtitle: Text(
+                      source.filePath,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    child: Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: source.url.trim().isEmpty
+                              ? null
+                              : () => _updateSource(context, source),
+                          icon: const Icon(Icons.update),
+                          label: const Text('Update'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: () => _deleteSource(context, source),
+                          icon: const Icon(Icons.delete_outline),
+                          label: const Text('Delete'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -651,6 +686,11 @@ class _SourceAccountTileState extends State<_SourceAccountTile> {
                   onPressed: isLoading ? null : _loginWithCookies,
                   child: const Text('Cookies'),
                 ),
+              if (!source.isLogged && account.loginWebsite != null)
+                OutlinedButton(
+                  onPressed: isLoading ? null : _loginWithWebview,
+                  child: const Text('Webview'),
+                ),
               if (source.isLogged)
                 OutlinedButton(
                   onPressed: isLoading ? null : _logout,
@@ -733,6 +773,7 @@ class _SourceAccountTileState extends State<_SourceAccountTile> {
       if (result.isError) {
         throw StateError(result.errorMessage!);
       }
+      source.markLoggedIn(accountData: source.data['account']);
       await source.saveData();
       if (!mounted) {
         return;
@@ -814,7 +855,7 @@ class _SourceAccountTileState extends State<_SourceAccountTile> {
       if (!result) {
         throw StateError('Invalid cookies');
       }
-      source.data['account'] = 'ok';
+      source.markLoggedIn();
       await source.saveData();
       if (!mounted) {
         return;
@@ -855,6 +896,8 @@ class _SourceAccountTileState extends State<_SourceAccountTile> {
       if (result.isError) {
         throw StateError(result.errorMessage!);
       }
+      source.markLoggedIn(accountData: source.data['account']);
+      await source.saveData();
       if (!mounted) {
         return;
       }
@@ -878,13 +921,44 @@ class _SourceAccountTileState extends State<_SourceAccountTile> {
   }
 
   Future<void> _logout() async {
-    source.data['account'] = null;
+    source.markLoggedOut();
     source.account?.logout();
     await source.saveData();
     if (!mounted) {
       return;
     }
     setState(() {});
+  }
+
+  Future<void> _loginWithWebview() async {
+    if (source.account?.loginWebsite == null) {
+      return;
+    }
+    if (source.account?.checkLoginStatus == null) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('This source does not expose login status detection.'),
+        ),
+      );
+      return;
+    }
+
+    final result = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (context) => PluginWebviewLoginPage(source: source),
+      ),
+    );
+
+    if (!mounted || result != true) {
+      return;
+    }
+    setState(() {});
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Webview login successful')));
   }
 }
 

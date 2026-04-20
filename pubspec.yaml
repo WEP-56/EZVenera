@@ -44,6 +44,7 @@ dependencies:
     git:
       url: https://github.com/venera-app/flutter_qjs
       ref: 8feae95df7fb00455df129ad7a0dfec1d0e8d8e4
+  flutter_inappwebview: ^6.1.5
   cupertino_icons: ^1.0.8
 
 dev_dependencies:

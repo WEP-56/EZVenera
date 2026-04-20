@@ -1,11 +1,15 @@
-import 'dart:typed_data';
+import 'dart:async';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../library/history_controller.dart';
 import '../library/history_models.dart';
+import '../plugin_runtime/models.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
-import '../plugin_runtime/services/plugin_image_loader.dart';
+import '../plugin_runtime/result.dart';
+import '../reader/reader_image_cache.dart';
 
 class ReaderPage extends StatefulWidget {
   const ReaderPage({
@@ -14,6 +18,10 @@ class ReaderPage extends StatefulWidget {
     required this.comicTitle,
     required this.chapterId,
     required this.chapterTitle,
+    this.chapters,
+    this.subtitle,
+    this.cover,
+    this.initialPage,
     super.key,
   });
 
@@ -22,93 +30,564 @@ class ReaderPage extends StatefulWidget {
   final String comicTitle;
   final String? chapterId;
   final String chapterTitle;
+  final PluginComicChapters? chapters;
+  final String? subtitle;
+  final String? cover;
+  final int? initialPage;
 
   @override
   State<ReaderPage> createState() => _ReaderPageState();
 }
 
 class _ReaderPageState extends State<ReaderPage> {
-  late Future<List<String>> _future = _loadImages();
+  late String? currentChapterId;
+  late String currentChapterTitle;
+  late String currentComicTitle;
+  late String? currentSubtitle;
+  late String? currentCover;
+  late PluginComicChapters? currentChapters;
+
+  List<String> images = const <String>[];
+  bool isLoading = true;
+  String? error;
+  int currentPage = 1;
+  PageController? pageController;
+  final FocusNode focusNode = FocusNode();
+  bool _attemptedContextLoad = false;
+  bool _controlsVisible = false;
+  static const _prefetchRadius = 3;
+
+  @override
+  void initState() {
+    super.initState();
+    final history = HistoryController.instance.find(
+      widget.sourceKey,
+      widget.comicId,
+    );
+    currentChapterId = widget.chapterId ?? history?.chapterId;
+    currentChapterTitle =
+        widget.chapterId == null && history?.chapterTitle != null
+        ? history!.chapterTitle!
+        : widget.chapterTitle;
+    currentComicTitle = widget.comicTitle;
+    currentSubtitle = widget.subtitle ?? history?.subtitle;
+    currentCover = widget.cover ?? history?.cover;
+    currentChapters = widget.chapters;
+
+    final initialPage = widget.initialPage ??
+        (widget.chapterId == null || history?.chapterId == currentChapterId
+            ? (history?.page ?? 1)
+            : 1);
+    _loadChapter(initialPage: initialPage, preferContextLoad: widget.chapters == null);
+  }
+
+  @override
+  void dispose() {
+    focusNode.dispose();
+    pageController?.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.chapterTitle), centerTitle: false),
-      body: FutureBuilder<List<String>>(
-        future: _future,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
-            return const Center(
-              child: SizedBox.square(
-                dimension: 32,
-                child: CircularProgressIndicator(strokeWidth: 2.5),
-              ),
-            );
-          }
+      appBar: AppBar(
+        toolbarHeight: 0,
+      ),
+      body: Focus(
+        autofocus: true,
+        focusNode: focusNode,
+        onKeyEvent: _onKeyEvent,
+        child: _buildBody(context),
+      ),
+    );
+  }
 
-          if (snapshot.hasError) {
-            return _ReaderError(
-              message: snapshot.error.toString(),
-              onRetry: _retry,
-            );
-          }
+  Widget _buildBody(BuildContext context) {
+    if (isLoading) {
+      return const Center(
+        child: SizedBox.square(
+          dimension: 32,
+          child: CircularProgressIndicator(strokeWidth: 2.5),
+        ),
+      );
+    }
 
-          final images = snapshot.data;
-          if (images == null || images.isEmpty) {
-            return _ReaderError(
-              message: 'No images returned for this chapter.',
-              onRetry: _retry,
-            );
-          }
+    if (error != null) {
+      return _ReaderError(
+        message: error!,
+        onRetry: () => _loadChapter(initialPage: currentPage),
+      );
+    }
 
-          return ListView.builder(
-            itemCount: images.length,
-            itemBuilder: (context, index) {
-              return _ReaderImage(
-                sourceKey: widget.sourceKey,
-                comicId: widget.comicId,
-                chapterId: widget.chapterId ?? '0',
-                imageUrl: images[index],
-                index: index + 1,
-              );
-            },
+    if (images.isEmpty || pageController == null) {
+      return _ReaderError(
+        message: 'No images returned for this chapter.',
+        onRetry: () => _loadChapter(initialPage: currentPage),
+      );
+    }
+
+    return Listener(
+      onPointerSignal: (signal) {
+        if (signal is! PointerScrollEvent) {
+          return;
+        }
+        if (signal.scrollDelta.dy > 0) {
+          _goToNextPage();
+        } else if (signal.scrollDelta.dy < 0) {
+          _goToPreviousPage();
+        }
+      },
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final theme = Theme.of(context);
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapUp: (details) => _handleTapUp(details, constraints.maxWidth),
+            child: Stack(
+              children: [
+                PageView.builder(
+                  controller: pageController,
+                  itemCount: images.length,
+                  onPageChanged: (index) {
+                    currentPage = index + 1;
+                    _recordHistory();
+                    _prefetchAround(currentPage);
+                    setState(() {});
+                  },
+                  itemBuilder: (context, index) {
+                    return _ReaderImage(
+                      sourceKey: widget.sourceKey,
+                      comicId: widget.comicId,
+                      chapterId: currentChapterId ?? '0',
+                      imageUrl: images[index],
+                      index: index + 1,
+                    );
+                  },
+                ),
+                Positioned(
+                  right: 16,
+                  bottom: 16,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surface.withValues(
+                        alpha: 0.92,
+                      ),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: theme.colorScheme.outlineVariant,
+                      ),
+                    ),
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      child: Text('Sides: page  Center: controls'),
+                    ),
+                  ),
+                ),
+                AnimatedPositioned(
+                  duration: const Duration(milliseconds: 180),
+                  top: _controlsVisible ? 0 : -(72 + MediaQuery.paddingOf(context).top),
+                  left: 0,
+                  right: 0,
+                  child: _ReaderTopBar(
+                    title: currentComicTitle,
+                    chapterTitle: currentChapterTitle,
+                    showChapters: _chapterItems.isNotEmpty,
+                    onBack: () => Navigator.of(context).maybePop(),
+                    onOpenChapters: _showChapterSelector,
+                  ),
+                ),
+                AnimatedPositioned(
+                  duration: const Duration(milliseconds: 180),
+                  left: 16,
+                  right: 16,
+                  bottom: _controlsVisible ? 16 : -148,
+                  child: _ReaderBottomPanel(
+                    title: '$currentPage / ${images.length}',
+                    currentPage: currentPage,
+                    pageCount: images.length,
+                    onChanged: (value) {
+                      final target = value.round().clamp(1, images.length);
+                      pageController?.animateToPage(
+                        target - 1,
+                        duration: const Duration(milliseconds: 180),
+                        curve: Curves.easeOut,
+                      );
+                    },
+                    onPrevChapter: _previousChapter,
+                    onPrevPage: _goToPreviousPage,
+                    onNextPage: _goToNextPage,
+                    onNextChapter: _nextChapter,
+                  ),
+                ),
+              ],
+            ),
           );
         },
       ),
     );
   }
 
-  Future<List<String>> _loadImages() async {
+  List<_ChapterItem> get _chapterItems {
+    final chapters = currentChapters;
+    if (chapters == null) {
+      return const <_ChapterItem>[];
+    }
+
+    final items = <_ChapterItem>[];
+    if (chapters.isGrouped) {
+      for (final group in chapters.groupedChapters!.entries) {
+        for (final chapter in group.value.entries) {
+          items.add(
+            _ChapterItem(
+              id: chapter.key,
+              title: chapter.value,
+              groupTitle: group.key,
+            ),
+          );
+        }
+      }
+    } else {
+      for (final chapter in chapters.chapters!.entries) {
+        items.add(_ChapterItem(id: chapter.key, title: chapter.value));
+      }
+    }
+    return items;
+  }
+
+  Future<void> _loadChapter({
+    required int initialPage,
+    bool preferContextLoad = false,
+  }) async {
+    setState(() {
+      isLoading = true;
+      error = null;
+    });
+
     final source = PluginRuntimeController.instance.find(widget.sourceKey);
     final comicCapability = source?.comic;
     if (comicCapability == null) {
-      throw StateError('Source does not support reading.');
+      setState(() {
+        error = 'Source does not support reading.';
+        isLoading = false;
+      });
+      return;
     }
 
-    final response = await comicCapability.loadEpisode(
-      widget.comicId,
-      widget.chapterId,
-    );
+    try {
+      if (preferContextLoad) {
+        await _ensureContext(comicCapability);
+      }
+
+      _resolveCurrentChapter();
+
+      PluginResult<List<String>> response = await comicCapability.loadEpisode(
+        widget.comicId,
+        currentChapterId,
+      );
+
+      if (response.isError && !_attemptedContextLoad) {
+        await _ensureContext(comicCapability);
+        _resolveCurrentChapter();
+        response = await comicCapability.loadEpisode(
+          widget.comicId,
+          currentChapterId,
+        );
+      }
+
+      if (response.isError) {
+        throw StateError(response.errorMessage!);
+      }
+
+      images = response.data;
+      if (images.isEmpty) {
+        currentPage = 1;
+      } else if (initialPage < 1) {
+        currentPage = 1;
+      } else if (initialPage > images.length) {
+        currentPage = images.length;
+      } else {
+        currentPage = initialPage;
+      }
+
+      pageController?.dispose();
+      pageController = PageController(initialPage: currentPage - 1);
+      _prefetchAround(currentPage);
+      await _recordHistory();
+    } catch (err) {
+      error = err.toString();
+    } finally {
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _ensureContext(PluginComicCapability capability) async {
+    if (_attemptedContextLoad) {
+      return;
+    }
+    _attemptedContextLoad = true;
+
+    final response = await capability.loadInfo(widget.comicId);
     if (response.isError) {
       throw StateError(response.errorMessage!);
     }
-    await HistoryController.instance.record(
+
+    final details = response.data;
+    if (details.title.isNotEmpty) {
+      currentComicTitle = details.title;
+    }
+    currentSubtitle = details.subtitle ?? currentSubtitle;
+    if (details.cover.isNotEmpty) {
+      currentCover = details.cover;
+    }
+    if (details.chapters != null) {
+      currentChapters = details.chapters;
+    }
+  }
+
+  void _resolveCurrentChapter() {
+    final chapterItems = _chapterItems;
+    if (chapterItems.isEmpty) {
+      currentChapterTitle = currentChapterTitle.isEmpty ? 'Read' : currentChapterTitle;
+      return;
+    }
+
+    for (final chapter in chapterItems) {
+      if (chapter.id == currentChapterId) {
+        currentChapterTitle = chapter.title;
+        return;
+      }
+    }
+    for (final chapter in chapterItems) {
+      if (chapter.title == currentChapterTitle) {
+        currentChapterId = chapter.id;
+        currentChapterTitle = chapter.title;
+        return;
+      }
+    }
+
+    currentChapterId = chapterItems.first.id;
+    currentChapterTitle = chapterItems.first.title;
+  }
+
+  Future<void> _showChapterSelector() async {
+    final selected = await showModalBottomSheet<_ChapterItem>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) {
+        return SafeArea(
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: _chapterItems.length,
+            itemBuilder: (context, index) {
+              final chapter = _chapterItems[index];
+              return ListTile(
+                title: Text(chapter.title),
+                subtitle: chapter.groupTitle == null
+                    ? null
+                    : Text(chapter.groupTitle!),
+                selected: chapter.id == currentChapterId,
+                onTap: () => Navigator.of(context).pop(chapter),
+              );
+            },
+          ),
+        );
+      },
+    );
+
+    if (selected == null) {
+      return;
+    }
+    currentChapterId = selected.id;
+    currentChapterTitle = selected.title;
+    await _loadChapter(initialPage: 1);
+  }
+
+  Future<void> _previousChapter({bool toLastPage = false}) async {
+    if (_chapterItems.isEmpty) {
+      return;
+    }
+    final currentIndex = _chapterItems.indexWhere(
+      (item) => item.id == currentChapterId,
+    );
+    if (currentIndex <= 0) {
+      return;
+    }
+    final chapter = _chapterItems[currentIndex - 1];
+    currentChapterId = chapter.id;
+    currentChapterTitle = chapter.title;
+    await _loadChapter(initialPage: toLastPage ? 1 << 30 : 1);
+  }
+
+  Future<void> _nextChapter() async {
+    if (_chapterItems.isEmpty) {
+      return;
+    }
+    final currentIndex = _chapterItems.indexWhere(
+      (item) => item.id == currentChapterId,
+    );
+    if (currentIndex < 0 || currentIndex >= _chapterItems.length - 1) {
+      return;
+    }
+    final chapter = _chapterItems[currentIndex + 1];
+    currentChapterId = chapter.id;
+    currentChapterTitle = chapter.title;
+    await _loadChapter(initialPage: 1);
+  }
+
+  Future<void> _goToPreviousPage() async {
+    if (currentPage > 1) {
+      await pageController?.previousPage(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+      );
+      return;
+    }
+    await _previousChapter(toLastPage: true);
+  }
+
+  Future<void> _goToNextPage() async {
+    if (currentPage < images.length) {
+      await pageController?.nextPage(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+      );
+      return;
+    }
+    await _nextChapter();
+  }
+
+  Future<void> _goToFirstPage() {
+    return pageController?.animateToPage(
+          0,
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+        ) ??
+        Future<void>.value();
+  }
+
+  Future<void> _goToLastPage() {
+    final lastPage = images.isEmpty ? 0 : images.length - 1;
+    return pageController?.animateToPage(
+          lastPage,
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+        ) ??
+        Future<void>.value();
+  }
+
+  void _handleTapUp(TapUpDetails details, double width) {
+    if (width <= 0) {
+      return;
+    }
+    final localDx = details.localPosition.dx;
+    if (localDx < width * 0.33) {
+      _goToPreviousPage();
+      return;
+    }
+    if (localDx > width * 0.67) {
+      _goToNextPage();
+      return;
+    }
+    setState(() {
+      _controlsVisible = !_controlsVisible;
+    });
+  }
+
+  KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) {
+      return KeyEventResult.ignored;
+    }
+
+    final key = event.logicalKey;
+    if (key == LogicalKeyboardKey.arrowLeft ||
+        key == LogicalKeyboardKey.arrowUp ||
+        key == LogicalKeyboardKey.pageUp ||
+        key == LogicalKeyboardKey.keyA ||
+        key == LogicalKeyboardKey.keyW) {
+      _goToPreviousPage();
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowRight ||
+        key == LogicalKeyboardKey.arrowDown ||
+        key == LogicalKeyboardKey.pageDown ||
+        key == LogicalKeyboardKey.space ||
+        key == LogicalKeyboardKey.keyD ||
+        key == LogicalKeyboardKey.keyS) {
+      _goToNextPage();
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.home) {
+      _goToFirstPage();
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.end) {
+      _goToLastPage();
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.bracketLeft ||
+        key == LogicalKeyboardKey.comma) {
+      _previousChapter();
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.bracketRight ||
+        key == LogicalKeyboardKey.period) {
+      _nextChapter();
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.keyR) {
+      _loadChapter(initialPage: currentPage);
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  Future<void> _recordHistory() {
+    return HistoryController.instance.record(
       ReadingHistoryEntry(
         sourceKey: widget.sourceKey,
         comicId: widget.comicId,
-        title: widget.comicTitle,
-        chapterId: widget.chapterId,
-        chapterTitle: widget.chapterTitle,
+        title: currentComicTitle,
+        subtitle: currentSubtitle,
+        cover: currentCover,
+        chapterId: currentChapterId,
+        chapterTitle: currentChapterTitle,
+        page: currentPage,
         timestamp: DateTime.now(),
       ),
     );
-    return response.data;
   }
 
-  void _retry() {
-    setState(() {
-      _future = _loadImages();
-    });
+  void _prefetchAround(int page) {
+    final source = PluginRuntimeController.instance.find(widget.sourceKey);
+    if (source == null || images.isEmpty) {
+      return;
+    }
+    final start = (page - 1 - 1).clamp(0, images.length - 1);
+    final end = (page - 1 + _prefetchRadius).clamp(0, images.length - 1);
+    for (var index = start; index <= end; index++) {
+      unawaited(_prefetchOne(source, index));
+    }
+  }
+
+  Future<void> _prefetchOne(PluginSource source, int index) async {
+    final bytes = await ReaderImageCache.instance.load(
+      source: source,
+      comicId: widget.comicId,
+      episodeId: currentChapterId ?? '0',
+      imageUrl: images[index],
+    );
+    if (!mounted) {
+      return;
+    }
+    await precacheImage(MemoryImage(bytes), context);
   }
 }
 
@@ -135,6 +614,17 @@ class _ReaderImageState extends State<_ReaderImage> {
   late Future<Uint8List> _future = _loadBytes();
 
   @override
+  void didUpdateWidget(covariant _ReaderImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.imageUrl != widget.imageUrl ||
+        oldWidget.chapterId != widget.chapterId ||
+        oldWidget.comicId != widget.comicId ||
+        oldWidget.sourceKey != widget.sourceKey) {
+      _future = _loadBytes();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
@@ -142,24 +632,20 @@ class _ReaderImageState extends State<_ReaderImage> {
       future: _future,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
-          return Container(
-            alignment: Alignment.center,
-            constraints: const BoxConstraints(minHeight: 220),
-            margin: const EdgeInsets.symmetric(vertical: 8),
-            child: const CircularProgressIndicator(strokeWidth: 2),
-          );
+          return const Center(child: CircularProgressIndicator(strokeWidth: 2));
         }
 
         if (snapshot.hasError || snapshot.data == null) {
           return Container(
             padding: const EdgeInsets.all(16),
-            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            margin: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: theme.colorScheme.surface,
               borderRadius: BorderRadius.circular(20),
               border: Border.all(color: theme.colorScheme.outlineVariant),
             ),
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
@@ -169,12 +655,7 @@ class _ReaderImageState extends State<_ReaderImage> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                Text(
-                  snapshot.error.toString(),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
+                Text(snapshot.error.toString()),
                 const SizedBox(height: 12),
                 OutlinedButton.icon(
                   onPressed: _retry,
@@ -186,12 +667,10 @@ class _ReaderImageState extends State<_ReaderImage> {
           );
         }
 
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: Image.memory(
-              snapshot.data!,
+        return InteractiveViewer(
+          child: Center(
+            child: Image(
+              image: MemoryImage(snapshot.data!),
               fit: BoxFit.contain,
               gaplessPlayback: true,
             ),
@@ -206,8 +685,7 @@ class _ReaderImageState extends State<_ReaderImage> {
     if (source == null) {
       throw StateError('Source not found.');
     }
-
-    return PluginImageLoader.instance.loadComicImage(
+    return ReaderImageCache.instance.load(
       source: source,
       comicId: widget.comicId,
       episodeId: widget.chapterId,
@@ -230,43 +708,172 @@ class _ReaderError extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 560),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.error_outline, size: 40),
+            const SizedBox(height: 16),
+            Text(message, textAlign: TextAlign.center),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ChapterItem {
+  const _ChapterItem({required this.id, required this.title, this.groupTitle});
+
+  final String id;
+  final String title;
+  final String? groupTitle;
+}
+
+class _ReaderTopBar extends StatelessWidget {
+  const _ReaderTopBar({
+    required this.title,
+    required this.chapterTitle,
+    required this.showChapters,
+    required this.onBack,
+    required this.onOpenChapters,
+  });
+
+  final String title;
+  final String chapterTitle;
+  final bool showChapters;
+  final VoidCallback onBack;
+  final VoidCallback onOpenChapters;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Material(
+      color: theme.colorScheme.surface.withValues(alpha: 0.92),
+      child: SafeArea(
+        bottom: false,
+        child: SizedBox(
+          height: 72,
+          child: Row(
             children: [
-              Icon(
-                Icons.error_outline,
-                size: 40,
-                color: theme.colorScheme.error,
+              const SizedBox(width: 8),
+              IconButton(
+                onPressed: onBack,
+                icon: const Icon(Icons.arrow_back),
               ),
-              const SizedBox(height: 16),
-              Text(
-                'Failed to load chapter',
-                style: theme.textTheme.headlineSmall,
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 12),
-              Text(
-                message,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      chapterTitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
-                textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 20),
-              FilledButton.icon(
-                onPressed: onRetry,
-                icon: const Icon(Icons.refresh),
-                label: const Text('Retry'),
-              ),
+              if (showChapters)
+                IconButton(
+                  onPressed: onOpenChapters,
+                  icon: const Icon(Icons.menu_book_outlined),
+                ),
+              const SizedBox(width: 8),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ReaderBottomPanel extends StatelessWidget {
+  const _ReaderBottomPanel({
+    required this.title,
+    required this.currentPage,
+    required this.pageCount,
+    required this.onChanged,
+    required this.onPrevChapter,
+    required this.onPrevPage,
+    required this.onNextPage,
+    required this.onNextChapter,
+  });
+
+  final String title;
+  final int currentPage;
+  final int pageCount;
+  final ValueChanged<double> onChanged;
+  final VoidCallback onPrevChapter;
+  final VoidCallback onPrevPage;
+  final VoidCallback onNextPage;
+  final VoidCallback onNextChapter;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Material(
+      color: theme.colorScheme.surface.withValues(alpha: 0.92),
+      borderRadius: BorderRadius.circular(24),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              title,
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            Slider(
+              value: currentPage.toDouble().clamp(1, pageCount == 0 ? 1 : pageCount.toDouble()),
+              min: 1,
+              max: pageCount <= 1 ? 1 : pageCount.toDouble(),
+              divisions: pageCount <= 1 ? 1 : pageCount - 1,
+              onChanged: pageCount <= 1 ? null : onChanged,
+            ),
+            Row(
+              children: [
+                IconButton(
+                  onPressed: onPrevChapter,
+                  icon: const Icon(Icons.skip_previous),
+                ),
+                IconButton(
+                  onPressed: onPrevPage,
+                  icon: const Icon(Icons.chevron_left),
+                ),
+                const Spacer(),
+                IconButton(
+                  onPressed: onNextPage,
+                  icon: const Icon(Icons.chevron_right),
+                ),
+                IconButton(
+                  onPressed: onNextChapter,
+                  icon: const Icon(Icons.skip_next),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );

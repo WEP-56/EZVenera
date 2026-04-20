@@ -9,6 +9,10 @@ set(BINARY_NAME "ezvenera")
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent
 # versions of CMake.
 cmake_policy(VERSION 3.14...3.25)
+if(POLICY CMP0175)
+  cmake_policy(SET CMP0175 OLD)
+endif()
+set(CMAKE_SUPPRESS_DEVELOPER_WARNINGS 1 CACHE BOOL "" FORCE)
 
 # Define build configuration option.
 get_property(IS_MULTICONFIG GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
@@ -51,6 +55,35 @@ add_subdirectory(${FLUTTER_MANAGED_DIR})
 
 # Application build; see runner/CMakeLists.txt.
 add_subdirectory("runner")
+
+# flutter_inappwebview_windows requires `nuget` to download its native
+# dependencies. Bootstrap a local copy so the build does not rely on
+# machine-wide setup.
+set(EZVENERA_TOOL_DIR "${CMAKE_BINARY_DIR}/ezvenera_tools")
+set(EZVENERA_NUGET_DIR "${EZVENERA_TOOL_DIR}/nuget")
+set(EZVENERA_NUGET_PATH "${EZVENERA_NUGET_DIR}/nuget.exe")
+
+if(NOT EXISTS "${EZVENERA_NUGET_PATH}")
+  file(MAKE_DIRECTORY "${EZVENERA_NUGET_DIR}")
+  file(DOWNLOAD
+    "https://dist.nuget.org/win-x86-commandline/latest/nuget.exe"
+    "${EZVENERA_NUGET_PATH}"
+    STATUS EZVENERA_NUGET_DOWNLOAD_STATUS
+    SHOW_PROGRESS
+    TLS_VERIFY ON
+  )
+  list(GET EZVENERA_NUGET_DOWNLOAD_STATUS 0 EZVENERA_NUGET_DOWNLOAD_CODE)
+  list(GET EZVENERA_NUGET_DOWNLOAD_STATUS 1 EZVENERA_NUGET_DOWNLOAD_MESSAGE)
+  if(NOT EZVENERA_NUGET_DOWNLOAD_CODE EQUAL 0)
+    message(FATAL_ERROR
+      "Failed to download nuget.exe: ${EZVENERA_NUGET_DOWNLOAD_MESSAGE}"
+    )
+  endif()
+endif()
+
+set(NUGET "${EZVENERA_NUGET_PATH}" CACHE FILEPATH "NuGet executable" FORCE)
+list(PREPEND CMAKE_PROGRAM_PATH "${EZVENERA_NUGET_DIR}")
+set(ENV{PATH} "${EZVENERA_NUGET_DIR};$ENV{PATH}")
 
 
 # Generated plugin build rules, which manage building the plugins and adding

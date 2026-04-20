@@ -6,6 +6,7 @@ import '../library/history_controller.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
 import '../settings/settings_controller.dart';
 import '../shell/main_shell.dart';
+import '../state/app_state_controller.dart';
 
 class AppBootstrap extends StatefulWidget {
   const AppBootstrap({super.key});
@@ -19,6 +20,7 @@ class _AppBootstrapState extends State<AppBootstrap> {
 
   Future<void> _initialize() async {
     await SettingsController.instance.initialize();
+    await AppStateController.instance.initialize();
     await PluginRuntimeController.instance.initialize();
     await DownloadController.instance.initialize();
     await HistoryController.instance.initialize();

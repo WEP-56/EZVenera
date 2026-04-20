@@ -15,6 +15,15 @@ class HistoryController extends ChangeNotifier {
   List<ReadingHistoryEntry> get entries =>
       List<ReadingHistoryEntry>.unmodifiable(_entries);
 
+  ReadingHistoryEntry? find(String sourceKey, String comicId) {
+    for (final entry in _entries) {
+      if (entry.sourceKey == sourceKey && entry.comicId == comicId) {
+        return entry;
+      }
+    }
+    return null;
+  }
+
   Future<void> initialize() async {
     if (_initialized) {
       return;

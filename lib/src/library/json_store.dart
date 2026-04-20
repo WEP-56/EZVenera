@@ -22,15 +22,21 @@ class JsonStore {
 
   Future<List<Map<String, dynamic>>> readList() async {
     await initialize();
-    final content = await _file!.readAsString();
-    final decoded = jsonDecode(content);
-    if (decoded is! List) {
+    try {
+      final content = await _file!.readAsString();
+      final decoded = jsonDecode(content);
+      if (decoded is! List) {
+        await _file!.writeAsString('[]');
+        return const <Map<String, dynamic>>[];
+      }
+      return decoded
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
+    } catch (_) {
+      await _file!.writeAsString('[]');
       return const <Map<String, dynamic>>[];
     }
-    return decoded
-        .whereType<Map>()
-        .map((item) => Map<String, dynamic>.from(item))
-        .toList();
   }
 
   Future<void> writeList(List<Map<String, dynamic>> values) async {

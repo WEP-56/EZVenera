@@ -7,9 +7,10 @@ import '../library/favorite_models.dart';
 import '../library/history_controller.dart';
 import '../library/history_models.dart';
 import '../plugin_runtime/models.dart';
+import '../state/app_state_controller.dart';
 import 'comic_details_page.dart';
 import 'local_reader_page.dart';
-import 'reader_page.dart';
+import 'network_resume_page.dart';
 
 class LocalPage extends StatefulWidget {
   const LocalPage({super.key});
@@ -22,12 +23,19 @@ class _LocalPageState extends State<LocalPage> {
   final downloadController = DownloadController.instance;
   final historyController = HistoryController.instance;
   final favoriteController = FavoriteController.instance;
+  final appState = AppStateController.instance;
 
-  int selectedSection = 2;
+  late int selectedSection;
 
   @override
   void initState() {
     super.initState();
+    final restoredSection = appState.getInt('local.selectedSection');
+    if (restoredSection != null && restoredSection >= 0 && restoredSection <= 2) {
+      selectedSection = restoredSection;
+    } else {
+      selectedSection = 2;
+    }
     downloadController.addListener(_onChanged);
     historyController.addListener(_onChanged);
     favoriteController.addListener(_onChanged);
@@ -50,6 +58,7 @@ class _LocalPageState extends State<LocalPage> {
 
     return SafeArea(
       child: ListView(
+        key: const PageStorageKey<String>('local-page-list'),
         padding: const EdgeInsets.all(24),
         children: [
           Text('Local', style: theme.textTheme.headlineMedium),
@@ -65,6 +74,7 @@ class _LocalPageState extends State<LocalPage> {
               setState(() {
                 selectedSection = values.first;
               });
+              appState.setInt('local.selectedSection', selectedSection);
             },
           ),
           const SizedBox(height: 20),
@@ -328,13 +338,7 @@ class _HistoryCard extends StatelessWidget {
 
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (context) => ReaderPage(
-          sourceKey: entry.sourceKey,
-          comicId: entry.comicId,
-          comicTitle: entry.title,
-          chapterId: entry.chapterId,
-          chapterTitle: entry.chapterTitle ?? 'Read',
-        ),
+        builder: (context) => NetworkResumePage(entry: entry),
       ),
     );
   }

@@ -68,14 +68,14 @@ class _ComicDetailsPageState extends State<ComicDetailsPage> {
           return _ComicDetailsBody(
             summary: widget.comic,
             details: details,
-            onRead: () => _openReader(_firstChapter(details)),
+            onRead: () => _openReader(_firstChapter(details), details),
             onDownload: () => _downloadComic(details),
             onFavorite: () => _toggleFavorite(details),
             isFavorite: favoriteController.contains(
               widget.comic.sourceKey,
               widget.comic.id,
             ),
-            onChapterSelected: _openReader,
+            onChapterSelected: (chapter) => _openReader(chapter, details),
           );
         },
       ),
@@ -120,21 +120,22 @@ class _ComicDetailsPageState extends State<ComicDetailsPage> {
     return _ChapterSelection(id: firstChapter.key, title: firstChapter.value);
   }
 
-  void _openReader(_ChapterSelection chapter) {
+  void _openReader(_ChapterSelection chapter, PluginComicDetails details) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (context) => ReaderPage(
           sourceKey: widget.comic.sourceKey,
           comicId: widget.comic.id,
-          comicTitle: detailsTitleFallback(),
+          comicTitle: details.title,
           chapterId: chapter.id,
           chapterTitle: chapter.title,
+          chapters: details.chapters,
+          subtitle: details.subtitle ?? widget.comic.subtitle,
+          cover: details.cover.isNotEmpty ? details.cover : widget.comic.cover,
         ),
       ),
     );
   }
-
-  String detailsTitleFallback() => widget.comic.title;
 
   Future<void> _downloadComic(PluginComicDetails details) async {
     List<ChapterDownloadRequest>? requests;

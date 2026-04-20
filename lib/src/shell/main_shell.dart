@@ -2,11 +2,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../navigation/app_destination.dart';
+import '../pages/categories_page.dart';
 import '../pages/local_page.dart';
-import '../pages/placeholder_page.dart';
 import '../pages/search_page.dart';
 import '../pages/settings_page.dart';
 import '../pages/sources_page.dart';
+import '../state/app_state_controller.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -16,9 +17,30 @@ class MainShell extends StatefulWidget {
 }
 
 class _MainShellState extends State<MainShell> {
-  int selectedIndex = 0;
+  late int selectedIndex;
+  late final List<Widget> _pages;
 
   static const destinations = AppDestination.values;
+
+  @override
+  void initState() {
+    super.initState();
+    final restoredIndex = AppStateController.instance.getInt('shell.selectedIndex');
+    if (restoredIndex != null &&
+        restoredIndex >= 0 &&
+        restoredIndex < destinations.length) {
+      selectedIndex = restoredIndex;
+    } else {
+      selectedIndex = 0;
+    }
+    _pages = const [
+      SearchPage(),
+      CategoriesPage(),
+      LocalPage(),
+      SourcesPage(),
+      SettingsPage(),
+    ];
+  }
 
   bool get useDesktopLayout {
     switch (defaultTargetPlatform) {
@@ -34,6 +56,7 @@ class _MainShellState extends State<MainShell> {
   @override
   Widget build(BuildContext context) {
     final destination = destinations[selectedIndex];
+    final content = IndexedStack(index: selectedIndex, children: _pages);
 
     return Scaffold(
       body: useDesktopLayout
@@ -41,11 +64,13 @@ class _MainShellState extends State<MainShell> {
               selectedIndex: selectedIndex,
               onSelect: onSelect,
               destination: destination,
+              child: content,
             )
           : _MobileShell(
               selectedIndex: selectedIndex,
               onSelect: onSelect,
               destination: destination,
+              child: content,
             ),
     );
   }
@@ -57,6 +82,7 @@ class _MainShellState extends State<MainShell> {
     setState(() {
       selectedIndex = index;
     });
+    AppStateController.instance.setInt('shell.selectedIndex', index);
   }
 }
 
@@ -65,11 +91,13 @@ class _DesktopShell extends StatelessWidget {
     required this.selectedIndex,
     required this.onSelect,
     required this.destination,
+    required this.child,
   });
 
   final int selectedIndex;
   final ValueChanged<int> onSelect;
   final AppDestination destination;
+  final Widget child;
 
   @override
   Widget build(BuildContext context) {
@@ -127,7 +155,7 @@ class _DesktopShell extends StatelessWidget {
           thickness: 1,
           color: theme.colorScheme.outlineVariant,
         ),
-        Expanded(child: _buildPage(destination)),
+        Expanded(child: child),
       ],
     );
   }
@@ -138,17 +166,19 @@ class _MobileShell extends StatelessWidget {
     required this.selectedIndex,
     required this.onSelect,
     required this.destination,
+    required this.child,
   });
 
   final int selectedIndex;
   final ValueChanged<int> onSelect;
   final AppDestination destination;
+  final Widget child;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text(destination.title), centerTitle: false),
-      body: _buildPage(destination),
+      body: child,
       bottomNavigationBar: NavigationBar(
         selectedIndex: selectedIndex,
         onDestinationSelected: onSelect,
@@ -163,24 +193,4 @@ class _MobileShell extends StatelessWidget {
       ),
     );
   }
-}
-
-Widget _buildPage(AppDestination destination) {
-  if (destination == AppDestination.search) {
-    return const SearchPage();
-  }
-  if (destination == AppDestination.local) {
-    return const LocalPage();
-  }
-  if (destination == AppDestination.sources) {
-    return const SourcesPage();
-  }
-  if (destination == AppDestination.settings) {
-    return const SettingsPage();
-  }
-  return PlaceholderPage(
-    key: ValueKey(destination.name),
-    title: destination.title,
-    description: destination.description,
-  );
 }

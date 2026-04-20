@@ -1,10 +1,12 @@
 import 'dart:convert';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 
 import '../plugin_runtime/models.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
 import 'comic_details_page.dart';
+import '../state/app_state_controller.dart';
 
 class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
@@ -15,6 +17,7 @@ class SearchPage extends StatefulWidget {
 
 class _SearchPageState extends State<SearchPage> {
   final controller = PluginRuntimeController.instance;
+  final appState = AppStateController.instance;
   final keywordController = TextEditingController();
 
   PluginSource? selectedSource;
@@ -31,12 +34,15 @@ class _SearchPageState extends State<SearchPage> {
   void initState() {
     super.initState();
     controller.addListener(_onControllerChanged);
+    keywordController.addListener(_onKeywordChanged);
     _syncSelectedSource();
+    _restoreState();
   }
 
   @override
   void dispose() {
     controller.removeListener(_onControllerChanged);
+    keywordController.removeListener(_onKeywordChanged);
     keywordController.dispose();
     super.dispose();
   }
@@ -48,6 +54,7 @@ class _SearchPageState extends State<SearchPage> {
 
     return SafeArea(
       child: ListView(
+        key: const PageStorageKey<String>('search-page-list'),
         padding: const EdgeInsets.all(24),
         children: [
           Text('Search', style: theme.textTheme.headlineMedium),
@@ -178,6 +185,7 @@ class _SearchPageState extends State<SearchPage> {
               nextValues[index] = value;
               optionValues = nextValues;
             });
+            unawaited(_persistState());
           },
         ),
       );
@@ -216,6 +224,7 @@ class _SearchPageState extends State<SearchPage> {
       optionValues = _defaultOptionsFor(source);
       _resetResultsLocally();
     });
+    unawaited(_persistState());
   }
 
   Future<void> _search() async {
@@ -266,6 +275,7 @@ class _SearchPageState extends State<SearchPage> {
           isSearching = false;
         });
       }
+      unawaited(_persistState());
     }
   }
 
@@ -320,6 +330,7 @@ class _SearchPageState extends State<SearchPage> {
           isSearching = false;
         });
       }
+      unawaited(_persistState());
     }
   }
 
@@ -330,6 +341,7 @@ class _SearchPageState extends State<SearchPage> {
       keywordController.clear();
       lastKeyword = '';
     });
+    unawaited(_persistState());
   }
 
   void _resetResultsLocally() {
@@ -354,7 +366,100 @@ class _SearchPageState extends State<SearchPage> {
     final source = stillExists ?? searchSources.first;
 
     selectedSource = source;
-    optionValues = _defaultOptionsFor(source);
+    optionValues = _normalizeOptionValues(source, optionValues);
+  }
+
+  void _restoreState() {
+    final state = appState.getSection('search.page');
+    if (state.isEmpty) {
+      return;
+    }
+
+    final sourceKey = state['selectedSourceKey']?.toString();
+    var restoredSourceMissing = false;
+    if (sourceKey != null) {
+      selectedSource = _searchSources
+          .where((source) => source.key == sourceKey)
+          .firstOrNull;
+      restoredSourceMissing = selectedSource == null;
+    }
+    selectedSource ??= _searchSources.firstOrNull;
+    if (selectedSource != null) {
+      optionValues = _normalizeOptionValues(
+        selectedSource!,
+        List<String>.from(state['optionValues'] ?? const <String>[]),
+      );
+    }
+
+    keywordController.text = state['keyword']?.toString() ?? '';
+    lastKeyword = state['lastKeyword']?.toString() ?? keywordController.text;
+    currentPage = (state['currentPage'] as num?)?.toInt() ?? 1;
+    maxPage = (state['maxPage'] as num?)?.toInt();
+    nextToken = state['nextToken']?.toString();
+    searchError = state['searchError']?.toString();
+    results = restoredSourceMissing
+        ? const <PluginComic>[]
+        : (state['results'] as List? ?? const <dynamic>[])
+              .whereType<Map>()
+              .map((item) => _comicFromJson(Map<String, dynamic>.from(item)))
+              .toList();
+  }
+
+  List<String> _normalizeOptionValues(
+    PluginSource source,
+    List<String> candidateValues,
+  ) {
+    final defaults = _defaultOptionsFor(source);
+    if (candidateValues.length != defaults.length) {
+      return defaults;
+    }
+    return candidateValues;
+  }
+
+  Future<void> _persistState() {
+    return appState.setSection('search.page', <String, dynamic>{
+      'selectedSourceKey': selectedSource?.key,
+      'keyword': keywordController.text,
+      'lastKeyword': lastKeyword,
+      'optionValues': optionValues,
+      'currentPage': currentPage,
+      'maxPage': maxPage,
+      'nextToken': nextToken,
+      'searchError': searchError,
+      'results': results.map(_comicToJson).toList(),
+    });
+  }
+
+  Map<String, dynamic> _comicToJson(PluginComic comic) {
+    return <String, dynamic>{
+      'id': comic.id,
+      'title': comic.title,
+      'cover': comic.cover,
+      'sourceKey': comic.sourceKey,
+      'subtitle': comic.subtitle,
+      'tags': comic.tags,
+      'description': comic.description,
+      'maxPage': comic.maxPage,
+      'language': comic.language,
+      'favoriteId': comic.favoriteId,
+      'stars': comic.stars,
+    };
+  }
+
+  PluginComic _comicFromJson(Map<String, dynamic> json) {
+    return PluginComic(
+      id: json['id']?.toString() ?? '',
+      title: json['title']?.toString() ?? '',
+      cover: json['cover']?.toString() ?? '',
+      sourceKey: json['sourceKey']?.toString() ?? '',
+      subtitle: json['subtitle']?.toString(),
+      tags: List<String>.from(json['tags'] ?? const <String>[]),
+      description: json['description']?.toString() ?? '',
+      maxPage: (json['maxPage'] as num?)?.toInt(),
+      language: json['language']?.toString(),
+      favoriteId: json['favoriteId']?.toString(),
+      stars: (json['stars'] as num?)?.toDouble(),
+    );
   }
 
   List<String> _defaultOptionsFor(PluginSource source) {
@@ -374,7 +479,18 @@ class _SearchPageState extends State<SearchPage> {
     if (!mounted) {
       return;
     }
-    setState(_syncSelectedSource);
+    setState(() {
+      final previousKey = selectedSource?.key;
+      _syncSelectedSource();
+      if (selectedSource?.key != previousKey) {
+        _resetResultsLocally();
+      }
+    });
+    unawaited(_persistState());
+  }
+
+  void _onKeywordChanged() {
+    unawaited(_persistState());
   }
 }
 

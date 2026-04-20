@@ -18,9 +18,6 @@ class PluginSourceParser {
   final PluginDataStore dataStore;
   final String appVersion;
 
-  String? _key;
-  String? _name;
-
   Future<PluginSource> parse(
     String javascript, {
     required String filePath,
@@ -61,10 +58,10 @@ class PluginSourceParser {
     ''', '<plugin_parse>'),
     );
 
-    _name =
+    final sourceName =
         (await _resolve(engine.runCode('this.__ez_temp_source.name')))
             as String?;
-    _key =
+    final sourceKey =
         (await _resolve(engine.runCode('this.__ez_temp_source.key')))
             as String?;
     final version =
@@ -80,79 +77,73 @@ class PluginSourceParser {
             as String?) ??
         '';
 
-    if (_name == null || _name!.isEmpty) {
+    if (sourceName == null || sourceName.isEmpty) {
       throw PluginSourceParseException('Source name is required.');
     }
-    if (_key == null || _key!.isEmpty) {
+    if (sourceKey == null || sourceKey.isEmpty) {
       throw PluginSourceParseException('Source key is required.');
     }
-    if (!RegExp(r'^[a-zA-Z0-9_]+$').hasMatch(_key!)) {
-      throw PluginSourceParseException('Invalid source key: $_key');
+    if (!RegExp(r'^[a-zA-Z0-9_]+$').hasMatch(sourceKey)) {
+      throw PluginSourceParseException('Invalid source key: $sourceKey');
     }
-    if (engine.findSource(_key!) != null) {
-      throw PluginSourceParseException('Duplicate source key: $_key');
+    if (engine.findSource(sourceKey) != null) {
+      throw PluginSourceParseException('Duplicate source key: $sourceKey');
     }
-    if (_compareVersion(minVersion, appVersion) > 0) {
-      throw PluginSourceParseException(
-        'Source requires app version $minVersion or newer.',
-      );
-    }
-
     await _resolve(
-      engine.runCode('ComicSource.sources.${_key!} = this.__ez_temp_source;'),
+      engine.runCode('ComicSource.sources.$sourceKey = this.__ez_temp_source;'),
     );
 
     final source = PluginSource(
-      name: _name!,
-      key: _key!,
+      name: sourceName,
+      key: sourceKey,
       version: version,
       minAppVersion: minVersion,
       url: url,
       filePath: filePath,
-      data: await dataStore.read(_key!),
-      persistData: (data) => dataStore.write(_key!, data),
-      account: _parseAccount(),
-      search: _parseSearch(),
-      category: _parseCategory(),
-      categoryComics: _parseCategoryComics(),
-      comic: _parseComic(),
-      settings: _parseSettings(),
-      translations: _parseTranslations(),
-      idMatcher: _parseIdMatcher(),
-      link: _parseLink(),
-      onTagSuggestionSelected: _parseTagSuggestionSelection(),
+      data: await dataStore.read(sourceKey),
+      persistData: (data) => dataStore.write(sourceKey, data),
+      account: _parseAccount(sourceKey),
+      search: _parseSearch(sourceKey),
+      category: _parseCategory(sourceKey),
+      categoryComics: _parseCategoryComics(sourceKey),
+      comic: _parseComic(sourceKey),
+      settings: _parseSettings(sourceKey),
+      translations: _parseTranslations(sourceKey),
+      idMatcher: _parseIdMatcher(sourceKey),
+      link: _parseLink(sourceKey),
+      onTagSuggestionSelected: _parseTagSuggestionSelection(sourceKey),
     );
 
     engine.registerSource(source);
-    if (_existsSync('init')) {
+    if (_existsSync(sourceKey, 'init')) {
       Future<void>.delayed(const Duration(milliseconds: 50), () async {
-        await _resolve(engine.runCode('ComicSource.sources.${_key!}.init()'));
+        await _resolve(engine.runCode('ComicSource.sources.$sourceKey.init()'));
       });
     }
 
     return source;
   }
 
-  PluginAccountCapability? _parseAccount() {
-    if (!_existsSync('account')) {
+  PluginAccountCapability? _parseAccount(String sourceKey) {
+    if (!_existsSync(sourceKey, 'account')) {
       return null;
     }
 
     PluginLoginFunction? login;
-    if (_existsSync('account.login')) {
+    if (_existsSync(sourceKey, 'account.login')) {
       login = (account, password) async {
         try {
           await _resolve(
             engine.runCode('''
-              ComicSource.sources.${_key!}.account.login(
+              ComicSource.sources.$sourceKey.account.login(
                 ${jsonEncode(account)},
                 ${jsonEncode(password)}
               )
             '''),
           );
-          final source = engine.findSource(_key!);
-          source?.data['account'] = <String>[account, password];
+          final source = engine.findSource(sourceKey);
           if (source != null) {
+            source.markLoggedIn(accountData: <String>[account, password]);
             await source.saveData();
           }
           return const PluginResult<bool>(true);
@@ -163,14 +154,21 @@ class PluginSourceParser {
     }
 
     PluginCookieValidationFunction? validateCookies;
-    if (_existsSync('account.loginWithCookies?.validate')) {
+    if (_existsSync(sourceKey, 'account.loginWithCookies?.validate')) {
       validateCookies = (values) async {
         try {
           final result = await _resolve(
             engine.runCode(
-              'ComicSource.sources.${_key!}.account.loginWithCookies.validate(${jsonEncode(values)})',
+              'ComicSource.sources.$sourceKey.account.loginWithCookies.validate(${jsonEncode(values)})',
             ),
           );
+          if (result == true) {
+            final source = engine.findSource(sourceKey);
+            if (source != null) {
+              source.markLoggedIn();
+              await source.saveData();
+            }
+          }
           return result == true;
         } catch (_) {
           return false;
@@ -181,14 +179,17 @@ class PluginSourceParser {
     return PluginAccountCapability(
       login: login,
       logout: () {
-        engine.runCode('ComicSource.sources.${_key!}.account.logout()');
+        final source = engine.findSource(sourceKey);
+        source?.markLoggedOut();
+        source?.saveData();
+        engine.runCode('ComicSource.sources.$sourceKey.account.logout()');
       },
-      loginWebsite: _get('account.loginWithWebview?.url') as String?,
-      registerWebsite: _get('account.registerWebsite') as String?,
-      checkLoginStatus: _existsSync('account.loginWithWebview')
+      loginWebsite: _get(sourceKey, 'account.loginWithWebview?.url') as String?,
+      registerWebsite: _get(sourceKey, 'account.registerWebsite') as String?,
+      checkLoginStatus: _existsSync(sourceKey, 'account.loginWithWebview.checkStatus')
           ? (url, title) {
               final result = engine.runCode('''
-                ComicSource.sources.${_key!}.account.loginWithWebview.checkStatus(
+                ComicSource.sources.$sourceKey.account.loginWithWebview.checkStatus(
                   ${jsonEncode(url)},
                   ${jsonEncode(title)}
                 )
@@ -197,26 +198,31 @@ class PluginSourceParser {
             }
           : null,
       onWebviewLoginSuccess:
-          _existsSync('account.loginWithWebview.onLoginSuccess')
-          ? () {
-              engine.runCode(
-                'ComicSource.sources.${_key!}.account.loginWithWebview.onLoginSuccess()',
-              );
+          _existsSync(sourceKey, 'account.loginWithWebview.onLoginSuccess')
+          ? () async {
+              final source = engine.findSource(sourceKey);
+              if (source != null) {
+                source.markLoggedIn();
+                await source.saveData();
+              }
+              await _resolve(engine.runCode(
+                'ComicSource.sources.$sourceKey.account.loginWithWebview.onLoginSuccess()',
+              ));
             }
           : null,
-      cookieFields: _stringList(_get('account.loginWithCookies?.fields')),
+      cookieFields: _stringList(_get(sourceKey, 'account.loginWithCookies?.fields')),
       validateCookies: validateCookies,
     );
   }
 
-  PluginSearchCapability? _parseSearch() {
-    if (!_existsSync('search')) {
+  PluginSearchCapability? _parseSearch(String sourceKey) {
+    if (!_existsSync(sourceKey, 'search')) {
       return null;
     }
 
     final options = <PluginSearchOption>[];
     for (final item
-        in (_get('search.optionList') as List? ?? const <dynamic>[])) {
+        in (_get(sourceKey, 'search.optionList') as List? ?? const <dynamic>[])) {
       if (item is! Map) {
         continue;
       }
@@ -233,12 +239,12 @@ class PluginSourceParser {
     }
 
     PluginSearchLoadPage? loadPage;
-    if (_existsSync('search.load')) {
+    if (_existsSync(sourceKey, 'search.load')) {
       loadPage = (keyword, page, selectedOptions) async {
         try {
           final result = await _resolve(
             engine.runCode('''
-              ComicSource.sources.${_key!}.search.load(
+              ComicSource.sources.$sourceKey.search.load(
                 ${jsonEncode(keyword)},
                 ${jsonEncode(selectedOptions)},
                 ${jsonEncode(page)}
@@ -246,7 +252,7 @@ class PluginSourceParser {
             '''),
           );
           return PluginResult<List<PluginComic>>(
-            _comicList(result['comics'] as List),
+            _comicList(result['comics'] as List, sourceKey),
             subData: result['maxPage'],
           );
         } catch (error) {
@@ -256,12 +262,13 @@ class PluginSourceParser {
     }
 
     PluginSearchLoadNext? loadNext;
-    if (!_existsSync('search.load') && _existsSync('search.loadNext')) {
+    if (!_existsSync(sourceKey, 'search.load') &&
+        _existsSync(sourceKey, 'search.loadNext')) {
       loadNext = (keyword, next, selectedOptions) async {
         try {
           final result = await _resolve(
             engine.runCode('''
-              ComicSource.sources.${_key!}.search.loadNext(
+              ComicSource.sources.$sourceKey.search.loadNext(
                 ${jsonEncode(keyword)},
                 ${jsonEncode(selectedOptions)},
                 ${jsonEncode(next)}
@@ -269,7 +276,7 @@ class PluginSourceParser {
             '''),
           );
           return PluginResult<List<PluginComic>>(
-            _comicList(result['comics'] as List),
+            _comicList(result['comics'] as List, sourceKey),
             subData: result['next'],
           );
         } catch (error) {
@@ -282,12 +289,13 @@ class PluginSourceParser {
       options: options,
       loadPage: loadPage,
       loadNext: loadNext,
-      enableTagSuggestions: _get('search.enableTagsSuggestions') == true,
+      enableTagSuggestions:
+          _get(sourceKey, 'search.enableTagsSuggestions') == true,
     );
   }
 
-  PluginCategoryCapability? _parseCategory() {
-    final category = _get('category');
+  PluginCategoryCapability? _parseCategory(String sourceKey) {
+    final category = _get(sourceKey, 'category');
     if (category is! Map || category['title'] == null) {
       return null;
     }
@@ -403,14 +411,15 @@ class PluginSourceParser {
     );
   }
 
-  PluginCategoryComicsCapability? _parseCategoryComics() {
-    if (!_existsSync('categoryComics')) {
+  PluginCategoryComicsCapability? _parseCategoryComics(String sourceKey) {
+    if (!_existsSync(sourceKey, 'categoryComics')) {
       return null;
     }
 
     final options = <PluginCategoryComicsOption>[];
     for (final item
-        in (_get('categoryComics.optionList') as List? ?? const <dynamic>[])) {
+        in (_get(sourceKey, 'categoryComics.optionList') as List? ??
+            const <dynamic>[])) {
       if (item is! Map) {
         continue;
       }
@@ -425,21 +434,23 @@ class PluginSourceParser {
     }
 
     PluginRankingCapability? ranking;
-    if (_existsSync('categoryComics.ranking.load')) {
+    if (_existsSync(sourceKey, 'categoryComics.ranking.load')) {
       ranking = PluginRankingCapability(
-        options: _optionMap(_get('categoryComics.ranking.options') as List?),
+        options: _optionMap(
+          _get(sourceKey, 'categoryComics.ranking.options') as List?,
+        ),
         load: (option, page) async {
           try {
             final result = await _resolve(
               engine.runCode('''
-                ComicSource.sources.${_key!}.categoryComics.ranking.load(
+                ComicSource.sources.$sourceKey.categoryComics.ranking.load(
                   ${jsonEncode(option)},
                   ${jsonEncode(page)}
                 )
               '''),
             );
             return PluginResult<List<PluginComic>>(
-              _comicList(result['comics'] as List),
+              _comicList(result['comics'] as List, sourceKey),
               subData: result['maxPage'],
             );
           } catch (error) {
@@ -456,7 +467,7 @@ class PluginSourceParser {
         try {
           final result = await _resolve(
             engine.runCode('''
-              ComicSource.sources.${_key!}.categoryComics.load(
+              ComicSource.sources.$sourceKey.categoryComics.load(
                 ${jsonEncode(category)},
                 ${jsonEncode(param)},
                 ${jsonEncode(selectedOptions)},
@@ -465,7 +476,7 @@ class PluginSourceParser {
             '''),
           );
           return PluginResult<List<PluginComic>>(
-            _comicList(result['comics'] as List),
+            _comicList(result['comics'] as List, sourceKey),
             subData: result['maxPage'],
           );
         } catch (error) {
@@ -475,8 +486,9 @@ class PluginSourceParser {
     );
   }
 
-  PluginComicCapability? _parseComic() {
-    if (!_existsSync('comic.loadInfo') || !_existsSync('comic.loadEp')) {
+  PluginComicCapability? _parseComic(String sourceKey) {
+    if (!_existsSync(sourceKey, 'comic.loadInfo') ||
+        !_existsSync(sourceKey, 'comic.loadEp')) {
       return null;
     }
 
@@ -485,7 +497,7 @@ class PluginSourceParser {
         try {
           final result = await _resolve(
             engine.runCode(
-              'ComicSource.sources.${_key!}.comic.loadInfo(${jsonEncode(id)})',
+              'ComicSource.sources.$sourceKey.comic.loadInfo(${jsonEncode(id)})',
             ),
           );
           if (result is! Map) {
@@ -494,7 +506,7 @@ class PluginSourceParser {
             );
           }
           return PluginResult<PluginComicDetails>(
-            _comicDetails(Map<String, dynamic>.from(result), id),
+            _comicDetails(Map<String, dynamic>.from(result), id, sourceKey),
           );
         } catch (error) {
           return PluginResult<PluginComicDetails>.error(error.toString());
@@ -504,7 +516,7 @@ class PluginSourceParser {
         try {
           final result = await _resolve(
             engine.runCode('''
-              ComicSource.sources.${_key!}.comic.loadEp(
+              ComicSource.sources.$sourceKey.comic.loadEp(
                 ${jsonEncode(comicId)},
                 ${jsonEncode(episodeId)}
               )
@@ -517,11 +529,11 @@ class PluginSourceParser {
           return PluginResult<List<String>>.error(error.toString());
         }
       },
-      onImageLoad: _existsSync('comic.onImageLoad')
+      onImageLoad: _existsSync(sourceKey, 'comic.onImageLoad')
           ? (imageKey, comicId, episodeId) async {
               final result = await _resolve(
                 engine.runCode('''
-                  ComicSource.sources.${_key!}.comic.onImageLoad(
+                  ComicSource.sources.$sourceKey.comic.onImageLoad(
                     ${jsonEncode(imageKey)},
                     ${jsonEncode(comicId)},
                     ${jsonEncode(episodeId)}
@@ -531,10 +543,10 @@ class PluginSourceParser {
               return _imageRequest(result);
             }
           : null,
-      onThumbnailLoad: _existsSync('comic.onThumbnailLoad')
+      onThumbnailLoad: _existsSync(sourceKey, 'comic.onThumbnailLoad')
           ? (imageKey) {
               final result = engine.runCode(
-                'ComicSource.sources.${_key!}.comic.onThumbnailLoad(${jsonEncode(imageKey)})',
+                'ComicSource.sources.$sourceKey.comic.onThumbnailLoad(${jsonEncode(imageKey)})',
               );
               return _imageRequest(result);
             }
@@ -542,8 +554,8 @@ class PluginSourceParser {
     );
   }
 
-  Map<String, PluginSourceSetting> _parseSettings() {
-    final settings = _get('settings');
+  Map<String, PluginSourceSetting> _parseSettings(String sourceKey) {
+    final settings = _get(sourceKey, 'settings');
     if (settings is! Map) {
       return const <String, PluginSourceSetting>{};
     }
@@ -581,8 +593,8 @@ class PluginSourceParser {
     return result;
   }
 
-  Map<String, Map<String, String>> _parseTranslations() {
-    final translation = _get('translation');
+  Map<String, Map<String, String>> _parseTranslations(String sourceKey) {
+    final translation = _get(sourceKey, 'translation');
     if (translation is! Map) {
       return const <String, Map<String, String>>{};
     }
@@ -598,34 +610,35 @@ class PluginSourceParser {
     return result;
   }
 
-  RegExp? _parseIdMatcher() {
-    return _existsSync('comic.idMatch')
-        ? RegExp(_get('comic.idMatch').toString())
+  RegExp? _parseIdMatcher(String sourceKey) {
+    return _existsSync(sourceKey, 'comic.idMatch')
+        ? RegExp(_get(sourceKey, 'comic.idMatch').toString())
         : null;
   }
 
-  PluginLinkCapability? _parseLink() {
-    if (!_existsSync('comic.link')) {
+  PluginLinkCapability? _parseLink(String sourceKey) {
+    if (!_existsSync(sourceKey, 'comic.link')) {
       return null;
     }
     return PluginLinkCapability(
-      domains: _stringList(_get('comic.link.domains')) ?? const <String>[],
+      domains: _stringList(_get(sourceKey, 'comic.link.domains')) ??
+          const <String>[],
       linkToId: (url) {
         final result = engine.runCode(
-          'ComicSource.sources.${_key!}.comic.link.linkToId(${jsonEncode(url)})',
+          'ComicSource.sources.$sourceKey.comic.link.linkToId(${jsonEncode(url)})',
         );
         return result?.toString();
       },
     );
   }
 
-  PluginTagSuggestionSelect? _parseTagSuggestionSelection() {
-    if (!_existsSync('search.onTagSuggestionSelected')) {
+  PluginTagSuggestionSelect? _parseTagSuggestionSelection(String sourceKey) {
+    if (!_existsSync(sourceKey, 'search.onTagSuggestionSelected')) {
       return null;
     }
     return (namespace, tag) {
       final result = engine.runCode('''
-        ComicSource.sources.${_key!}.search.onTagSuggestionSelected(
+        ComicSource.sources.$sourceKey.search.onTagSuggestionSelected(
           ${jsonEncode(namespace)},
           ${jsonEncode(tag)}
         )
@@ -697,14 +710,14 @@ class PluginSourceParser {
     return const PluginJumpTarget(page: 'unknown');
   }
 
-  List<PluginComic> _comicList(List<dynamic> values) {
+  List<PluginComic> _comicList(List<dynamic> values, String sourceKey) {
     return values.whereType<Map>().map((item) {
       final map = Map<String, dynamic>.from(item);
       return PluginComic(
         id: map['id'].toString(),
         title: map['title']?.toString() ?? '',
         cover: map['cover']?.toString() ?? '',
-        sourceKey: _key!,
+        sourceKey: sourceKey,
         subtitle: map['subtitle']?.toString() ?? map['subTitle']?.toString(),
         tags: _stringList(map['tags']),
         description: map['description']?.toString() ?? '',
@@ -716,10 +729,14 @@ class PluginSourceParser {
     }).toList();
   }
 
-  PluginComicDetails _comicDetails(Map<String, dynamic> value, String id) {
+  PluginComicDetails _comicDetails(
+    Map<String, dynamic> value,
+    String id,
+    String sourceKey,
+  ) {
     return PluginComicDetails(
       id: id,
-      sourceKey: _key!,
+      sourceKey: sourceKey,
       title: value['title']?.toString() ?? '',
       subtitle: value['subtitle']?.toString() ?? value['subTitle']?.toString(),
       cover: value['cover']?.toString() ?? '',
@@ -793,15 +810,17 @@ class PluginSourceParser {
     return value.map((item) => item.toString()).toList();
   }
 
-  bool _existsSync(String path) {
+  bool _existsSync(String sourceKey, String path) {
+    final safePath = _toSafePath(path);
     final result = engine.runCode(
-      'ComicSource.sources.${_key!}.$path !== null && ComicSource.sources.${_key!}.$path !== undefined',
+      'ComicSource.sources.$sourceKey.$safePath !== null && ComicSource.sources.$sourceKey.$safePath !== undefined',
     );
     return result == true;
   }
 
-  dynamic _get(String path) {
-    return engine.runCode('ComicSource.sources.${_key!}.$path');
+  dynamic _get(String sourceKey, String path) {
+    final safePath = _toSafePath(path);
+    return engine.runCode('ComicSource.sources.$sourceKey.$safePath');
   }
 
   Future<dynamic> _resolve(dynamic value) async {
@@ -811,17 +830,11 @@ class PluginSourceParser {
     return value;
   }
 
-  int _compareVersion(String left, String right) {
-    final a = left.replaceFirst('-', '.').split('.');
-    final b = right.replaceFirst('-', '.').split('.');
-    for (var index = 0; index < 3; index++) {
-      final leftNumber = int.tryParse(a.elementAt(index)) ?? 0;
-      final rightNumber = int.tryParse(b.elementAt(index)) ?? 0;
-      if (leftNumber != rightNumber) {
-        return leftNumber.compareTo(rightNumber);
-      }
-    }
-    return 0;
+  String _toSafePath(String path) {
+    return path
+        .split('.')
+        .map((segment) => segment.replaceAll('?', ''))
+        .join('?.');
   }
 }
 

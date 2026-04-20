@@ -6,6 +6,7 @@ typedef PluginLoginFunction =
     Future<PluginResult<bool>> Function(String account, String password);
 typedef PluginCookieValidationFunction =
     Future<bool> Function(List<String> values);
+typedef PluginWebviewLoginSuccess = Future<void> Function();
 typedef PluginSearchLoadPage =
     Future<PluginResult<List<PluginComic>>> Function(
       String keyword,
@@ -87,7 +88,26 @@ class PluginSource {
   final PluginLinkCapability? link;
   final PluginTagSuggestionSelect? onTagSuggestionSelected;
 
-  bool get isLogged => data['account'] != null;
+  bool get isLogged {
+    if (data['_ez_logged'] == true || data['account'] != null) {
+      return true;
+    }
+    final localStorage = data['_localStorage'];
+    return localStorage is Map && localStorage.isNotEmpty;
+  }
+
+  void markLoggedIn({dynamic accountData}) {
+    data['_ez_logged'] = true;
+    if (accountData != null) {
+      data['account'] = accountData;
+    }
+  }
+
+  void markLoggedOut() {
+    data['_ez_logged'] = false;
+    data.remove('account');
+    data.remove('_localStorage');
+  }
 
   Future<void> saveData() => persistData(data);
 
@@ -113,7 +133,7 @@ class PluginAccountCapability {
   final String? loginWebsite;
   final String? registerWebsite;
   final bool Function(String url, String title)? checkLoginStatus;
-  final void Function()? onWebviewLoginSuccess;
+  final PluginWebviewLoginSuccess? onWebviewLoginSuccess;
   final List<String>? cookieFields;
   final PluginCookieValidationFunction? validateCookies;
 }
