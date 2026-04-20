@@ -147,7 +147,6 @@ class _ReaderPageState extends State<ReaderPage> {
       },
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final theme = Theme.of(context);
           return GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTapUp: (details) => _handleTapUp(details, constraints.maxWidth),
@@ -173,29 +172,6 @@ class _ReaderPageState extends State<ReaderPage> {
                     );
                   },
                 ),
-                if (SettingsController.instance.readerShowTapGuide)
-                  Positioned(
-                    right: 16,
-                    bottom: 16,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.surface.withValues(
-                          alpha: 0.92,
-                        ),
-                        borderRadius: BorderRadius.circular(999),
-                        border: Border.all(
-                          color: theme.colorScheme.outlineVariant,
-                        ),
-                      ),
-                      child: const Padding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        child: Text('Sides: page  Center: controls'),
-                      ),
-                    ),
-                  ),
                 AnimatedPositioned(
                   duration: const Duration(milliseconds: 180),
                   top: _controlsVisible
