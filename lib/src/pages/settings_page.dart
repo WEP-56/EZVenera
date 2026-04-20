@@ -38,145 +38,174 @@ class _SettingsPageState extends State<SettingsPage> {
         children: [
           Text('Settings', style: theme.textTheme.headlineMedium),
           const SizedBox(height: 20),
-          _SettingsSection(
+          _SettingsGroup(
             title: 'Appearance',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Theme Mode',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                SegmentedButton<ThemeMode>(
-                  segments: const [
-                    ButtonSegment<ThemeMode>(
+            icon: Icons.palette_outlined,
+            children: [
+              ListTile(
+                title: const Text('Theme Mode'),
+                subtitle: Text(_themeModeLabel(controller.themeMode)),
+                trailing: DropdownButton<ThemeMode>(
+                  value: controller.themeMode,
+                  underline: const SizedBox.shrink(),
+                  items: const [
+                    DropdownMenuItem(
                       value: ThemeMode.system,
-                      label: Text('System'),
+                      child: Text('System'),
                     ),
-                    ButtonSegment<ThemeMode>(
+                    DropdownMenuItem(
                       value: ThemeMode.light,
-                      label: Text('Light'),
+                      child: Text('Light'),
                     ),
-                    ButtonSegment<ThemeMode>(
+                    DropdownMenuItem(
                       value: ThemeMode.dark,
-                      label: Text('Dark'),
+                      child: Text('Dark'),
                     ),
                   ],
-                  selected: <ThemeMode>{controller.themeMode},
-                  onSelectionChanged: (values) {
-                    controller.setThemeMode(values.first);
+                  onChanged: (value) {
+                    if (value != null) {
+                      controller.setThemeMode(value);
+                    }
                   },
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
           const SizedBox(height: 16),
-          _SettingsSection(
-            title: 'Sources',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Source Index URL',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+          _SettingsGroup(
+            title: 'Network',
+            icon: Icons.public_outlined,
+            children: [
+              ListTile(
+                title: const Text('Source Index URL'),
+                subtitle: Text(
+                  controller.sourceIndexUrl,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  'Sources page uses this index when browsing the EZVenera-config repository.',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                    height: 1.5,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: sourceIndexController,
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    labelText: 'Index URL',
-                  ),
-                  onSubmitted: (value) => controller.setSourceIndexUrl(value),
-                ),
-                const SizedBox(height: 12),
-                Row(
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: Column(
                   children: [
-                    FilledButton(
-                      onPressed: () {
-                        controller.setSourceIndexUrl(
-                          sourceIndexController.text,
-                        );
-                      },
-                      child: const Text('Save'),
+                    TextField(
+                      controller: sourceIndexController,
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        labelText: 'Index URL',
+                        hintText: SettingsController.defaultSourceIndexUrl,
+                      ),
+                      onSubmitted: (value) =>
+                          controller.setSourceIndexUrl(value),
                     ),
-                    const SizedBox(width: 12),
-                    OutlinedButton(
-                      onPressed: () {
-                        sourceIndexController.text =
-                            SettingsController.defaultSourceIndexUrl;
-                        controller.setSourceIndexUrl(
-                          SettingsController.defaultSourceIndexUrl,
-                        );
-                      },
-                      child: const Text('Reset URL'),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        FilledButton(
+                          onPressed: () {
+                            controller.setSourceIndexUrl(
+                              sourceIndexController.text,
+                            );
+                          },
+                          child: const Text('Save'),
+                        ),
+                        const SizedBox(width: 12),
+                        OutlinedButton(
+                          onPressed: () {
+                            sourceIndexController.text =
+                                SettingsController.defaultSourceIndexUrl;
+                            controller.setSourceIndexUrl(
+                              SettingsController.defaultSourceIndexUrl,
+                            );
+                          },
+                          child: const Text('Reset'),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
           const SizedBox(height: 16),
-          _SettingsSection(
-            title: 'Downloads',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Current downloaded comics',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
+          _SettingsGroup(
+            title: 'App',
+            icon: Icons.apps_outlined,
+            children: [
+              ListTile(
+                title: const Text('Downloaded Comics'),
+                subtitle: Text(
                   '${DownloadController.instance.downloads.length} saved comic(s)',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
                 ),
-              ],
-            ),
+              ),
+              ListTile(
+                title: const Text('Reset Settings'),
+                subtitle: const Text(
+                  'Reset theme mode and source index URL to EZVenera defaults.',
+                ),
+                trailing: const Icon(Icons.restore),
+                onTap: _confirmReset,
+              ),
+            ],
           ),
           const SizedBox(height: 16),
-          _SettingsSection(
+          _SettingsGroup(
             title: 'About',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'EZVenera',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
+            icon: Icons.info_outline,
+            children: const [
+              ListTile(
+                title: Text('EZVenera'),
+                subtitle: Text(
                   'A simplified, maintainable fork direction of Venera focused on Windows, Android, plugin compatibility, and long-term clarity.',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                    height: 1.5,
-                  ),
                 ),
-              ],
-            ),
+              ),
+              ListTile(
+                title: Text('Source Repository'),
+                subtitle: Text(
+                  'EZVenera-config is the default plugin index for this app.',
+                ),
+              ),
+            ],
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _confirmReset() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Reset Settings'),
+          content: const Text('Reset current EZVenera settings to defaults?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Reset'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
+    await controller.reset();
+  }
+
+  String _themeModeLabel(ThemeMode mode) {
+    return switch (mode) {
+      ThemeMode.light => 'Light',
+      ThemeMode.dark => 'Dark',
+      ThemeMode.system => 'System',
+    };
   }
 
   void _onSettingsChanged() {
@@ -190,18 +219,22 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 }
 
-class _SettingsSection extends StatelessWidget {
-  const _SettingsSection({required this.title, required this.child});
+class _SettingsGroup extends StatelessWidget {
+  const _SettingsGroup({
+    required this.title,
+    required this.icon,
+    required this.children,
+  });
 
   final String title;
-  final Widget child;
+  final IconData icon;
+  final List<Widget> children;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
     return Container(
-      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
@@ -210,14 +243,22 @@ class _SettingsSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: theme.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w700,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
+            child: Row(
+              children: [
+                Icon(icon, size: 20, color: theme.colorScheme.primary),
+                const SizedBox(width: 10),
+                Text(
+                  title,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 16),
-          child,
+          ...children,
         ],
       ),
     );

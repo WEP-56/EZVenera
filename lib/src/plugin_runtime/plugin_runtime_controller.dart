@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -73,6 +74,28 @@ class PluginRuntimeController extends ChangeNotifier {
   Future<void> removeSource(PluginSource source) async {
     await _runBusy(() async {
       await _runtime.removeSource(source);
+    });
+  }
+
+  Future<void> updateSource(PluginSource source) async {
+    if (source.url.trim().isEmpty) {
+      throw StateError('This source does not define an update URL.');
+    }
+
+    await _runBusy(() async {
+      final response = await _dio.get<String>(source.url);
+      if (response.statusCode == null ||
+          response.statusCode! < 200 ||
+          response.statusCode! >= 300 ||
+          response.data == null) {
+        throw StateError(
+          'Failed to update plugin: HTTP ${response.statusCode}',
+        );
+      }
+
+      final file = File(source.filePath);
+      await file.writeAsString(response.data!);
+      await _runtime.reload();
     });
   }
 
