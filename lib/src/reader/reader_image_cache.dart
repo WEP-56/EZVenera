@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../plugin_runtime/models.dart';
 import '../plugin_runtime/services/plugin_image_loader.dart';
+import '../settings/settings_controller.dart';
 
 class ReaderImageCache {
   ReaderImageCache._();
@@ -64,6 +65,45 @@ class ReaderImageCache {
     unawaited(_prefetchInternal(source, comicId, episodeId, imageUrl));
   }
 
+  Future<String> currentRootPath() async {
+    _cacheRoot ??= await _resolveRoot();
+    return _cacheRoot!.path;
+  }
+
+  Future<int> diskUsageBytes() async {
+    final root = await _resolveRoot();
+    if (!await root.exists()) {
+      return 0;
+    }
+
+    var total = 0;
+    await for (final entity in root.list(recursive: true, followLinks: false)) {
+      if (entity is File) {
+        total += (await entity.stat()).size;
+      }
+    }
+    return total;
+  }
+
+  Future<void> clearDiskCache() async {
+    _memory.clear();
+    _memoryOrder.clear();
+    final root = await _resolveRoot();
+    if (await root.exists()) {
+      await root.delete(recursive: true);
+    }
+    _cacheRoot = null;
+    await _resolveRoot();
+  }
+
+  Future<void> reloadConfiguration() async {
+    _memory.clear();
+    _memoryOrder.clear();
+    _cacheRoot = null;
+    await _resolveRoot();
+    await _trimDiskCacheIfNeeded();
+  }
+
   Future<void> _prefetchInternal(
     PluginSource source,
     String comicId,
@@ -102,6 +142,7 @@ class ReaderImageCache {
     );
     await file.parent.create(recursive: true);
     await file.writeAsBytes(bytes, flush: false);
+    await _trimDiskCacheIfNeeded();
     _remember(cacheKey, bytes);
     return bytes;
   }
@@ -121,17 +162,58 @@ class ReaderImageCache {
   }
 
   Future<File> _fileForKey(String cacheKey) async {
-    _cacheRoot ??= await _createRoot();
+    _cacheRoot ??= await _resolveRoot();
     return File(
       p.join(_cacheRoot!.path, cacheKey.substring(0, 2), '$cacheKey.bin'),
     );
   }
 
-  Future<Directory> _createRoot() async {
+  Future<Directory> _resolveRoot() async {
+    final custom = SettingsController.instance.readerCacheDirectoryPath;
+    if (custom != null && custom.isNotEmpty) {
+      final root = Directory(custom);
+      await root.create(recursive: true);
+      _cacheRoot = root;
+      return root;
+    }
+
     final supportDirectory = await getApplicationSupportDirectory();
     final root = Directory(p.join(supportDirectory.path, 'reader_cache'));
     await root.create(recursive: true);
+    _cacheRoot = root;
     return root;
+  }
+
+  Future<void> _trimDiskCacheIfNeeded() async {
+    final root = await _resolveRoot();
+    final limitBytes =
+        SettingsController.instance.readerCacheLimitMb * 1024 * 1024;
+    final files = <({File file, int size, DateTime modified})>[];
+    var total = 0;
+
+    await for (final entity in root.list(recursive: true, followLinks: false)) {
+      if (entity is! File) {
+        continue;
+      }
+      final stat = await entity.stat();
+      total += stat.size;
+      files.add((file: entity, size: stat.size, modified: stat.modified));
+    }
+
+    if (total <= limitBytes) {
+      return;
+    }
+
+    files.sort((a, b) => a.modified.compareTo(b.modified));
+    for (final entry in files) {
+      if (total <= limitBytes) {
+        break;
+      }
+      if (await entry.file.exists()) {
+        await entry.file.delete();
+        total -= entry.size;
+      }
+    }
   }
 
   String _cacheKey(

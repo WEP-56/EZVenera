@@ -17,6 +17,9 @@ class MainShell extends StatefulWidget {
 }
 
 class _MainShellState extends State<MainShell> {
+  static const _desktopSidebarWidth = 220.0;
+  static const _desktopBreakpoint = 920.0;
+
   late int selectedIndex;
   late final List<Widget> _pages;
 
@@ -25,7 +28,9 @@ class _MainShellState extends State<MainShell> {
   @override
   void initState() {
     super.initState();
-    final restoredIndex = AppStateController.instance.getInt('shell.selectedIndex');
+    final restoredIndex = AppStateController.instance.getInt(
+      'shell.selectedIndex',
+    );
     if (restoredIndex != null &&
         restoredIndex >= 0 &&
         restoredIndex < destinations.length) {
@@ -42,36 +47,31 @@ class _MainShellState extends State<MainShell> {
     ];
   }
 
-  bool get useDesktopLayout {
-    switch (defaultTargetPlatform) {
-      case TargetPlatform.windows:
-        return true;
-      case TargetPlatform.android:
-        return false;
-      default:
-        return false;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final destination = destinations[selectedIndex];
     final content = IndexedStack(index: selectedIndex, children: _pages);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final destination = destinations[selectedIndex];
+        final useDesktopLayout =
+            defaultTargetPlatform == TargetPlatform.windows &&
+            constraints.maxWidth >= _desktopBreakpoint;
 
-    return Scaffold(
-      body: useDesktopLayout
-          ? _DesktopShell(
-              selectedIndex: selectedIndex,
-              onSelect: onSelect,
-              destination: destination,
-              child: content,
-            )
-          : _MobileShell(
-              selectedIndex: selectedIndex,
-              onSelect: onSelect,
-              destination: destination,
-              child: content,
-            ),
+        if (useDesktopLayout) {
+          return _DesktopShell(
+            selectedIndex: selectedIndex,
+            onSelect: onSelect,
+            child: content,
+          );
+        }
+
+        return _MobileShell(
+          selectedIndex: selectedIndex,
+          onSelect: onSelect,
+          destination: destination,
+          child: content,
+        );
+      },
     );
   }
 
@@ -90,73 +90,62 @@ class _DesktopShell extends StatelessWidget {
   const _DesktopShell({
     required this.selectedIndex,
     required this.onSelect,
-    required this.destination,
     required this.child,
   });
 
   final int selectedIndex;
   final ValueChanged<int> onSelect;
-  final AppDestination destination;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    const upperDestinations = [
+      AppDestination.search,
+      AppDestination.category,
+      AppDestination.local,
+      AppDestination.sources,
+    ];
 
-    return Row(
-      children: [
-        Container(
-          width: 288,
-          color: theme.colorScheme.surface,
-          child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'EZVenera',
-                    style: theme.textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
+    return Scaffold(
+      body: Row(
+        children: [
+          Container(
+            width: _MainShellState._desktopSidebarWidth,
+            color: theme.colorScheme.surface.withValues(alpha: 0.92),
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 18, 14, 18),
+                child: Column(
+                  children: [
+                    for (final item in upperDestinations) ...[
+                      _SidebarDestinationButton(
+                        destination: item,
+                        selected: item.index == selectedIndex,
+                        onTap: () => onSelect(item.index),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                    const Spacer(),
+                    _SidebarDestinationButton(
+                      destination: AppDestination.settings,
+                      selected: AppDestination.settings.index == selectedIndex,
+                      onTap: () => onSelect(AppDestination.settings.index),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Windows and Android only. Plugin-first architecture.',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  Expanded(
-                    child: NavigationRail(
-                      selectedIndex: selectedIndex,
-                      onDestinationSelected: onSelect,
-                      backgroundColor: Colors.transparent,
-                      indicatorColor: theme.colorScheme.secondaryContainer,
-                      labelType: NavigationRailLabelType.all,
-                      destinations: [
-                        for (final item in AppDestination.values)
-                          NavigationRailDestination(
-                            icon: Icon(item.icon),
-                            selectedIcon: Icon(item.selectedIcon),
-                            label: Text(item.label),
-                          ),
-                      ],
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
-        ),
-        VerticalDivider(
-          width: 1,
-          thickness: 1,
-          color: theme.colorScheme.outlineVariant,
-        ),
-        Expanded(child: child),
-      ],
+          VerticalDivider(
+            width: 1,
+            thickness: 1,
+            color: theme.colorScheme.outlineVariant,
+          ),
+          Expanded(child: child),
+        ],
+      ),
     );
   }
 }
@@ -177,7 +166,10 @@ class _MobileShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(destination.title), centerTitle: false),
+      appBar: AppBar(
+        title: Text(destination.title(context)),
+        centerTitle: false,
+      ),
       body: child,
       bottomNavigationBar: NavigationBar(
         selectedIndex: selectedIndex,
@@ -187,9 +179,71 @@ class _MobileShell extends StatelessWidget {
             NavigationDestination(
               icon: Icon(item.icon),
               selectedIcon: Icon(item.selectedIcon),
-              label: item.label,
+              label: item.label(context),
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _SidebarDestinationButton extends StatelessWidget {
+  const _SidebarDestinationButton({
+    required this.destination,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final AppDestination destination;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final foreground = selected
+        ? theme.colorScheme.onSecondaryContainer
+        : theme.colorScheme.onSurfaceVariant;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            color: selected
+                ? theme.colorScheme.secondaryContainer
+                : Colors.transparent,
+            border: Border.all(
+              color: selected
+                  ? Colors.transparent
+                  : theme.colorScheme.outlineVariant.withValues(alpha: 0.55),
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                selected ? destination.selectedIcon : destination.icon,
+                color: foreground,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  destination.label(context),
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: foreground,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

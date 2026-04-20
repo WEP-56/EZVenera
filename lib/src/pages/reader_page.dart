@@ -1,15 +1,18 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../downloads/download_models.dart';
 import '../library/history_controller.dart';
 import '../library/history_models.dart';
 import '../plugin_runtime/models.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
 import '../plugin_runtime/result.dart';
 import '../reader/reader_image_cache.dart';
+import '../settings/settings_controller.dart';
 
 class ReaderPage extends StatefulWidget {
   const ReaderPage({
@@ -22,6 +25,7 @@ class ReaderPage extends StatefulWidget {
     this.subtitle,
     this.cover,
     this.initialPage,
+    this.localComic,
     super.key,
   });
 
@@ -34,6 +38,7 @@ class ReaderPage extends StatefulWidget {
   final String? subtitle;
   final String? cover;
   final int? initialPage;
+  final DownloadedComic? localComic;
 
   @override
   State<ReaderPage> createState() => _ReaderPageState();
@@ -55,7 +60,6 @@ class _ReaderPageState extends State<ReaderPage> {
   final FocusNode focusNode = FocusNode();
   bool _attemptedContextLoad = false;
   bool _controlsVisible = false;
-  static const _prefetchRadius = 3;
 
   @override
   void initState() {
@@ -71,14 +75,19 @@ class _ReaderPageState extends State<ReaderPage> {
         : widget.chapterTitle;
     currentComicTitle = widget.comicTitle;
     currentSubtitle = widget.subtitle ?? history?.subtitle;
-    currentCover = widget.cover ?? history?.cover;
+    currentCover =
+        widget.localComic?.coverPath ?? widget.cover ?? history?.cover;
     currentChapters = widget.chapters;
 
-    final initialPage = widget.initialPage ??
+    final initialPage =
+        widget.initialPage ??
         (widget.chapterId == null || history?.chapterId == currentChapterId
             ? (history?.page ?? 1)
             : 1);
-    _loadChapter(initialPage: initialPage, preferContextLoad: widget.chapters == null);
+    _loadChapter(
+      initialPage: initialPage,
+      preferContextLoad: widget.chapters == null,
+    );
   }
 
   @override
@@ -91,9 +100,7 @@ class _ReaderPageState extends State<ReaderPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        toolbarHeight: 0,
-      ),
+      appBar: AppBar(toolbarHeight: 0),
       body: Focus(
         autofocus: true,
         focusNode: focusNode,
@@ -157,6 +164,7 @@ class _ReaderPageState extends State<ReaderPage> {
                   },
                   itemBuilder: (context, index) {
                     return _ReaderImage(
+                      isLocal: widget.localComic != null,
                       sourceKey: widget.sourceKey,
                       comicId: widget.comicId,
                       chapterId: currentChapterId ?? '0',
@@ -165,31 +173,34 @@ class _ReaderPageState extends State<ReaderPage> {
                     );
                   },
                 ),
-                Positioned(
-                  right: 16,
-                  bottom: 16,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.surface.withValues(
-                        alpha: 0.92,
+                if (SettingsController.instance.readerShowTapGuide)
+                  Positioned(
+                    right: 16,
+                    bottom: 16,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surface.withValues(
+                          alpha: 0.92,
+                        ),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: theme.colorScheme.outlineVariant,
+                        ),
                       ),
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(
-                        color: theme.colorScheme.outlineVariant,
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        child: Text('Sides: page  Center: controls'),
                       ),
-                    ),
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      child: Text('Sides: page  Center: controls'),
                     ),
                   ),
-                ),
                 AnimatedPositioned(
                   duration: const Duration(milliseconds: 180),
-                  top: _controlsVisible ? 0 : -(72 + MediaQuery.paddingOf(context).top),
+                  top: _controlsVisible
+                      ? 0
+                      : -(72 + MediaQuery.paddingOf(context).top),
                   left: 0,
                   right: 0,
                   child: _ReaderTopBar(
@@ -232,6 +243,13 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   List<_ChapterItem> get _chapterItems {
+    final localComic = widget.localComic;
+    if (localComic != null) {
+      return localComic.chapters
+          .map((chapter) => _ChapterItem(id: chapter.id, title: chapter.title))
+          .toList();
+    }
+
     final chapters = currentChapters;
     if (chapters == null) {
       return const <_ChapterItem>[];
@@ -267,42 +285,45 @@ class _ReaderPageState extends State<ReaderPage> {
       error = null;
     });
 
-    final source = PluginRuntimeController.instance.find(widget.sourceKey);
-    final comicCapability = source?.comic;
-    if (comicCapability == null) {
-      setState(() {
-        error = 'Source does not support reading.';
-        isLoading = false;
-      });
-      return;
-    }
-
     try {
-      if (preferContextLoad) {
-        await _ensureContext(comicCapability);
-      }
-
       _resolveCurrentChapter();
+      if (widget.localComic != null) {
+        final chapter = _resolveLocalChapter();
+        currentChapterId = chapter.id;
+        currentChapterTitle = chapter.title;
+        images = _localChapterImages(chapter);
+      } else {
+        final source = PluginRuntimeController.instance.find(widget.sourceKey);
+        final comicCapability = source?.comic;
+        if (comicCapability == null) {
+          throw StateError('Source does not support reading.');
+        }
 
-      PluginResult<List<String>> response = await comicCapability.loadEpisode(
-        widget.comicId,
-        currentChapterId,
-      );
+        if (preferContextLoad) {
+          await _ensureContext(comicCapability);
+        }
 
-      if (response.isError && !_attemptedContextLoad) {
-        await _ensureContext(comicCapability);
-        _resolveCurrentChapter();
-        response = await comicCapability.loadEpisode(
+        PluginResult<List<String>> response = await comicCapability.loadEpisode(
           widget.comicId,
           currentChapterId,
         );
+
+        if (response.isError && !_attemptedContextLoad) {
+          await _ensureContext(comicCapability);
+          _resolveCurrentChapter();
+          response = await comicCapability.loadEpisode(
+            widget.comicId,
+            currentChapterId,
+          );
+        }
+
+        if (response.isError) {
+          throw StateError(response.errorMessage!);
+        }
+
+        images = response.data;
       }
 
-      if (response.isError) {
-        throw StateError(response.errorMessage!);
-      }
-
-      images = response.data;
       if (images.isEmpty) {
         currentPage = 1;
       } else if (initialPage < 1) {
@@ -355,7 +376,9 @@ class _ReaderPageState extends State<ReaderPage> {
   void _resolveCurrentChapter() {
     final chapterItems = _chapterItems;
     if (chapterItems.isEmpty) {
-      currentChapterTitle = currentChapterTitle.isEmpty ? 'Read' : currentChapterTitle;
+      currentChapterTitle = currentChapterTitle.isEmpty
+          ? 'Read'
+          : currentChapterTitle;
       return;
     }
 
@@ -375,6 +398,47 @@ class _ReaderPageState extends State<ReaderPage> {
 
     currentChapterId = chapterItems.first.id;
     currentChapterTitle = chapterItems.first.title;
+  }
+
+  DownloadedChapter _resolveLocalChapter() {
+    final localComic = widget.localComic;
+    if (localComic == null || localComic.chapters.isEmpty) {
+      throw StateError('No downloaded chapters available.');
+    }
+
+    for (final chapter in localComic.chapters) {
+      if (chapter.id == currentChapterId) {
+        return chapter;
+      }
+    }
+    for (final chapter in localComic.chapters) {
+      if (chapter.title == currentChapterTitle) {
+        currentChapterId = chapter.id;
+        return chapter;
+      }
+    }
+
+    currentChapterId = localComic.chapters.first.id;
+    currentChapterTitle = localComic.chapters.first.title;
+    return localComic.chapters.first;
+  }
+
+  List<String> _localChapterImages(DownloadedChapter chapter) {
+    final directory = Directory(chapter.path);
+    if (!directory.existsSync()) {
+      return const <String>[];
+    }
+
+    final files =
+        directory
+            .listSync()
+            .whereType<File>()
+            .where(
+              (file) => !file.path.contains('${Platform.pathSeparator}cover.'),
+            )
+            .toList()
+          ..sort((a, b) => a.path.compareTo(b.path));
+    return files.map((file) => file.path).toList();
   }
 
   Future<void> _showChapterSelector() async {
@@ -561,17 +625,22 @@ class _ReaderPageState extends State<ReaderPage> {
         chapterTitle: currentChapterTitle,
         page: currentPage,
         timestamp: DateTime.now(),
+        isLocal: widget.localComic != null,
       ),
     );
   }
 
   void _prefetchAround(int page) {
+    if (widget.localComic != null) {
+      return;
+    }
     final source = PluginRuntimeController.instance.find(widget.sourceKey);
     if (source == null || images.isEmpty) {
       return;
     }
+    final radius = SettingsController.instance.readerPrefetchCount;
     final start = (page - 1 - 1).clamp(0, images.length - 1);
-    final end = (page - 1 + _prefetchRadius).clamp(0, images.length - 1);
+    final end = (page - 1 + radius).clamp(0, images.length - 1);
     for (var index = start; index <= end; index++) {
       unawaited(_prefetchOne(source, index));
     }
@@ -593,6 +662,7 @@ class _ReaderPageState extends State<ReaderPage> {
 
 class _ReaderImage extends StatefulWidget {
   const _ReaderImage({
+    required this.isLocal,
     required this.sourceKey,
     required this.comicId,
     required this.chapterId,
@@ -600,6 +670,7 @@ class _ReaderImage extends StatefulWidget {
     required this.index,
   });
 
+  final bool isLocal;
   final String sourceKey;
   final String comicId;
   final String chapterId;
@@ -617,6 +688,7 @@ class _ReaderImageState extends State<_ReaderImage> {
   void didUpdateWidget(covariant _ReaderImage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.imageUrl != widget.imageUrl ||
+        oldWidget.isLocal != widget.isLocal ||
         oldWidget.chapterId != widget.chapterId ||
         oldWidget.comicId != widget.comicId ||
         oldWidget.sourceKey != widget.sourceKey) {
@@ -681,6 +753,9 @@ class _ReaderImageState extends State<_ReaderImage> {
   }
 
   Future<Uint8List> _loadBytes() async {
+    if (widget.isLocal) {
+      return File(widget.imageUrl).readAsBytes();
+    }
     final source = PluginRuntimeController.instance.find(widget.sourceKey);
     if (source == null) {
       throw StateError('Source not found.');
@@ -765,10 +840,7 @@ class _ReaderTopBar extends StatelessWidget {
           child: Row(
             children: [
               const SizedBox(width: 8),
-              IconButton(
-                onPressed: onBack,
-                icon: const Icon(Icons.arrow_back),
-              ),
+              IconButton(onPressed: onBack, icon: const Icon(Icons.arrow_back)),
               Expanded(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -846,7 +918,10 @@ class _ReaderBottomPanel extends StatelessWidget {
               ),
             ),
             Slider(
-              value: currentPage.toDouble().clamp(1, pageCount == 0 ? 1 : pageCount.toDouble()),
+              value: currentPage.toDouble().clamp(
+                1,
+                pageCount == 0 ? 1 : pageCount.toDouble(),
+              ),
               min: 1,
               max: pageCount <= 1 ? 1 : pageCount.toDouble(),
               divisions: pageCount <= 1 ? 1 : pageCount - 1,

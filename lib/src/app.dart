@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import 'bootstrap/app_bootstrap.dart';
+import 'localization/app_localizations.dart';
 import 'settings/settings_controller.dart';
+import 'shell/windows_window_frame.dart';
 
 class EZVeneraApp extends StatefulWidget {
   const EZVeneraApp({super.key});
@@ -27,15 +29,19 @@ class _EZVeneraAppState extends State<EZVeneraApp> {
 
   @override
   Widget build(BuildContext context) {
-    const seedColor = Color(0xFF0F766E);
-
     return MaterialApp(
       title: 'EZVenera',
       debugShowCheckedModeBanner: false,
       themeMode: settings.themeMode,
+      locale: settings.locale,
+      supportedLocales: AppLocalizations.supportedLocales,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      builder: (context, child) {
+        return WindowsWindowFrame(child: child ?? const SizedBox.shrink());
+      },
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
-          seedColor: seedColor,
+          seedColor: settings.themeSeedColor,
           brightness: Brightness.light,
         ),
         scaffoldBackgroundColor: const Color(0xFFF7F4EC),
@@ -43,7 +49,7 @@ class _EZVeneraAppState extends State<EZVeneraApp> {
       ),
       darkTheme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
-          seedColor: seedColor,
+          seedColor: settings.themeSeedColor,
           brightness: Brightness.dark,
         ),
         useMaterial3: true,

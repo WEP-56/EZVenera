@@ -4,20 +4,30 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../settings/settings_controller.dart';
 import 'download_models.dart';
 
 class DownloadLibraryStore {
   late Directory rootDirectory;
   late File libraryFile;
+  bool _configured = false;
 
   Future<void> initialize() async {
-    final supportDirectory = await getApplicationSupportDirectory();
-    rootDirectory = Directory(p.join(supportDirectory.path, 'downloads'));
+    if (_configured) {
+      return;
+    }
+    await reloadConfiguration();
+  }
+
+  Future<void> reloadConfiguration() async {
+    final rootPath = await _resolveRootPath();
+    rootDirectory = Directory(rootPath);
     await rootDirectory.create(recursive: true);
     libraryFile = File(p.join(rootDirectory.path, 'library.json'));
     if (!await libraryFile.exists()) {
       await libraryFile.writeAsString('[]');
     }
+    _configured = true;
   }
 
   Future<List<DownloadedComic>> loadLibrary() async {
@@ -61,6 +71,8 @@ class DownloadLibraryStore {
   }
 
   String chapterDirectoryName(String name) => _sanitize(name);
+  String get currentRootPath => rootDirectory.path;
+  String sanitizeName(String value) => _sanitize(value);
 
   String _sanitize(String value) {
     final buffer = StringBuffer();
@@ -74,5 +86,14 @@ class DownloadLibraryStore {
     }
     final result = buffer.toString().trim();
     return result.isEmpty ? 'comic' : result;
+  }
+
+  Future<String> _resolveRootPath() async {
+    final custom = SettingsController.instance.downloadDirectoryPath;
+    if (custom != null && custom.isNotEmpty) {
+      return custom;
+    }
+    final supportDirectory = await getApplicationSupportDirectory();
+    return p.join(supportDirectory.path, 'downloads');
   }
 }

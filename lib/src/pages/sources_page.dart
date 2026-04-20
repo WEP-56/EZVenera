@@ -44,16 +44,6 @@ class _SourcesPageState extends State<SourcesPage> {
       child: ListView(
         padding: const EdgeInsets.all(24),
         children: [
-          Text('Comic Source', style: theme.textTheme.headlineMedium),
-          const SizedBox(height: 12),
-          Text(
-            'EZVenera keeps the original source-management pattern: add sources from URL or repository index, then manage each source individually.',
-            style: theme.textTheme.bodyLarge?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-              height: 1.5,
-            ),
-          ),
-          const SizedBox(height: 20),
           _buildAddSourceCard(context),
           const SizedBox(height: 20),
           if (controller.isBusy) const LinearProgressIndicator(),

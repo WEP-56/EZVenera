@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../downloads/download_controller.dart';
@@ -6,11 +8,12 @@ import '../library/favorite_controller.dart';
 import '../library/favorite_models.dart';
 import '../library/history_controller.dart';
 import '../library/history_models.dart';
+import '../localization/app_localizations.dart';
 import '../plugin_runtime/models.dart';
 import '../state/app_state_controller.dart';
 import 'comic_details_page.dart';
-import 'local_reader_page.dart';
 import 'network_resume_page.dart';
+import 'reader_page.dart';
 
 class LocalPage extends StatefulWidget {
   const LocalPage({super.key});
@@ -31,7 +34,9 @@ class _LocalPageState extends State<LocalPage> {
   void initState() {
     super.initState();
     final restoredSection = appState.getInt('local.selectedSection');
-    if (restoredSection != null && restoredSection >= 0 && restoredSection <= 2) {
+    if (restoredSection != null &&
+        restoredSection >= 0 &&
+        restoredSection <= 2) {
       selectedSection = restoredSection;
     } else {
       selectedSection = 2;
@@ -54,20 +59,18 @@ class _LocalPageState extends State<LocalPage> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
 
     return SafeArea(
       child: ListView(
         key: const PageStorageKey<String>('local-page-list'),
         padding: const EdgeInsets.all(24),
         children: [
-          Text('Local', style: theme.textTheme.headlineMedium),
-          const SizedBox(height: 12),
           SegmentedButton<int>(
-            segments: const [
-              ButtonSegment<int>(value: 0, label: Text('History')),
-              ButtonSegment<int>(value: 1, label: Text('Favorites')),
-              ButtonSegment<int>(value: 2, label: Text('Downloads')),
+            segments: [
+              ButtonSegment<int>(value: 0, label: Text(l10n.localHistory)),
+              ButtonSegment<int>(value: 1, label: Text(l10n.localFavorites)),
+              ButtonSegment<int>(value: 2, label: Text(l10n.localDownloads)),
             ],
             selected: <int>{selectedSection},
             onSelectionChanged: (values) {
@@ -91,26 +94,57 @@ class _LocalPageState extends State<LocalPage> {
 
   Widget _buildDownloads(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (downloadController.jobs.isNotEmpty) ...[
-          Text('Active Tasks', style: theme.textTheme.titleLarge),
+          Text(l10n.localActiveTasks, style: theme.textTheme.titleLarge),
           const SizedBox(height: 12),
           ...downloadController.jobs.map((job) => _DownloadJobCard(job: job)),
           const SizedBox(height: 20),
         ],
-        Text('Downloaded Comics', style: theme.textTheme.titleLarge),
+        Text(l10n.localDownloadedComics, style: theme.textTheme.titleLarge),
         const SizedBox(height: 12),
         if (downloadController.downloads.isEmpty)
-          const _LocalPlaceholder(
-            title: 'No downloads yet',
-            body: 'Use the detail page Download button to save comics locally.',
+          _LocalPlaceholder(
+            title: l10n.localNoDownloads,
+            body: l10n.localNoDownloadsBody,
           )
         else
-          ...downloadController.downloads.map(
-            (comic) => _DownloadedComicCard(comic: comic),
+          _LocalComicGrid<DownloadedComic>(
+            items: downloadController.downloads,
+            itemBuilder: (context, comic) {
+              return _LocalComicCard(
+                title: comic.title,
+                subtitle: comic.subtitle ?? comic.description ?? comic.comicId,
+                meta: '${comic.chapters.length} chapter(s)',
+                accent: comic.sourceKey,
+                coverPath: comic.coverPath,
+                onTap: () => _openDownloadedReader(context, comic),
+                topRight: PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_horiz),
+                  onSelected: (value) async {
+                    if (value == 'open') {
+                      _openDownloadedReader(context, comic);
+                    } else if (value == 'delete') {
+                      await DownloadController.instance.removeDownload(comic);
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    PopupMenuItem<String>(
+                      value: 'open',
+                      child: Text(l10n.open),
+                    ),
+                    PopupMenuItem<String>(
+                      value: 'delete',
+                      child: Text(l10n.delete),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
       ],
     );
@@ -118,20 +152,34 @@ class _LocalPageState extends State<LocalPage> {
 
   Widget _buildHistory(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('History', style: theme.textTheme.titleLarge),
+        Text(l10n.localHistory, style: theme.textTheme.titleLarge),
         const SizedBox(height: 12),
         if (historyController.entries.isEmpty)
-          const _LocalPlaceholder(
-            title: 'No history yet',
-            body: 'Open a chapter in the reader and it will appear here.',
+          _LocalPlaceholder(
+            title: l10n.localNoHistory,
+            body: l10n.localNoHistoryBody,
           )
         else
-          ...historyController.entries.map(
-            (entry) => _HistoryCard(entry: entry),
+          _LocalComicGrid<ReadingHistoryEntry>(
+            items: historyController.entries,
+            itemBuilder: (context, entry) {
+              return _LocalComicCard(
+                title: entry.title,
+                subtitle: (entry.chapterTitle ?? '').isNotEmpty
+                    ? entry.chapterTitle!
+                    : (entry.subtitle ?? entry.comicId),
+                meta: _formatDateTime(entry.timestamp),
+                accent: entry.sourceKey,
+                coverPath: entry.isLocal ? entry.cover : null,
+                coverUrl: entry.isLocal ? null : entry.cover,
+                onTap: () => _openHistory(context, entry),
+              );
+            },
           ),
       ],
     );
@@ -139,20 +187,39 @@ class _LocalPageState extends State<LocalPage> {
 
   Widget _buildFavorites(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Favorites', style: theme.textTheme.titleLarge),
+        Text(l10n.localFavorites, style: theme.textTheme.titleLarge),
         const SizedBox(height: 12),
         if (favoriteController.entries.isEmpty)
-          const _LocalPlaceholder(
-            title: 'No favorites yet',
-            body: 'Use the detail page Favorite button to add comics here.',
+          _LocalPlaceholder(
+            title: l10n.localNoFavorites,
+            body: l10n.localNoFavoritesBody,
           )
         else
-          ...favoriteController.entries.map(
-            (entry) => _FavoriteCard(entry: entry),
+          _LocalComicGrid<LocalFavoriteEntry>(
+            items: favoriteController.entries,
+            itemBuilder: (context, entry) {
+              return _LocalComicCard(
+                title: entry.title,
+                subtitle: entry.subtitle ?? entry.description ?? entry.comicId,
+                meta: entry.tags.isEmpty
+                    ? l10n.localFavoriteMeta
+                    : entry.tags.take(3).join(' | '),
+                accent: entry.sourceKey,
+                coverUrl: entry.cover,
+                onTap: () => _openFavorite(context, entry),
+                topRight: IconButton(
+                  onPressed: () async {
+                    await FavoriteController.instance.remove(entry);
+                  },
+                  icon: const Icon(Icons.delete_outline),
+                ),
+              );
+            },
           ),
       ],
     );
@@ -162,6 +229,79 @@ class _LocalPageState extends State<LocalPage> {
     if (mounted) {
       setState(() {});
     }
+  }
+
+  void _openDownloadedReader(BuildContext context, DownloadedComic comic) {
+    final firstTitle = comic.chapters.firstOrNull?.title ?? 'Read';
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => ReaderPage(
+          sourceKey: comic.sourceKey,
+          comicId: comic.comicId,
+          comicTitle: comic.title,
+          chapterId: null,
+          chapterTitle: firstTitle,
+          subtitle: comic.subtitle,
+          cover: comic.coverPath,
+          localComic: comic,
+        ),
+      ),
+    );
+  }
+
+  void _openHistory(BuildContext context, ReadingHistoryEntry entry) {
+    if (entry.isLocal) {
+      final comic = downloadController.downloads
+          .where(
+            (item) =>
+                item.sourceKey == entry.sourceKey &&
+                item.comicId == entry.comicId,
+          )
+          .firstOrNull;
+      if (comic == null) {
+        return;
+      }
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (context) => ReaderPage(
+            sourceKey: comic.sourceKey,
+            comicId: comic.comicId,
+            comicTitle: comic.title,
+            chapterId: entry.chapterId,
+            chapterTitle: entry.chapterTitle ?? comic.chapters.first.title,
+            subtitle: comic.subtitle,
+            cover: comic.coverPath,
+            initialPage: entry.page,
+            localComic: comic,
+          ),
+        ),
+      );
+      return;
+    }
+
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => NetworkResumePage(entry: entry),
+      ),
+    );
+  }
+
+  void _openFavorite(BuildContext context, LocalFavoriteEntry entry) {
+    final comic = PluginComic(
+      id: entry.comicId,
+      title: entry.title,
+      cover: entry.cover ?? '',
+      sourceKey: entry.sourceKey,
+      subtitle: entry.subtitle,
+      tags: entry.tags,
+      description: entry.description ?? '',
+    );
+
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => ComicDetailsPage(comic: comic),
+      ),
+    );
   }
 }
 
@@ -212,202 +352,6 @@ class _DownloadJobCard extends StatelessWidget {
   }
 }
 
-class _DownloadedComicCard extends StatelessWidget {
-  const _DownloadedComicCard({required this.comic});
-
-  final DownloadedComic comic;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      child: ListTile(
-        contentPadding: const EdgeInsets.all(16),
-        title: Text(
-          comic.title,
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if ((comic.subtitle ?? '').isNotEmpty) Text(comic.subtitle!),
-              Text(
-                '${comic.sourceKey} - ${comic.chapters.length} chapter(s)',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
-        ),
-        trailing: PopupMenuButton<String>(
-          onSelected: (value) async {
-            if (value == 'open') {
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (context) => LocalReaderPage(comic: comic),
-                ),
-              );
-            } else if (value == 'delete') {
-              await DownloadController.instance.removeDownload(comic);
-            }
-          },
-          itemBuilder: (context) => const [
-            PopupMenuItem<String>(value: 'open', child: Text('Open')),
-            PopupMenuItem<String>(value: 'delete', child: Text('Delete')),
-          ],
-        ),
-        onTap: () {
-          Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (context) => LocalReaderPage(comic: comic),
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _HistoryCard extends StatelessWidget {
-  const _HistoryCard({required this.entry});
-
-  final ReadingHistoryEntry entry;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      child: ListTile(
-        contentPadding: const EdgeInsets.all(16),
-        title: Text(
-          entry.title,
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if ((entry.subtitle ?? '').isNotEmpty) Text(entry.subtitle!),
-              if ((entry.chapterTitle ?? '').isNotEmpty)
-                Text(entry.chapterTitle!),
-              Text(
-                '${entry.sourceKey} - ${entry.timestamp}',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
-        ),
-        onTap: () => _openHistory(context),
-      ),
-    );
-  }
-
-  void _openHistory(BuildContext context) {
-    if (entry.isLocal) {
-      final comic = DownloadController.instance.downloads
-          .where(
-            (item) =>
-                item.sourceKey == entry.sourceKey &&
-                item.comicId == entry.comicId,
-          )
-          .firstOrNull;
-      if (comic == null) {
-        return;
-      }
-      Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (context) => LocalReaderPage(comic: comic),
-        ),
-      );
-      return;
-    }
-
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (context) => NetworkResumePage(entry: entry),
-      ),
-    );
-  }
-}
-
-class _FavoriteCard extends StatelessWidget {
-  const _FavoriteCard({required this.entry});
-
-  final LocalFavoriteEntry entry;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      child: ListTile(
-        contentPadding: const EdgeInsets.all(16),
-        title: Text(
-          entry.title,
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if ((entry.subtitle ?? '').isNotEmpty) Text(entry.subtitle!),
-              Text(
-                entry.sourceKey,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
-        ),
-        trailing: IconButton(
-          icon: const Icon(Icons.delete_outline),
-          onPressed: () async {
-            await FavoriteController.instance.remove(entry);
-          },
-        ),
-        onTap: () => _openFavorite(context),
-      ),
-    );
-  }
-
-  void _openFavorite(BuildContext context) {
-    final comic = PluginComic(
-      id: entry.comicId,
-      title: entry.title,
-      cover: entry.cover ?? '',
-      sourceKey: entry.sourceKey,
-      subtitle: entry.subtitle,
-      tags: entry.tags,
-      description: entry.description ?? '',
-    );
-
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (context) => ComicDetailsPage(comic: comic),
-      ),
-    );
-  }
-}
-
 class _LocalPlaceholder extends StatelessWidget {
   const _LocalPlaceholder({required this.title, required this.body});
 
@@ -446,6 +390,231 @@ class _LocalPlaceholder extends StatelessWidget {
       ),
     );
   }
+}
+
+class _LocalComicGrid<T> extends StatelessWidget {
+  const _LocalComicGrid({required this.items, required this.itemBuilder});
+
+  final List<T> items;
+  final Widget Function(BuildContext context, T item) itemBuilder;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = _columnCountForWidth(constraints.maxWidth);
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: items.length,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columns,
+            crossAxisSpacing: 16,
+            mainAxisSpacing: 16,
+            childAspectRatio: columns == 2 ? 0.68 : 0.72,
+          ),
+          itemBuilder: (context, index) => itemBuilder(context, items[index]),
+        );
+      },
+    );
+  }
+
+  int _columnCountForWidth(double width) {
+    if (width >= 1380) {
+      return 5;
+    }
+    if (width >= 1080) {
+      return 4;
+    }
+    if (width >= 760) {
+      return 3;
+    }
+    return 2;
+  }
+}
+
+class _LocalComicCard extends StatelessWidget {
+  const _LocalComicCard({
+    required this.title,
+    required this.subtitle,
+    required this.meta,
+    required this.accent,
+    required this.onTap,
+    this.coverPath,
+    this.coverUrl,
+    this.topRight,
+  });
+
+  final String title;
+  final String subtitle;
+  final String meta;
+  final String accent;
+  final String? coverPath;
+  final String? coverUrl;
+  final VoidCallback onTap;
+  final Widget? topRight;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(24),
+        onTap: onTap,
+        child: Ink(
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: theme.colorScheme.outlineVariant),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                flex: 10,
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: _LocalComicCover(
+                        coverPath: coverPath,
+                        coverUrl: coverUrl,
+                      ),
+                    ),
+                    if (topRight != null)
+                      Positioned(top: 8, right: 8, child: topRight!),
+                  ],
+                ),
+              ),
+              Expanded(
+                flex: 7,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.secondaryContainer
+                              .withValues(alpha: 0.72),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          accent,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: theme.colorScheme.onSecondaryContainer,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          height: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        subtitle,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                          height: 1.35,
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        meta,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LocalComicCover extends StatelessWidget {
+  const _LocalComicCover({this.coverPath, this.coverUrl});
+
+  final String? coverPath;
+  final String? coverUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final filePath = coverPath?.trim();
+    final networkUrl = coverUrl?.trim();
+
+    Widget child;
+    if (filePath != null &&
+        filePath.isNotEmpty &&
+        File(filePath).existsSync()) {
+      child = Image.file(File(filePath), fit: BoxFit.cover);
+    } else if (networkUrl != null && networkUrl.isNotEmpty) {
+      child = Image.network(
+        networkUrl,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          return const _LocalCoverFallback();
+        },
+      );
+    } else {
+      child = const _LocalCoverFallback();
+    }
+
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      child: ColoredBox(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        child: SizedBox.expand(child: child),
+      ),
+    );
+  }
+}
+
+class _LocalCoverFallback extends StatelessWidget {
+  const _LocalCoverFallback();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Icon(
+        Icons.menu_book_outlined,
+        size: 40,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
+    );
+  }
+}
+
+String _formatDateTime(DateTime value) {
+  final local = value.toLocal();
+  final month = local.month.toString().padLeft(2, '0');
+  final day = local.day.toString().padLeft(2, '0');
+  final hour = local.hour.toString().padLeft(2, '0');
+  final minute = local.minute.toString().padLeft(2, '0');
+  return '$month/$day $hour:$minute';
 }
 
 extension _FirstOrNullExtension<T> on Iterable<T> {

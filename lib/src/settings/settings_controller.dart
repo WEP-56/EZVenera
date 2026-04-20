@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../localization/app_localizations.dart';
+
 class SettingsController extends ChangeNotifier {
   SettingsController._();
 
@@ -16,10 +18,38 @@ class SettingsController extends ChangeNotifier {
   bool _initialized = false;
   ThemeMode _themeMode = ThemeMode.system;
   String _sourceIndexUrl = defaultSourceIndexUrl;
+  bool _readerShowTapGuide = true;
+  int _readerPrefetchCount = 3;
+  bool _downloadSaveCover = true;
+  AppLanguageOption _language = AppLanguageOption.system;
+  AppThemePreset _themePreset = AppThemePreset.teal;
+  String? _downloadDirectoryPath;
+  String? _readerCacheDirectoryPath;
+  int _readerCacheLimitMb = 512;
   File? _file;
 
   ThemeMode get themeMode => _themeMode;
   String get sourceIndexUrl => _sourceIndexUrl;
+  bool get readerShowTapGuide => _readerShowTapGuide;
+  int get readerPrefetchCount => _readerPrefetchCount;
+  bool get downloadSaveCover => _downloadSaveCover;
+  AppLanguageOption get language => _language;
+  AppThemePreset get themePreset => _themePreset;
+  String? get downloadDirectoryPath => _downloadDirectoryPath;
+  String? get readerCacheDirectoryPath => _readerCacheDirectoryPath;
+  int get readerCacheLimitMb => _readerCacheLimitMb;
+  Locale? get locale => switch (_language) {
+    AppLanguageOption.system => null,
+    AppLanguageOption.english => const Locale('en'),
+    AppLanguageOption.simplifiedChinese => const Locale('zh', 'CN'),
+  };
+  Color get themeSeedColor => switch (_themePreset) {
+    AppThemePreset.teal => const Color(0xFF0F766E),
+    AppThemePreset.amber => const Color(0xFFB45309),
+    AppThemePreset.rose => const Color(0xFFBE185D),
+    AppThemePreset.blue => const Color(0xFF1D4ED8),
+    AppThemePreset.forest => const Color(0xFF3F6212),
+  };
   bool get isInitialized => _initialized;
 
   Future<void> initialize() async {
@@ -39,6 +69,22 @@ class SettingsController extends ChangeNotifier {
         _themeMode = _parseThemeMode(decoded['themeMode']?.toString());
         _sourceIndexUrl =
             decoded['sourceIndexUrl']?.toString() ?? defaultSourceIndexUrl;
+        _readerShowTapGuide = decoded['readerShowTapGuide'] != false;
+        _readerPrefetchCount = _parsePrefetchCount(
+          (decoded['readerPrefetchCount'] as num?)?.toInt(),
+        );
+        _downloadSaveCover = decoded['downloadSaveCover'] != false;
+        _language = _parseLanguage(decoded['language']?.toString());
+        _themePreset = _parseThemePreset(decoded['themePreset']?.toString());
+        _downloadDirectoryPath = _normalizeDirectoryPath(
+          decoded['downloadDirectoryPath']?.toString(),
+        );
+        _readerCacheDirectoryPath = _normalizeDirectoryPath(
+          decoded['readerCacheDirectoryPath']?.toString(),
+        );
+        _readerCacheLimitMb = _parseCacheLimitMb(
+          (decoded['readerCacheLimitMb'] as num?)?.toInt(),
+        );
       }
     } else {
       await _persist();
@@ -69,9 +115,93 @@ class SettingsController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setReaderShowTapGuide(bool value) async {
+    if (_readerShowTapGuide == value) {
+      return;
+    }
+    _readerShowTapGuide = value;
+    await _persist();
+    notifyListeners();
+  }
+
+  Future<void> setReaderPrefetchCount(int value) async {
+    final normalized = _parsePrefetchCount(value);
+    if (_readerPrefetchCount == normalized) {
+      return;
+    }
+    _readerPrefetchCount = normalized;
+    await _persist();
+    notifyListeners();
+  }
+
+  Future<void> setDownloadSaveCover(bool value) async {
+    if (_downloadSaveCover == value) {
+      return;
+    }
+    _downloadSaveCover = value;
+    await _persist();
+    notifyListeners();
+  }
+
+  Future<void> setLanguage(AppLanguageOption value) async {
+    if (_language == value) {
+      return;
+    }
+    _language = value;
+    await _persist();
+    notifyListeners();
+  }
+
+  Future<void> setThemePreset(AppThemePreset value) async {
+    if (_themePreset == value) {
+      return;
+    }
+    _themePreset = value;
+    await _persist();
+    notifyListeners();
+  }
+
+  Future<void> setDownloadDirectoryPath(String? value) async {
+    final normalized = _normalizeDirectoryPath(value);
+    if (_downloadDirectoryPath == normalized) {
+      return;
+    }
+    _downloadDirectoryPath = normalized;
+    await _persist();
+    notifyListeners();
+  }
+
+  Future<void> setReaderCacheDirectoryPath(String? value) async {
+    final normalized = _normalizeDirectoryPath(value);
+    if (_readerCacheDirectoryPath == normalized) {
+      return;
+    }
+    _readerCacheDirectoryPath = normalized;
+    await _persist();
+    notifyListeners();
+  }
+
+  Future<void> setReaderCacheLimitMb(int value) async {
+    final normalized = _parseCacheLimitMb(value);
+    if (_readerCacheLimitMb == normalized) {
+      return;
+    }
+    _readerCacheLimitMb = normalized;
+    await _persist();
+    notifyListeners();
+  }
+
   Future<void> reset() async {
     _themeMode = ThemeMode.system;
     _sourceIndexUrl = defaultSourceIndexUrl;
+    _readerShowTapGuide = true;
+    _readerPrefetchCount = 3;
+    _downloadSaveCover = true;
+    _language = AppLanguageOption.system;
+    _themePreset = AppThemePreset.teal;
+    _downloadDirectoryPath = null;
+    _readerCacheDirectoryPath = null;
+    _readerCacheLimitMb = 512;
     await _persist();
     notifyListeners();
   }
@@ -81,6 +211,14 @@ class SettingsController extends ChangeNotifier {
       jsonEncode(<String, dynamic>{
         'themeMode': _themeMode.name,
         'sourceIndexUrl': _sourceIndexUrl,
+        'readerShowTapGuide': _readerShowTapGuide,
+        'readerPrefetchCount': _readerPrefetchCount,
+        'downloadSaveCover': _downloadSaveCover,
+        'language': _language.name,
+        'themePreset': _themePreset.name,
+        'downloadDirectoryPath': _downloadDirectoryPath,
+        'readerCacheDirectoryPath': _readerCacheDirectoryPath,
+        'readerCacheLimitMb': _readerCacheLimitMb,
       }),
     );
   }
@@ -91,5 +229,48 @@ class SettingsController extends ChangeNotifier {
       'dark' => ThemeMode.dark,
       _ => ThemeMode.system,
     };
+  }
+
+  int _parsePrefetchCount(int? value) {
+    if (value == null) {
+      return 3;
+    }
+    return value.clamp(1, 6);
+  }
+
+  AppLanguageOption _parseLanguage(String? value) {
+    return switch (value) {
+      'english' => AppLanguageOption.english,
+      'simplifiedChinese' => AppLanguageOption.simplifiedChinese,
+      _ => AppLanguageOption.system,
+    };
+  }
+
+  AppThemePreset _parseThemePreset(String? value) {
+    return switch (value) {
+      'amber' => AppThemePreset.amber,
+      'rose' => AppThemePreset.rose,
+      'blue' => AppThemePreset.blue,
+      'forest' => AppThemePreset.forest,
+      _ => AppThemePreset.teal,
+    };
+  }
+
+  int _parseCacheLimitMb(int? value) {
+    if (value == null) {
+      return 512;
+    }
+    return value.clamp(128, 4096);
+  }
+
+  String? _normalizeDirectoryPath(String? value) {
+    if (value == null) {
+      return null;
+    }
+    final normalized = value.trim();
+    if (normalized.isEmpty) {
+      return null;
+    }
+    return normalized;
   }
 }

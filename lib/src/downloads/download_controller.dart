@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import '../plugin_runtime/models.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
 import '../plugin_runtime/services/plugin_image_loader.dart';
+import '../settings/settings_controller.dart';
 import 'download_library_store.dart';
 import 'download_models.dart';
 
@@ -32,6 +33,11 @@ class DownloadController extends ChangeNotifier {
     _downloads = await _store.loadLibrary();
     _initialized = true;
     notifyListeners();
+  }
+
+  Future<String> getStoragePath() async {
+    await _store.initialize();
+    return _store.currentRootPath;
   }
 
   Future<void> startDownload({
@@ -72,6 +78,42 @@ class DownloadController extends ChangeNotifier {
                   item.comicId == comic.comicId),
         )
         .toList();
+    await _store.saveLibrary(_downloads);
+    notifyListeners();
+  }
+
+  Future<void> relocateLibrary(String? newRootPath) async {
+    await initialize();
+    final oldRootPath = await getStoragePath();
+
+    await SettingsController.instance.setDownloadDirectoryPath(newRootPath);
+    await _store.reloadConfiguration();
+    final targetRootPath = _store.currentRootPath;
+    if (p.equals(oldRootPath, targetRootPath)) {
+      return;
+    }
+
+    final targetRoot = Directory(targetRootPath);
+    await targetRoot.create(recursive: true);
+    final relocated = <DownloadedComic>[];
+
+    for (final comic in _downloads) {
+      final sourceDirectory = Directory(comic.basePath);
+      if (!await sourceDirectory.exists()) {
+        relocated.add(comic);
+        continue;
+      }
+
+      final destinationDirectory = await _createRelocatedComicDirectory(
+        targetRoot,
+        p.basename(comic.basePath),
+      );
+      await _copyDirectory(sourceDirectory, destinationDirectory);
+      await sourceDirectory.delete(recursive: true);
+      relocated.add(_relocateComic(comic, destinationDirectory.path));
+    }
+
+    _downloads = relocated;
     await _store.saveLibrary(_downloads);
     notifyListeners();
   }
@@ -255,7 +297,8 @@ class DownloadController extends ChangeNotifier {
     PluginComicDetails details,
     Directory comicDirectory,
   ) async {
-    if (details.cover.isEmpty) {
+    if (!SettingsController.instance.downloadSaveCover ||
+        details.cover.isEmpty) {
       return null;
     }
 
@@ -286,6 +329,62 @@ class DownloadController extends ChangeNotifier {
       return '.jpg';
     }
     return '.${match.group(1)!.toLowerCase()}';
+  }
+
+  Future<Directory> _createRelocatedComicDirectory(
+    Directory targetRoot,
+    String preferredName,
+  ) async {
+    final sanitized = _store.sanitizeName(preferredName);
+    var path = p.join(targetRoot.path, sanitized);
+    var index = 1;
+    while (await Directory(path).exists()) {
+      path = p.join(targetRoot.path, '${sanitized}_$index');
+      index++;
+    }
+    return Directory(path)..createSync(recursive: true);
+  }
+
+  Future<void> _copyDirectory(Directory source, Directory destination) async {
+    await destination.create(recursive: true);
+    await for (final entity in source.list(recursive: false)) {
+      final name = p.basename(entity.path);
+      if (entity is Directory) {
+        await _copyDirectory(entity, Directory(p.join(destination.path, name)));
+      } else if (entity is File) {
+        await entity.copy(p.join(destination.path, name));
+      }
+    }
+  }
+
+  DownloadedComic _relocateComic(DownloadedComic comic, String newBasePath) {
+    final newCoverPath = comic.coverPath == null
+        ? null
+        : p.join(newBasePath, p.basename(comic.coverPath!));
+    final newChapters = comic.chapters.map((chapter) {
+      final relocatedPath = p.equals(chapter.path, comic.basePath)
+          ? newBasePath
+          : p.join(newBasePath, p.basename(chapter.path));
+      return DownloadedChapter(
+        id: chapter.id,
+        title: chapter.title,
+        path: relocatedPath,
+        pageCount: chapter.pageCount,
+      );
+    }).toList();
+
+    return DownloadedComic(
+      sourceKey: comic.sourceKey,
+      comicId: comic.comicId,
+      title: comic.title,
+      subtitle: comic.subtitle,
+      description: comic.description,
+      coverPath: newCoverPath,
+      tags: comic.tags,
+      basePath: newBasePath,
+      createdAt: comic.createdAt,
+      chapters: newChapters,
+    );
   }
 }
 

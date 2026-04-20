@@ -1,6 +1,14 @@
+import 'dart:io';
+
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../downloads/download_controller.dart';
+import '../library/history_controller.dart';
+import '../localization/app_localizations.dart';
+import '../plugin_runtime/plugin_runtime_controller.dart';
+import '../reader/reader_image_cache.dart';
 import '../settings/settings_controller.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -15,10 +23,17 @@ class _SettingsPageState extends State<SettingsPage> {
   late final TextEditingController sourceIndexController =
       TextEditingController(text: controller.sourceIndexUrl);
 
+  static final _githubUri = Uri.parse('https://github.com/WEP-56/EZVenera');
+
+  String? downloadPath;
+  String? cachePath;
+  int cacheSizeBytes = 0;
+
   @override
   void initState() {
     super.initState();
     controller.addListener(_onSettingsChanged);
+    _refreshStorageInfo();
   }
 
   @override
@@ -30,36 +45,93 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
 
     return SafeArea(
       child: ListView(
         padding: const EdgeInsets.all(24),
         children: [
-          Text('Settings', style: theme.textTheme.headlineMedium),
-          const SizedBox(height: 20),
           _SettingsGroup(
-            title: 'Appearance',
+            title: l10n.settingsReader,
+            icon: Icons.chrome_reader_mode_outlined,
+            children: [
+              SwitchListTile(
+                title: Text(l10n.settingsReaderShowTapGuide),
+                subtitle: Text(l10n.settingsReaderShowTapGuideSubtitle),
+                value: controller.readerShowTapGuide,
+                onChanged: controller.setReaderShowTapGuide,
+              ),
+              ListTile(
+                title: Text(l10n.settingsPrefetchPages),
+                subtitle: Text(
+                  l10n.settingsPrefetchPagesSubtitle(
+                    controller.readerPrefetchCount,
+                  ),
+                ),
+                trailing: DropdownButton<int>(
+                  value: controller.readerPrefetchCount,
+                  underline: const SizedBox.shrink(),
+                  items: const [1, 2, 3, 4, 5, 6]
+                      .map(
+                        (value) => DropdownMenuItem<int>(
+                          value: value,
+                          child: Text('$value'),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) {
+                    if (value != null) {
+                      controller.setReaderPrefetchCount(value);
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _SettingsGroup(
+            title: l10n.settingsAppearance,
             icon: Icons.palette_outlined,
             children: [
               ListTile(
-                title: const Text('Theme Mode'),
-                subtitle: Text(_themeModeLabel(controller.themeMode)),
+                title: Text(l10n.settingsLanguage),
+                subtitle: Text(l10n.settingsLanguageSubtitle),
+                trailing: DropdownButton<AppLanguageOption>(
+                  value: controller.language,
+                  underline: const SizedBox.shrink(),
+                  items: AppLanguageOption.values
+                      .map(
+                        (value) => DropdownMenuItem<AppLanguageOption>(
+                          value: value,
+                          child: Text(l10n.languageLabel(value)),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) {
+                    if (value != null) {
+                      controller.setLanguage(value);
+                    }
+                  },
+                ),
+              ),
+              ListTile(
+                title: Text(l10n.settingsThemeMode),
+                subtitle: Text(_themeModeLabel(l10n, controller.themeMode)),
                 trailing: DropdownButton<ThemeMode>(
                   value: controller.themeMode,
                   underline: const SizedBox.shrink(),
-                  items: const [
+                  items: [
                     DropdownMenuItem(
                       value: ThemeMode.system,
-                      child: Text('System'),
+                      child: Text(l10n.systemLabel),
                     ),
                     DropdownMenuItem(
                       value: ThemeMode.light,
-                      child: Text('Light'),
+                      child: Text(l10n.light),
                     ),
                     DropdownMenuItem(
                       value: ThemeMode.dark,
-                      child: Text('Dark'),
+                      child: Text(l10n.dark),
                     ),
                   ],
                   onChanged: (value) {
@@ -69,15 +141,36 @@ class _SettingsPageState extends State<SettingsPage> {
                   },
                 ),
               ),
+              ListTile(
+                title: Text(l10n.settingsThemeColor),
+                subtitle: Text(l10n.themePresetLabel(controller.themePreset)),
+                trailing: DropdownButton<AppThemePreset>(
+                  value: controller.themePreset,
+                  underline: const SizedBox.shrink(),
+                  items: AppThemePreset.values
+                      .map(
+                        (value) => DropdownMenuItem<AppThemePreset>(
+                          value: value,
+                          child: Text(l10n.themePresetLabel(value)),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) {
+                    if (value != null) {
+                      controller.setThemePreset(value);
+                    }
+                  },
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 16),
           _SettingsGroup(
-            title: 'Network',
+            title: l10n.settingsNetwork,
             icon: Icons.public_outlined,
             children: [
               ListTile(
-                title: const Text('Source Index URL'),
+                title: Text(l10n.settingsSourceIndexUrl),
                 subtitle: Text(
                   controller.sourceIndexUrl,
                   maxLines: 2,
@@ -90,9 +183,9 @@ class _SettingsPageState extends State<SettingsPage> {
                   children: [
                     TextField(
                       controller: sourceIndexController,
-                      decoration: const InputDecoration(
-                        border: OutlineInputBorder(),
-                        labelText: 'Index URL',
+                      decoration: InputDecoration(
+                        border: const OutlineInputBorder(),
+                        labelText: l10n.settingsIndexUrl,
                         hintText: SettingsController.defaultSourceIndexUrl,
                       ),
                       onSubmitted: (value) =>
@@ -107,7 +200,7 @@ class _SettingsPageState extends State<SettingsPage> {
                               sourceIndexController.text,
                             );
                           },
-                          child: const Text('Save'),
+                          child: Text(l10n.save),
                         ),
                         const SizedBox(width: 12),
                         OutlinedButton(
@@ -118,7 +211,7 @@ class _SettingsPageState extends State<SettingsPage> {
                               SettingsController.defaultSourceIndexUrl,
                             );
                           },
-                          child: const Text('Reset'),
+                          child: Text(l10n.reset),
                         ),
                       ],
                     ),
@@ -129,20 +222,117 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           const SizedBox(height: 16),
           _SettingsGroup(
-            title: 'App',
+            title: l10n.settingsDownloads,
+            icon: Icons.download_outlined,
+            children: [
+              SwitchListTile(
+                title: Text(l10n.settingsSaveDownloadedCover),
+                subtitle: Text(l10n.settingsSaveDownloadedCoverSubtitle),
+                value: controller.downloadSaveCover,
+                onChanged: controller.setDownloadSaveCover,
+              ),
+              _PathSettingTile(
+                title: l10n.settingsDownloadDirectory,
+                subtitle: l10n.settingsDownloadDirectorySubtitle,
+                path: downloadPath,
+                openLabel: l10n.settingsOpenFolder,
+                selectLabel: l10n.settingsSelectFolder,
+                defaultLabel: l10n.settingsUseDefaultPath,
+                onOpen: downloadPath == null
+                    ? null
+                    : () => _openDirectory(downloadPath!),
+                onSelect: _pickDownloadDirectory,
+                onUseDefault: controller.downloadDirectoryPath == null
+                    ? null
+                    : _resetDownloadDirectory,
+              ),
+              ListTile(
+                title: Text(l10n.localDownloadedComics),
+                subtitle: Text(
+                  l10n.settingsDownloadedComicsCount(
+                    DownloadController.instance.downloads.length,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _SettingsGroup(
+            title: l10n.settingsApp,
             icon: Icons.apps_outlined,
             children: [
+              _PathSettingTile(
+                title: l10n.settingsReaderCacheDirectory,
+                subtitle: l10n.settingsReaderCacheDirectorySubtitle,
+                path: cachePath,
+                openLabel: l10n.settingsOpenFolder,
+                selectLabel: l10n.settingsSelectFolder,
+                defaultLabel: l10n.settingsUseDefaultPath,
+                onOpen: cachePath == null
+                    ? null
+                    : () => _openDirectory(cachePath!),
+                onSelect: _pickCacheDirectory,
+                onUseDefault: controller.readerCacheDirectoryPath == null
+                    ? null
+                    : _resetCacheDirectory,
+              ),
               ListTile(
-                title: const Text('Downloaded Comics'),
+                title: Text(l10n.settingsCacheSize),
+                subtitle: Text(_formatBytes(cacheSizeBytes)),
+              ),
+              ListTile(
+                title: Text(l10n.settingsCacheLimit),
                 subtitle: Text(
-                  '${DownloadController.instance.downloads.length} saved comic(s)',
+                  l10n.settingsCacheLimitSubtitle(
+                    controller.readerCacheLimitMb,
+                  ),
+                ),
+                trailing: DropdownButton<int>(
+                  value: controller.readerCacheLimitMb,
+                  underline: const SizedBox.shrink(),
+                  items: const [128, 256, 512, 1024, 2048, 4096]
+                      .map(
+                        (value) => DropdownMenuItem<int>(
+                          value: value,
+                          child: Text('$value MB'),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) async {
+                    if (value == null) {
+                      return;
+                    }
+                    await controller.setReaderCacheLimitMb(value);
+                    await ReaderImageCache.instance.reloadConfiguration();
+                    await _refreshStorageInfo();
+                  },
                 ),
               ),
               ListTile(
-                title: const Text('Reset Settings'),
-                subtitle: const Text(
-                  'Reset theme mode and source index URL to EZVenera defaults.',
+                title: Text(l10n.settingsClearCache),
+                subtitle: Text(l10n.settingsClearCacheSubtitle),
+                trailing: const Icon(Icons.cleaning_services_outlined),
+                onTap: _clearReaderCache,
+              ),
+              ListTile(
+                title: Text(l10n.settingsInstalledSources),
+                subtitle: Text(
+                  l10n.settingsInstalledSourcesCount(
+                    PluginRuntimeController.instance.sources.length,
+                  ),
                 ),
+              ),
+              ListTile(
+                title: Text(l10n.settingsReadingHistory),
+                subtitle: Text(
+                  l10n.settingsReadingHistoryCount(
+                    HistoryController.instance.entries.length,
+                  ),
+                ),
+              ),
+              ListTile(
+                title: Text(l10n.settingsResetSettings),
+                subtitle: Text(l10n.settingsResetSettingsSubtitle),
                 trailing: const Icon(Icons.restore),
                 onTap: _confirmReset,
               ),
@@ -150,20 +340,22 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           const SizedBox(height: 16),
           _SettingsGroup(
-            title: 'About',
+            title: l10n.settingsAbout,
             icon: Icons.info_outline,
-            children: const [
+            children: [
               ListTile(
-                title: Text('EZVenera'),
-                subtitle: Text(
-                  'A simplified, maintainable fork direction of Venera focused on Windows, Android, plugin compatibility, and long-term clarity.',
-                ),
+                title: const Text('EZVenera'),
+                subtitle: Text(l10n.settingsAboutDescription),
               ),
               ListTile(
-                title: Text('Source Repository'),
-                subtitle: Text(
-                  'EZVenera-config is the default plugin index for this app.',
-                ),
+                title: Text(l10n.settingsSourceRepository),
+                subtitle: Text(l10n.settingsSourceRepositorySubtitle),
+              ),
+              ListTile(
+                title: Text(l10n.settingsGithub),
+                subtitle: Text(l10n.settingsGithubSubtitle),
+                trailing: const Icon(Icons.open_in_new),
+                onTap: _openGithub,
               ),
             ],
           ),
@@ -172,21 +364,126 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  Future<void> _refreshStorageInfo() async {
+    final nextDownloadPath = await DownloadController.instance.getStoragePath();
+    final nextCachePath = await ReaderImageCache.instance.currentRootPath();
+    final nextCacheSize = await ReaderImageCache.instance.diskUsageBytes();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      downloadPath = nextDownloadPath;
+      cachePath = nextCachePath;
+      cacheSizeBytes = nextCacheSize;
+    });
+  }
+
+  Future<void> _pickDownloadDirectory() async {
+    final l10n = AppLocalizations.of(context);
+    try {
+      final selected = await getDirectoryPath();
+      if (selected == null || selected.trim().isEmpty) {
+        return;
+      }
+      await _runBusy(() async {
+        await DownloadController.instance.relocateLibrary(selected);
+        await _refreshStorageInfo();
+      });
+      _showMessage(l10n.settingsPathUpdated);
+    } catch (_) {
+      _showMessage(l10n.settingsSelectFolderFailed);
+    }
+  }
+
+  Future<void> _resetDownloadDirectory() async {
+    final l10n = AppLocalizations.of(context);
+    try {
+      await _runBusy(() async {
+        await DownloadController.instance.relocateLibrary(null);
+        await _refreshStorageInfo();
+      });
+      _showMessage(l10n.settingsPathUpdated);
+    } catch (_) {
+      _showMessage(l10n.settingsPathUpdateFailed);
+    }
+  }
+
+  Future<void> _pickCacheDirectory() async {
+    final l10n = AppLocalizations.of(context);
+    try {
+      final selected = await getDirectoryPath();
+      if (selected == null || selected.trim().isEmpty) {
+        return;
+      }
+      await _runBusy(() async {
+        await controller.setReaderCacheDirectoryPath(selected);
+        await ReaderImageCache.instance.reloadConfiguration();
+        await _refreshStorageInfo();
+      });
+      _showMessage(l10n.settingsPathUpdated);
+    } catch (_) {
+      _showMessage(l10n.settingsSelectFolderFailed);
+    }
+  }
+
+  Future<void> _resetCacheDirectory() async {
+    final l10n = AppLocalizations.of(context);
+    try {
+      await _runBusy(() async {
+        await controller.setReaderCacheDirectoryPath(null);
+        await ReaderImageCache.instance.reloadConfiguration();
+        await _refreshStorageInfo();
+      });
+      _showMessage(l10n.settingsPathUpdated);
+    } catch (_) {
+      _showMessage(l10n.settingsPathUpdateFailed);
+    }
+  }
+
+  Future<void> _clearReaderCache() async {
+    final l10n = AppLocalizations.of(context);
+    await _runBusy(() async {
+      await ReaderImageCache.instance.clearDiskCache();
+      await _refreshStorageInfo();
+    });
+    _showMessage(l10n.settingsCacheCleared);
+  }
+
+  Future<void> _openDirectory(String path) async {
+    final l10n = AppLocalizations.of(context);
+    try {
+      if (Platform.isWindows) {
+        await Process.start('explorer.exe', [path]);
+        return;
+      }
+      final opened = await launchUrl(
+        Uri.directory(path),
+        mode: LaunchMode.externalApplication,
+      );
+      if (!opened) {
+        throw StateError('open failed');
+      }
+    } catch (_) {
+      _showMessage(l10n.settingsDirectoryOpenFailed);
+    }
+  }
+
   Future<void> _confirmReset() async {
+    final l10n = AppLocalizations.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Reset Settings'),
-          content: const Text('Reset current EZVenera settings to defaults?'),
+          title: Text(l10n.settingsResetDialogTitle),
+          content: Text(l10n.settingsResetDialogBody),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancel'),
+              child: Text(l10n.cancel),
             ),
             FilledButton(
               onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Reset'),
+              child: Text(l10n.reset),
             ),
           ],
         );
@@ -198,14 +495,64 @@ class _SettingsPageState extends State<SettingsPage> {
     }
 
     await controller.reset();
+    await ReaderImageCache.instance.reloadConfiguration();
+    await DownloadController.instance.relocateLibrary(null);
+    await _refreshStorageInfo();
   }
 
-  String _themeModeLabel(ThemeMode mode) {
+  Future<void> _openGithub() async {
+    final l10n = AppLocalizations.of(context);
+    final success = await launchUrl(
+      _githubUri,
+      mode: LaunchMode.externalApplication,
+    );
+    if (success || !mounted) {
+      return;
+    }
+    _showMessage(l10n.settingsLinkOpenFailed);
+  }
+
+  Future<void> _runBusy(Future<void> Function() action) async {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return const PopScope(
+          canPop: false,
+          child: Center(
+            child: SizedBox.square(
+              dimension: 36,
+              child: CircularProgressIndicator(strokeWidth: 2.6),
+            ),
+          ),
+        );
+      },
+    );
+
+    try {
+      await action();
+    } finally {
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+    }
+  }
+
+  String _themeModeLabel(AppLocalizations l10n, ThemeMode mode) {
     return switch (mode) {
-      ThemeMode.light => 'Light',
-      ThemeMode.dark => 'Dark',
-      ThemeMode.system => 'System',
+      ThemeMode.light => l10n.light,
+      ThemeMode.dark => l10n.dark,
+      ThemeMode.system => l10n.systemLabel,
     };
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   void _onSettingsChanged() {
@@ -216,6 +563,23 @@ class _SettingsPageState extends State<SettingsPage> {
       sourceIndexController.text = controller.sourceIndexUrl;
     }
     setState(() {});
+    _refreshStorageInfo();
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) {
+      return '$bytes B';
+    }
+    final kb = bytes / 1024;
+    if (kb < 1024) {
+      return '${kb.toStringAsFixed(1)} KB';
+    }
+    final mb = kb / 1024;
+    if (mb < 1024) {
+      return '${mb.toStringAsFixed(1)} MB';
+    }
+    final gb = mb / 1024;
+    return '${gb.toStringAsFixed(2)} GB';
   }
 }
 
@@ -260,6 +624,86 @@ class _SettingsGroup extends StatelessWidget {
           ),
           ...children,
         ],
+      ),
+    );
+  }
+}
+
+class _PathSettingTile extends StatelessWidget {
+  const _PathSettingTile({
+    required this.title,
+    required this.subtitle,
+    required this.path,
+    required this.openLabel,
+    required this.selectLabel,
+    required this.defaultLabel,
+    required this.onSelect,
+    required this.onOpen,
+    required this.onUseDefault,
+  });
+
+  final String title;
+  final String subtitle;
+  final String? path;
+  final String openLabel;
+  final String selectLabel;
+  final String defaultLabel;
+  final VoidCallback onSelect;
+  final VoidCallback? onOpen;
+  final VoidCallback? onUseDefault;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border.all(color: theme.colorScheme.outlineVariant),
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                subtitle,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                path ?? '-',
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  FilledButton(onPressed: onSelect, child: Text(selectLabel)),
+                  OutlinedButton(onPressed: onOpen, child: Text(openLabel)),
+                  OutlinedButton(
+                    onPressed: onUseDefault,
+                    child: Text(defaultLabel),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

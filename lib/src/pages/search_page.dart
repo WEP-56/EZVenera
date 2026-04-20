@@ -5,8 +5,9 @@ import 'package:flutter/material.dart';
 
 import '../plugin_runtime/models.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
-import 'comic_details_page.dart';
 import '../state/app_state_controller.dart';
+import '../widgets/comic_card_grid.dart';
+import 'comic_details_page.dart';
 
 class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
@@ -57,19 +58,6 @@ class _SearchPageState extends State<SearchPage> {
         key: const PageStorageKey<String>('search-page-list'),
         padding: const EdgeInsets.all(24),
         children: [
-          Text('Search', style: theme.textTheme.headlineMedium),
-          const SizedBox(height: 12),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 760),
-            child: Text(
-              'Search runs directly against installed source plugins. EZVenera currently supports source-driven search options and basic pagination.',
-              style: theme.textTheme.bodyLarge?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-                height: 1.5,
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
           if (searchSources.isEmpty)
             const _EmptySearchState(
               message:
@@ -90,7 +78,17 @@ class _SearchPageState extends State<SearchPage> {
                 ),
               ),
             if (results.isNotEmpty) const SizedBox(height: 20),
-            ...results.map((comic) => _SearchResultTile(comic: comic)),
+            if (results.isNotEmpty)
+              ComicCardGrid(
+                comics: results,
+                onTap: (comic) {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (context) => ComicDetailsPage(comic: comic),
+                    ),
+                  );
+                },
+              ),
             if (results.isNotEmpty) const SizedBox(height: 8),
             if (_canLoadMore)
               Align(
@@ -571,64 +569,6 @@ class _SearchOptionField extends StatelessWidget {
       return;
     }
     onChanged(key);
-  }
-}
-
-class _SearchResultTile extends StatelessWidget {
-  const _SearchResultTile({required this.comic});
-
-  final PluginComic comic;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      child: ListTile(
-        contentPadding: const EdgeInsets.all(16),
-        title: Text(
-          comic.title,
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if ((comic.subtitle ?? '').isNotEmpty) Text(comic.subtitle!),
-              Text(
-                '${comic.sourceKey} - ${comic.id}',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-              if (comic.tags case final tags? when tags.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: tags
-                        .take(8)
-                        .map((tag) => Chip(label: Text(tag)))
-                        .toList(),
-                  ),
-                ),
-            ],
-          ),
-        ),
-        onTap: () {
-          Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (context) => ComicDetailsPage(comic: comic),
-            ),
-          );
-        },
-      ),
-    );
   }
 }
 

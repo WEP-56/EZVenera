@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../plugin_runtime/models.dart';
 import '../plugin_runtime/result.dart';
+import '../widgets/comic_card_grid.dart';
 import 'comic_details_page.dart';
 
 class CategoryComicsPage extends StatefulWidget {
@@ -152,7 +153,17 @@ class _CategoryComicsPageState extends State<CategoryComicsPage> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        ...comics.map((comic) => _ComicListTile(comic: comic)),
+        if (comics.isNotEmpty)
+          ComicCardGrid(
+            comics: comics,
+            onTap: (comic) {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (context) => ComicDetailsPage(comic: comic),
+                ),
+              );
+            },
+          ),
         if (error != null)
           Padding(
             padding: const EdgeInsets.only(top: 12),
@@ -249,51 +260,5 @@ class _CategoryComicsPageState extends State<CategoryComicsPage> {
       );
     }
     return search.loadNext!(widget.searchKeyword!, null, const <String>[]);
-  }
-}
-
-class _ComicListTile extends StatelessWidget {
-  const _ComicListTile({required this.comic});
-
-  final PluginComic comic;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: ListTile(
-        contentPadding: const EdgeInsets.all(16),
-        title: Text(
-          comic.title,
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if ((comic.subtitle ?? '').isNotEmpty) Text(comic.subtitle!),
-              if ((comic.description).isNotEmpty)
-                Text(
-                  comic.description,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                ),
-            ],
-          ),
-        ),
-        onTap: () {
-          Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (context) => ComicDetailsPage(comic: comic),
-            ),
-          );
-        },
-      ),
-    );
   }
 }
