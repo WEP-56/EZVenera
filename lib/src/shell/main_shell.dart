@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../navigation/app_destination.dart';
+import '../pages/local_page.dart';
 import '../pages/placeholder_page.dart';
 import '../pages/search_page.dart';
 import '../pages/sources_page.dart';
@@ -166,6 +167,9 @@ class _MobileShell extends StatelessWidget {
 Widget _buildPage(AppDestination destination) {
   if (destination == AppDestination.search) {
     return const SearchPage();
+  }
+  if (destination == AppDestination.local) {
+    return const LocalPage();
   }
   if (destination == AppDestination.sources) {
     return const SourcesPage();

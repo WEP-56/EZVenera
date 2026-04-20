@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../downloads/download_controller.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
 import '../shell/main_shell.dart';
 
@@ -11,8 +12,12 @@ class AppBootstrap extends StatefulWidget {
 }
 
 class _AppBootstrapState extends State<AppBootstrap> {
-  late final Future<void> _future = PluginRuntimeController.instance
-      .initialize();
+  late final Future<void> _future = _initialize();
+
+  Future<void> _initialize() async {
+    await PluginRuntimeController.instance.initialize();
+    await DownloadController.instance.initialize();
+  }
 
   @override
   Widget build(BuildContext context) {

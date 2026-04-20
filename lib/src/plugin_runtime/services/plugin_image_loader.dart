@@ -29,6 +29,17 @@ class PluginImageLoader {
     return _loadBytes(imageUrl, request, allowRetry: true);
   }
 
+  Future<Uint8List> loadThumbnail({
+    required PluginSource source,
+    required String imageUrl,
+  }) async {
+    final request = source.comic?.onThumbnailLoad == null
+        ? const PluginImageRequest()
+        : source.comic!.onThumbnailLoad!(imageUrl);
+
+    return _loadBytes(imageUrl, request, allowRetry: false);
+  }
+
   Future<Uint8List> _loadBytes(
     String fallbackUrl,
     PluginImageRequest request, {

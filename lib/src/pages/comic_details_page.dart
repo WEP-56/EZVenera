@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../downloads/download_controller.dart';
+import '../downloads/download_models.dart';
 import '../plugin_runtime/models.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
 import 'reader_page.dart';
@@ -57,6 +59,7 @@ class _ComicDetailsPageState extends State<ComicDetailsPage> {
             summary: widget.comic,
             details: details,
             onRead: () => _openReader(_firstChapter(details)),
+            onDownload: () => _downloadComic(details),
             onChapterSelected: _openReader,
           );
         },
@@ -117,6 +120,90 @@ class _ComicDetailsPageState extends State<ComicDetailsPage> {
   }
 
   String detailsTitleFallback() => widget.comic.title;
+
+  Future<void> _downloadComic(PluginComicDetails details) async {
+    List<ChapterDownloadRequest>? requests;
+    if (details.chapters != null) {
+      requests = await _showDownloadOptions(details);
+      if (requests == null) {
+        return;
+      }
+    }
+
+    try {
+      await DownloadController.instance.startDownload(
+        summary: widget.comic,
+        details: details,
+        chapters: requests,
+      );
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Download started for ${details.title}')),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
+    }
+  }
+
+  Future<List<ChapterDownloadRequest>?> _showDownloadOptions(
+    PluginComicDetails details,
+  ) {
+    final chapters = <ChapterDownloadRequest>[];
+    if (details.chapters!.isGrouped) {
+      for (final group in details.chapters!.groupedChapters!.values) {
+        for (final entry in group.entries) {
+          chapters.add(
+            ChapterDownloadRequest(id: entry.key, title: entry.value),
+          );
+        }
+      }
+    } else {
+      for (final entry in details.chapters!.chapters!.entries) {
+        chapters.add(ChapterDownloadRequest(id: entry.key, title: entry.value));
+      }
+    }
+
+    return showModalBottomSheet<List<ChapterDownloadRequest>>(
+      context: context,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                title: const Text('Download All Chapters'),
+                leading: const Icon(Icons.download_done_outlined),
+                onTap: () => Navigator.of(context).pop(chapters),
+              ),
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: chapters.length,
+                  itemBuilder: (context, index) {
+                    final chapter = chapters[index];
+                    return ListTile(
+                      title: Text(chapter.title),
+                      subtitle: Text(chapter.id ?? 'main'),
+                      onTap: () => Navigator.of(
+                        context,
+                      ).pop(<ChapterDownloadRequest>[chapter]),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 }
 
 class _ComicDetailsBody extends StatelessWidget {
@@ -124,12 +211,14 @@ class _ComicDetailsBody extends StatelessWidget {
     required this.summary,
     required this.details,
     required this.onRead,
+    required this.onDownload,
     required this.onChapterSelected,
   });
 
   final PluginComic summary;
   final PluginComicDetails details;
   final VoidCallback onRead;
+  final VoidCallback onDownload;
   final ValueChanged<_ChapterSelection> onChapterSelected;
 
   @override
@@ -187,7 +276,7 @@ class _ComicDetailsBody extends StatelessWidget {
                     runSpacing: 12,
                     children: [
                       _ActionButton(label: 'Read', onPressed: onRead),
-                      _DisabledActionButton(label: 'Download'),
+                      _ActionButton(label: 'Download', onPressed: onDownload),
                     ],
                   ),
                 ],
@@ -300,17 +389,6 @@ class _MetaChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Chip(label: Text(label));
-  }
-}
-
-class _DisabledActionButton extends StatelessWidget {
-  const _DisabledActionButton({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return FilledButton(onPressed: null, child: Text(label));
   }
 }
 
