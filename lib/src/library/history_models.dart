@@ -10,6 +10,8 @@ class ReadingHistoryEntry {
     this.chapterTitle,
     this.page = 1,
     this.isLocal = false,
+    this.localComicPath,
+    this.localFolderId,
   });
 
   final String sourceKey;
@@ -22,6 +24,8 @@ class ReadingHistoryEntry {
   final int page;
   final DateTime timestamp;
   final bool isLocal;
+  final String? localComicPath;
+  final String? localFolderId;
 
   String get key => '$sourceKey@$comicId';
 
@@ -37,6 +41,8 @@ class ReadingHistoryEntry {
       'page': page,
       'timestamp': timestamp.millisecondsSinceEpoch,
       'isLocal': isLocal,
+      'localComicPath': localComicPath,
+      'localFolderId': localFolderId,
     };
   }
 
@@ -54,6 +60,8 @@ class ReadingHistoryEntry {
         (json['timestamp'] as num).toInt(),
       ),
       isLocal: json['isLocal'] == true,
+      localComicPath: json['localComicPath']?.toString(),
+      localFolderId: json['localFolderId']?.toString(),
     );
   }
 }

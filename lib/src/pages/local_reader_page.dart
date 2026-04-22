@@ -2,21 +2,26 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
-import '../downloads/download_models.dart';
 import '../library/history_controller.dart';
 import '../library/history_models.dart';
+import '../local_library/local_library_models.dart';
 
 class LocalReaderPage extends StatefulWidget {
-  const LocalReaderPage({required this.comic, super.key});
+  const LocalReaderPage({
+    required this.comic,
+    this.initialChapterId,
+    super.key,
+  });
 
-  final DownloadedComic comic;
+  final LocalLibraryComic comic;
+  final String? initialChapterId;
 
   @override
   State<LocalReaderPage> createState() => _LocalReaderPageState();
 }
 
 class _LocalReaderPageState extends State<LocalReaderPage> {
-  late DownloadedChapter selectedChapter = widget.comic.chapters.first;
+  late LocalLibraryChapter selectedChapter = _resolveInitialChapter();
 
   @override
   void initState() {
@@ -90,33 +95,41 @@ class _LocalReaderPageState extends State<LocalReaderPage> {
     );
   }
 
-  List<File> _chapterFiles(DownloadedChapter chapter) {
+  LocalLibraryChapter _resolveInitialChapter() {
+    if (widget.initialChapterId != null) {
+      for (final chapter in widget.comic.chapters) {
+        if (chapter.id == widget.initialChapterId) {
+          return chapter;
+        }
+      }
+    }
+    return widget.comic.chapters.first;
+  }
+
+  List<File> _chapterFiles(LocalLibraryChapter chapter) {
     final directory = Directory(chapter.path);
     if (!directory.existsSync()) {
       return const <File>[];
     }
 
-    final files = directory
-        .listSync()
-        .whereType<File>()
-        .where((file) => !file.path.contains('${Platform.pathSeparator}cover.'))
-        .toList();
+    final files = directory.listSync().whereType<File>().toList();
     files.sort((a, b) => a.path.compareTo(b.path));
     return files;
   }
 
-  void _recordHistory(DownloadedChapter chapter) {
+  void _recordHistory(LocalLibraryChapter chapter) {
     HistoryController.instance.record(
       ReadingHistoryEntry(
         sourceKey: widget.comic.sourceKey,
         comicId: widget.comic.comicId,
         title: widget.comic.title,
-        subtitle: widget.comic.subtitle,
         cover: widget.comic.coverPath,
         chapterId: chapter.id,
         chapterTitle: chapter.title,
         timestamp: DateTime.now(),
         isLocal: true,
+        localComicPath: widget.comic.path,
+        localFolderId: widget.comic.folderId,
       ),
     );
   }

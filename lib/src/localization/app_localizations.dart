@@ -48,6 +48,32 @@ class AppLocalizations {
       'local.noFavoritesBody':
           'Use the detail page Favorite button to add comics here.',
       'local.favoriteMeta': 'Favorite',
+      'local.library': 'Library',
+      'local.libraryBadge': 'Local',
+      'local.systemFolders': 'Built-in',
+      'local.folders': 'Comic Folders',
+      'local.folderMenu': 'Folders',
+      'local.addFolder': 'Add Folder',
+      'local.folderAdded': 'Folder added.',
+      'local.folderRemoved': 'Folder removed.',
+      'local.folderPickerFailed': 'Failed to open folder selector.',
+      'local.removeFolderTitle': 'Remove Folder',
+      'local.removeFolderBody':
+          'Remove "{name}" from the local page? Files on disk will not be deleted.',
+      'local.noFolders': 'No comic folders yet',
+      'local.noFoldersBody':
+          'Add a folder that contains comic directories or image files.',
+      'local.noFolderComics': 'No comics found',
+      'local.noFolderComicsBody':
+          'Each comic should be a folder with images or chapter subfolders.',
+      'local.folderMissing': 'Folder unavailable',
+      'local.folderMissingBody':
+          'The selected directory no longer exists or cannot be read.',
+      'local.refreshFolder': 'Refresh Folder',
+      'local.expandSidebar': 'Expand sidebar',
+      'local.collapseSidebar': 'Collapse sidebar',
+      'local.comicsCount': '{count} comic(s)',
+      'local.chaptersPages': '{chapters} chapter(s) · {pages} page(s)',
       'common.open': 'Open',
       'common.delete': 'Delete',
       'common.save': 'Save',
@@ -235,6 +261,55 @@ class AppLocalizations {
   String get localNoFavorites => _value('local.noFavorites');
   String get localNoFavoritesBody => _value('local.noFavoritesBody');
   String get localFavoriteMeta => _value('local.favoriteMeta');
+  String get localLibrary => isChinese ? '漫画库' : _value('local.library');
+  String get localLibraryBadge =>
+      isChinese ? '本地' : _value('local.libraryBadge');
+  String get localSystemFolders =>
+      isChinese ? '内置目录' : _value('local.systemFolders');
+  String get localFolders => isChinese ? '漫画文件夹' : _value('local.folders');
+  String get localFolderMenu => isChinese ? '文件夹' : _value('local.folderMenu');
+  String get localAddFolder => isChinese ? '添加文件夹' : _value('local.addFolder');
+  String get localFolderAdded =>
+      isChinese ? '已添加文件夹。' : _value('local.folderAdded');
+  String get localFolderRemoved =>
+      isChinese ? '已移除文件夹。' : _value('local.folderRemoved');
+  String get localFolderPickerFailed =>
+      isChinese ? '无法打开文件夹选择器。' : _value('local.folderPickerFailed');
+  String get localRemoveFolderTitle =>
+      isChinese ? '移除文件夹' : _value('local.removeFolderTitle');
+  String localRemoveFolderBody(String name) =>
+      (isChinese
+              ? '要从本地页面移除“{name}”吗？不会删除磁盘上的文件。'
+              : _value('local.removeFolderBody'))
+          .replaceAll('{name}', name);
+  String get localNoFolders =>
+      isChinese ? '还没有漫画文件夹' : _value('local.noFolders');
+  String get localNoFoldersBody =>
+      isChinese ? '添加一个包含漫画目录或图片文件的文件夹。' : _value('local.noFoldersBody');
+  String get localNoFolderComics =>
+      isChinese ? '未找到漫画' : _value('local.noFolderComics');
+  String get localNoFolderComicsBody => isChinese
+      ? '每部漫画应为一个目录，目录内包含图片或章节子目录。'
+      : _value('local.noFolderComicsBody');
+  String get localFolderMissing =>
+      isChinese ? '文件夹不可用' : _value('local.folderMissing');
+  String get localFolderMissingBody =>
+      isChinese ? '所选目录已不存在，或当前无法读取。' : _value('local.folderMissingBody');
+  String get localRefreshFolder =>
+      isChinese ? '刷新文件夹' : _value('local.refreshFolder');
+  String get localExpandSidebar =>
+      isChinese ? '展开侧栏' : _value('local.expandSidebar');
+  String get localCollapseSidebar =>
+      isChinese ? '收起侧栏' : _value('local.collapseSidebar');
+  String localComicsCount(int count) =>
+      (isChinese ? '{count} 部漫画' : _value('local.comicsCount')).replaceAll(
+        '{count}',
+        '$count',
+      );
+  String localChaptersPages(int chapters, int pages) =>
+      (isChinese ? '{chapters} 章 · {pages} 页' : _value('local.chaptersPages'))
+          .replaceAll('{chapters}', '$chapters')
+          .replaceAll('{pages}', '$pages');
   String get open => _value('common.open');
   String get delete => _value('common.delete');
   String get save => _value('common.save');
