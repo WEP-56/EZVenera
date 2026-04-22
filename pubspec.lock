@@ -422,6 +422,15 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "6.1.0"
+  lodepng_flutter:
+    dependency: "direct main"
+    description:
+      path: "."
+      ref: ac7d05dde32e8d728102a9ff66e6b55f05d94ba1
+      resolved-ref: ac7d05dde32e8d728102a9ff66e6b55f05d94ba1
+      url: "https://github.com/venera-app/lodepng_flutter"
+    source: git
+    version: "0.0.1"
   logging:
     dependency: transitive
     description:

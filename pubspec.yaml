@@ -47,6 +47,10 @@ dependencies:
     git:
       url: https://github.com/venera-app/flutter_qjs
       ref: 8feae95df7fb00455df129ad7a0dfec1d0e8d8e4
+  lodepng_flutter:
+    git:
+      url: https://github.com/venera-app/lodepng_flutter
+      ref: ac7d05dde32e8d728102a9ff66e6b55f05d94ba1
   flutter_inappwebview: ^6.1.5
   cupertino_icons: ^1.0.8
   file_selector: ^1.0.3

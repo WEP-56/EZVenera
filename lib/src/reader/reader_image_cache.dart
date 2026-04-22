@@ -15,6 +15,7 @@ class ReaderImageCache {
   ReaderImageCache._();
 
   static final ReaderImageCache instance = ReaderImageCache._();
+  static const _cacheVersion = 'v2';
 
   static const _maxMemoryEntries = 48;
 
@@ -223,7 +224,11 @@ class ReaderImageCache {
     String imageUrl,
   ) {
     return md5
-        .convert(utf8.encode('$sourceKey|$comicId|$episodeId|$imageUrl'))
+        .convert(
+          utf8.encode(
+            '$_cacheVersion|$sourceKey|$comicId|$episodeId|$imageUrl',
+          ),
+        )
         .toString();
   }
 }

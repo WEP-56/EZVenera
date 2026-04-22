@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import '../models.dart';
 import '../plugin_runtime.dart';
 import '../storage/cookie_store.dart';
+import 'plugin_image_modifier.dart';
 
 class PluginImageLoader {
   PluginImageLoader._();
@@ -82,6 +83,10 @@ class PluginImageLoader {
         } else if (transformed is List<int>) {
           bytes = Uint8List.fromList(transformed);
         }
+      }
+
+      if (request.modifyImageScript case final script? when script.isNotEmpty) {
+        bytes = await PluginImageModifier.instance.apply(bytes, script);
       }
 
       return bytes;
