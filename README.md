@@ -58,3 +58,8 @@ flutter test
 App repository:
 
 - [WEP-56/EZVenera](https://github.com/WEP-56/EZVenera)
+修复jm源单图乱序问题
+统一阅读器入口，添加双击放大。
+添加阅读器内设置侧边栏
+修改左侧导航栏为可伸缩
+设置搜索卡片为伸缩（非激活只显示keyword）

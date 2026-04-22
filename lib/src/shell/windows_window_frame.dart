@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../state/app_state_controller.dart';
+
 const kWindowsTitleBarHeight = 40.0;
 
 class WindowsWindowFrame extends StatelessWidget {
@@ -37,12 +39,15 @@ class _WindowsTitleBar extends StatefulWidget {
 class _WindowsTitleBarState extends State<_WindowsTitleBar>
     with WindowListener {
   bool isMaximized = false;
+  bool _appStateReady = false;
+  bool _persistScheduled = false;
 
   @override
   void initState() {
     super.initState();
     windowManager.addListener(this);
     _syncWindowState();
+    _waitForAppState();
   }
 
   @override
@@ -67,6 +72,12 @@ class _WindowsTitleBarState extends State<_WindowsTitleBar>
         isMaximized = false;
       });
     }
+    _schedulePersistWindowSize();
+  }
+
+  @override
+  void onWindowResize() {
+    _schedulePersistWindowSize();
   }
 
   @override
@@ -132,6 +143,37 @@ class _WindowsTitleBarState extends State<_WindowsTitleBar>
     }
     setState(() {
       isMaximized = maximized;
+    });
+  }
+
+  Future<void> _waitForAppState() async {
+    if (AppStateController.instance.isInitialized) {
+      _appStateReady = true;
+      return;
+    }
+    await AppStateController.instance.initialize();
+    _appStateReady = true;
+  }
+
+  void _schedulePersistWindowSize() {
+    if (_persistScheduled) {
+      return;
+    }
+    _persistScheduled = true;
+    Future<void>.delayed(const Duration(milliseconds: 220), () async {
+      _persistScheduled = false;
+      if (!mounted || !_appStateReady) {
+        return;
+      }
+      if (await windowManager.isMaximized() ||
+          await windowManager.isFullScreen()) {
+        return;
+      }
+      final size = await windowManager.getSize();
+      await AppStateController.instance.setSection(
+        'window.bounds',
+        <String, dynamic>{'width': size.width, 'height': size.height},
+      );
     });
   }
 

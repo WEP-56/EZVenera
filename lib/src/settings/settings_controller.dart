@@ -20,6 +20,11 @@ class SettingsController extends ChangeNotifier {
   String _sourceIndexUrl = defaultSourceIndexUrl;
   bool _readerShowTapGuide = true;
   int _readerPrefetchCount = 3;
+  bool _readerEnableTapToTurnPages = true;
+  bool _readerReverseTapToTurnPages = false;
+  bool _readerEnableDoubleTapZoom = true;
+  bool _readerEnablePageAnimation = true;
+  double _readerAutoPageIntervalSeconds = 5;
   bool _downloadSaveCover = true;
   AppLanguageOption _language = AppLanguageOption.system;
   AppThemePreset _themePreset = AppThemePreset.teal;
@@ -32,6 +37,11 @@ class SettingsController extends ChangeNotifier {
   String get sourceIndexUrl => _sourceIndexUrl;
   bool get readerShowTapGuide => _readerShowTapGuide;
   int get readerPrefetchCount => _readerPrefetchCount;
+  bool get readerEnableTapToTurnPages => _readerEnableTapToTurnPages;
+  bool get readerReverseTapToTurnPages => _readerReverseTapToTurnPages;
+  bool get readerEnableDoubleTapZoom => _readerEnableDoubleTapZoom;
+  bool get readerEnablePageAnimation => _readerEnablePageAnimation;
+  double get readerAutoPageIntervalSeconds => _readerAutoPageIntervalSeconds;
   bool get downloadSaveCover => _downloadSaveCover;
   AppLanguageOption get language => _language;
   AppThemePreset get themePreset => _themePreset;
@@ -72,6 +82,17 @@ class SettingsController extends ChangeNotifier {
         _readerShowTapGuide = decoded['readerShowTapGuide'] != false;
         _readerPrefetchCount = _parsePrefetchCount(
           (decoded['readerPrefetchCount'] as num?)?.toInt(),
+        );
+        _readerEnableTapToTurnPages =
+            decoded['readerEnableTapToTurnPages'] != false;
+        _readerReverseTapToTurnPages =
+            decoded['readerReverseTapToTurnPages'] == true;
+        _readerEnableDoubleTapZoom =
+            decoded['readerEnableDoubleTapZoom'] != false;
+        _readerEnablePageAnimation =
+            decoded['readerEnablePageAnimation'] != false;
+        _readerAutoPageIntervalSeconds = _parseAutoPageIntervalSeconds(
+          (decoded['readerAutoPageIntervalSeconds'] as num?)?.toDouble(),
         );
         _downloadSaveCover = decoded['downloadSaveCover'] != false;
         _language = _parseLanguage(decoded['language']?.toString());
@@ -130,6 +151,52 @@ class SettingsController extends ChangeNotifier {
       return;
     }
     _readerPrefetchCount = normalized;
+    await _persist();
+    notifyListeners();
+  }
+
+  Future<void> setReaderEnableTapToTurnPages(bool value) async {
+    if (_readerEnableTapToTurnPages == value) {
+      return;
+    }
+    _readerEnableTapToTurnPages = value;
+    await _persist();
+    notifyListeners();
+  }
+
+  Future<void> setReaderReverseTapToTurnPages(bool value) async {
+    if (_readerReverseTapToTurnPages == value) {
+      return;
+    }
+    _readerReverseTapToTurnPages = value;
+    await _persist();
+    notifyListeners();
+  }
+
+  Future<void> setReaderEnableDoubleTapZoom(bool value) async {
+    if (_readerEnableDoubleTapZoom == value) {
+      return;
+    }
+    _readerEnableDoubleTapZoom = value;
+    await _persist();
+    notifyListeners();
+  }
+
+  Future<void> setReaderEnablePageAnimation(bool value) async {
+    if (_readerEnablePageAnimation == value) {
+      return;
+    }
+    _readerEnablePageAnimation = value;
+    await _persist();
+    notifyListeners();
+  }
+
+  Future<void> setReaderAutoPageIntervalSeconds(double value) async {
+    final normalized = _parseAutoPageIntervalSeconds(value);
+    if (_readerAutoPageIntervalSeconds == normalized) {
+      return;
+    }
+    _readerAutoPageIntervalSeconds = normalized;
     await _persist();
     notifyListeners();
   }
@@ -196,6 +263,11 @@ class SettingsController extends ChangeNotifier {
     _sourceIndexUrl = defaultSourceIndexUrl;
     _readerShowTapGuide = true;
     _readerPrefetchCount = 3;
+    _readerEnableTapToTurnPages = true;
+    _readerReverseTapToTurnPages = false;
+    _readerEnableDoubleTapZoom = true;
+    _readerEnablePageAnimation = true;
+    _readerAutoPageIntervalSeconds = 5;
     _downloadSaveCover = true;
     _language = AppLanguageOption.system;
     _themePreset = AppThemePreset.teal;
@@ -213,6 +285,11 @@ class SettingsController extends ChangeNotifier {
         'sourceIndexUrl': _sourceIndexUrl,
         'readerShowTapGuide': _readerShowTapGuide,
         'readerPrefetchCount': _readerPrefetchCount,
+        'readerEnableTapToTurnPages': _readerEnableTapToTurnPages,
+        'readerReverseTapToTurnPages': _readerReverseTapToTurnPages,
+        'readerEnableDoubleTapZoom': _readerEnableDoubleTapZoom,
+        'readerEnablePageAnimation': _readerEnablePageAnimation,
+        'readerAutoPageIntervalSeconds': _readerAutoPageIntervalSeconds,
         'downloadSaveCover': _downloadSaveCover,
         'language': _language.name,
         'themePreset': _themePreset.name,
@@ -236,6 +313,13 @@ class SettingsController extends ChangeNotifier {
       return 3;
     }
     return value.clamp(1, 6);
+  }
+
+  double _parseAutoPageIntervalSeconds(double? value) {
+    if (value == null) {
+      return 5;
+    }
+    return value.clamp(1, 15).toDouble();
   }
 
   AppLanguageOption _parseLanguage(String? value) {

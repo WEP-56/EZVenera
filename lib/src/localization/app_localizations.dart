@@ -74,6 +74,21 @@ class AppLocalizations {
       'local.collapseSidebar': 'Collapse sidebar',
       'local.comicsCount': '{count} comic(s)',
       'local.chaptersPages': '{chapters} chapter(s) · {pages} page(s)',
+      'reader.settings': 'Reader Settings',
+      'reader.tapToTurn': 'Tap to turn pages',
+      'reader.reverseTapToTurn': 'Reverse tap zones',
+      'reader.doubleTapZoom': 'Double-tap zoom',
+      'reader.pageAnimation': 'Page animation',
+      'reader.autoPageInterval': 'Auto page interval',
+      'reader.seconds': '{count}s',
+      'reader.downloadCurrent': 'Download Current Chapter',
+      'reader.downloadAll': 'Download All Chapters',
+      'reader.downloadStarted': 'Download started for {title}',
+      'reader.autoPageOn': 'Auto page on',
+      'reader.autoPageOff': 'Auto page off',
+      'reader.fullscreen': 'Fullscreen',
+      'reader.exitFullscreen': 'Exit fullscreen',
+      'reader.download': 'Download',
       'common.open': 'Open',
       'common.delete': 'Delete',
       'common.save': 'Save',
@@ -310,6 +325,36 @@ class AppLocalizations {
       (isChinese ? '{chapters} 章 · {pages} 页' : _value('local.chaptersPages'))
           .replaceAll('{chapters}', '$chapters')
           .replaceAll('{pages}', '$pages');
+  String get readerSettings => isChinese ? '阅读设置' : _value('reader.settings');
+  String get readerTapToTurn => isChinese ? '点击翻页' : _value('reader.tapToTurn');
+  String get readerReverseTapToTurn =>
+      isChinese ? '反转点击翻页' : _value('reader.reverseTapToTurn');
+  String get readerDoubleTapZoom =>
+      isChinese ? '双击缩放' : _value('reader.doubleTapZoom');
+  String get readerPageAnimation =>
+      isChinese ? '页面动画' : _value('reader.pageAnimation');
+  String get readerAutoPageInterval =>
+      isChinese ? '自动翻页间隔' : _value('reader.autoPageInterval');
+  String readerSeconds(num count) =>
+      (isChinese ? '{count}秒' : _value('reader.seconds')).replaceAll(
+        '{count}',
+        count.toString(),
+      );
+  String get readerDownloadCurrent =>
+      isChinese ? '下载当前章节' : _value('reader.downloadCurrent');
+  String get readerDownloadAll =>
+      isChinese ? '下载全部章节' : _value('reader.downloadAll');
+  String readerDownloadStarted(String title) =>
+      (isChinese ? '开始下载：{title}' : _value('reader.downloadStarted'))
+          .replaceAll('{title}', title);
+  String get readerAutoPageOn =>
+      isChinese ? '自动翻页已开启' : _value('reader.autoPageOn');
+  String get readerAutoPageOff =>
+      isChinese ? '自动翻页已关闭' : _value('reader.autoPageOff');
+  String get readerFullscreen => isChinese ? '全屏' : _value('reader.fullscreen');
+  String get readerExitFullscreen =>
+      isChinese ? '退出全屏' : _value('reader.exitFullscreen');
+  String get readerDownload => isChinese ? '下载' : _value('reader.download');
   String get open => _value('common.open');
   String get delete => _value('common.delete');
   String get save => _value('common.save');

@@ -20,6 +20,7 @@ class _SearchPageState extends State<SearchPage> {
   final controller = PluginRuntimeController.instance;
   final appState = AppStateController.instance;
   final keywordController = TextEditingController();
+  final keywordFocusNode = FocusNode();
 
   PluginSource? selectedSource;
   List<PluginComic> results = const <PluginComic>[];
@@ -30,12 +31,14 @@ class _SearchPageState extends State<SearchPage> {
   int? maxPage;
   String? nextToken;
   String lastKeyword = '';
+  bool searchFormExpanded = false;
 
   @override
   void initState() {
     super.initState();
     controller.addListener(_onControllerChanged);
     keywordController.addListener(_onKeywordChanged);
+    keywordFocusNode.addListener(_onKeywordFocusChanged);
     _syncSelectedSource();
     _restoreState();
   }
@@ -44,7 +47,9 @@ class _SearchPageState extends State<SearchPage> {
   void dispose() {
     controller.removeListener(_onControllerChanged);
     keywordController.removeListener(_onKeywordChanged);
+    keywordFocusNode.removeListener(_onKeywordFocusChanged);
     keywordController.dispose();
+    keywordFocusNode.dispose();
     super.dispose();
   }
 
@@ -106,58 +111,104 @@ class _SearchPageState extends State<SearchPage> {
   }
 
   Widget _buildSearchForm(BuildContext context, List<PluginSource> sources) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            DropdownButtonFormField<String>(
-              initialValue: selectedSource?.key,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                labelText: 'Source',
+    return TapRegion(
+      onTapOutside: (_) {
+        keywordFocusNode.unfocus();
+        if (mounted) {
+          setState(() {
+            searchFormExpanded = false;
+          });
+        }
+      },
+      child: Card(
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          padding: EdgeInsets.fromLTRB(
+            20,
+            20,
+            20,
+            searchFormExpanded ? 20 : 14,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _AnimatedSearchSection(
+                expanded: searchFormExpanded,
+                child: Column(
+                  children: [
+                    DropdownButtonFormField<String>(
+                      initialValue: selectedSource?.key,
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        labelText: 'Source',
+                      ),
+                      items: [
+                        for (final source in sources)
+                          DropdownMenuItem<String>(
+                            value: source.key,
+                            child: Text(source.name),
+                          ),
+                      ],
+                      onChanged: isSearching
+                          ? null
+                          : (value) {
+                              _setSearchFormExpanded(true);
+                              _changeSource(value);
+                            },
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                ),
               ),
-              items: [
-                for (final source in sources)
-                  DropdownMenuItem<String>(
-                    value: source.key,
-                    child: Text(source.name),
+              TextField(
+                controller: keywordController,
+                focusNode: keywordFocusNode,
+                enabled: !isSearching,
+                decoration: InputDecoration(
+                  border: const OutlineInputBorder(),
+                  labelText: 'Keyword',
+                  hintText: 'Enter title, tag, or source-specific keyword',
+                  suffixIcon: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 180),
+                    child: searchFormExpanded
+                        ? const Icon(Icons.unfold_less, key: ValueKey('less'))
+                        : const Icon(Icons.unfold_more, key: ValueKey('more')),
                   ),
-              ],
-              onChanged: isSearching ? null : _changeSource,
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: keywordController,
-              enabled: !isSearching,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                labelText: 'Keyword',
-                hintText: 'Enter title, tag, or source-specific keyword',
+                ),
+                onTap: () => _setSearchFormExpanded(true),
+                onSubmitted: (_) => _search(),
               ),
-              onSubmitted: (_) => _search(),
-            ),
-            if (selectedSource case final source?) ...[
-              const SizedBox(height: 16),
-              ..._buildOptionWidgets(source),
+              _AnimatedSearchSection(
+                expanded: searchFormExpanded,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (selectedSource case final source?) ...[
+                      const SizedBox(height: 16),
+                      ..._buildOptionWidgets(source),
+                    ],
+                    const SizedBox(height: 4),
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        FilledButton.icon(
+                          onPressed: isSearching ? null : _search,
+                          icon: const Icon(Icons.search),
+                          label: const Text('Search'),
+                        ),
+                        OutlinedButton(
+                          onPressed: isSearching ? null : _resetResults,
+                          child: const Text('Clear Results'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
             ],
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                FilledButton.icon(
-                  onPressed: isSearching ? null : _search,
-                  icon: const Icon(Icons.search),
-                  label: const Text('Search'),
-                ),
-                const SizedBox(width: 12),
-                OutlinedButton(
-                  onPressed: isSearching ? null : _resetResults,
-                  child: const Text('Clear Results'),
-                ),
-              ],
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -490,6 +541,21 @@ class _SearchPageState extends State<SearchPage> {
   void _onKeywordChanged() {
     unawaited(_persistState());
   }
+
+  void _onKeywordFocusChanged() {
+    if (keywordFocusNode.hasFocus) {
+      _setSearchFormExpanded(true);
+    }
+  }
+
+  void _setSearchFormExpanded(bool value) {
+    if (searchFormExpanded == value) {
+      return;
+    }
+    setState(() {
+      searchFormExpanded = value;
+    });
+  }
 }
 
 class _SearchOptionField extends StatelessWidget {
@@ -593,6 +659,31 @@ class _EmptySearchState extends StatelessWidget {
         style: theme.textTheme.bodyLarge?.copyWith(
           color: theme.colorScheme.onSurfaceVariant,
           height: 1.5,
+        ),
+      ),
+    );
+  }
+}
+
+class _AnimatedSearchSection extends StatelessWidget {
+  const _AnimatedSearchSection({required this.expanded, required this.child});
+
+  final bool expanded;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRect(
+      child: AnimatedAlign(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        alignment: Alignment.topCenter,
+        heightFactor: expanded ? 1 : 0,
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 160),
+          curve: Curves.easeOut,
+          opacity: expanded ? 1 : 0,
+          child: child,
         ),
       ),
     );

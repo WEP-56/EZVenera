@@ -16,7 +16,6 @@ import '../localization/app_localizations.dart';
 import '../plugin_runtime/models.dart';
 import '../state/app_state_controller.dart';
 import 'comic_details_page.dart';
-import 'local_reader_page.dart';
 import 'network_resume_page.dart';
 import 'reader_page.dart';
 
@@ -749,8 +748,16 @@ class _LocalPageState extends State<LocalPage> {
       }
       Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (context) =>
-              LocalReaderPage(comic: comic, initialChapterId: entry.chapterId),
+          builder: (context) => ReaderPage(
+            sourceKey: comic.sourceKey,
+            comicId: comic.comicId,
+            comicTitle: comic.title,
+            chapterId: entry.chapterId,
+            chapterTitle: entry.chapterTitle ?? comic.chapters.first.title,
+            cover: comic.coverPath,
+            initialPage: entry.page,
+            localLibraryComic: comic,
+          ),
         ),
       );
       return;
@@ -813,7 +820,15 @@ class _LocalPageState extends State<LocalPage> {
   void _openLocalComic(BuildContext context, LocalLibraryComic comic) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (context) => LocalReaderPage(comic: comic),
+        builder: (context) => ReaderPage(
+          sourceKey: comic.sourceKey,
+          comicId: comic.comicId,
+          comicTitle: comic.title,
+          chapterId: null,
+          chapterTitle: comic.chapters.first.title,
+          cover: comic.coverPath,
+          localLibraryComic: comic,
+        ),
       ),
     );
   }
