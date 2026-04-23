@@ -1,5 +1,4 @@
-import 'dart:typed_data';
-
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../plugin_runtime/models.dart';
@@ -26,7 +25,12 @@ class ComicCardGrid extends StatelessWidget {
             crossAxisCount: columns,
             mainAxisSpacing: 16,
             crossAxisSpacing: 16,
-            childAspectRatio: columns == 2 ? 0.62 : 0.66,
+            childAspectRatio: switch (columns) {
+              2 => 0.56,
+              3 => 0.60,
+              4 => 0.63,
+              _ => 0.66,
+            },
           ),
           itemBuilder: (context, index) {
             final comic = comics[index];
@@ -85,6 +89,7 @@ class _ComicCardState extends State<_ComicCard> {
         scale: isHovering ? 1.015 : 1,
         child: Material(
           color: Colors.transparent,
+          clipBehavior: Clip.antiAlias,
           child: InkWell(
             borderRadius: BorderRadius.circular(24),
             onTap: widget.onTap,
@@ -120,62 +125,72 @@ class _ComicCardState extends State<_ComicCard> {
                   ),
                   Expanded(
                     flex: 8,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              _MetaPill(label: widget.comic.sourceKey),
-                              if (widget.comic.language case final language?
-                                  when language.trim().isNotEmpty) ...[
-                                const SizedBox(width: 6),
-                                _MetaPill(label: language),
-                              ],
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            widget.comic.title,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                              height: 1.2,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            subtitle,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                              height: 1.35,
-                            ),
-                          ),
-                          const Spacer(),
-                          if (tags != null && tags.isNotEmpty)
-                            Text(
-                              tags.take(3).join('  ·  '),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.primary,
-                                fontWeight: FontWeight.w600,
+                    child: ClipRect(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              physics: const NeverScrollableScrollPhysics(),
+                              child: Row(
+                                children: [
+                                  _MetaPill(label: widget.comic.sourceKey),
+                                  if (widget.comic.language case final language?
+                                      when language.trim().isNotEmpty) ...[
+                                    const SizedBox(width: 6),
+                                    _MetaPill(label: language),
+                                  ],
+                                ],
                               ),
-                            )
-                          else
+                            ),
+                            const SizedBox(height: 10),
                             Text(
-                              trailingMeta,
-                              maxLines: 1,
+                              widget.comic.title,
+                              maxLines: 2,
                               overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodySmall?.copyWith(
+                              softWrap: true,
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                height: 1.2,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              subtitle,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              softWrap: true,
+                              style: theme.textTheme.bodyMedium?.copyWith(
                                 color: theme.colorScheme.onSurfaceVariant,
+                                height: 1.35,
                               ),
                             ),
-                        ],
+                            const Spacer(),
+                            if (tags != null && tags.isNotEmpty)
+                              Text(
+                                tags.take(3).join('  路  '),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                softWrap: false,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.primary,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              )
+                            else
+                              Text(
+                                trailingMeta,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                softWrap: false,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -204,7 +219,7 @@ class _ComicCardState extends State<_ComicCard> {
 
   String _trailingMeta(PluginComic comic) {
     if (comic.stars case final stars?) {
-      return '★ ${stars.toStringAsFixed(1)}';
+      return '鈽?${stars.toStringAsFixed(1)}';
     }
     if (comic.maxPage case final maxPage?) {
       return '$maxPage pages';

@@ -73,9 +73,6 @@ Section "Install"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   CreateDirectory "$SMPROGRAMS\EZVenera"
   CreateShortcut "$SMPROGRAMS\EZVenera\EZVenera.lnk" "$INSTDIR\ezvenera.exe"
-SectionEnd
-
-Section /o "Desktop Shortcut"
   CreateShortcut "$DESKTOP\EZVenera.lnk" "$INSTDIR\ezvenera.exe"
 SectionEnd
 

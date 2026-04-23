@@ -89,6 +89,16 @@ class AppLocalizations {
       'reader.fullscreen': 'Fullscreen',
       'reader.exitFullscreen': 'Exit fullscreen',
       'reader.download': 'Download',
+      'settings.checkUpdate': 'Check for Updates',
+      'settings.updateDialogTitle': 'Update Available',
+      'settings.noUpdate': 'You are already on the latest version.',
+      'settings.updateNow': 'Download Update',
+      'settings.later': 'Later',
+      'settings.downloadingUpdate': 'Downloading update...',
+      'settings.downloadComplete': 'Download completed.',
+      'settings.installNow': 'Install Now',
+      'settings.updateFailed': 'Failed to check or download the update.',
+      'settings.latestVersionLabel': 'Latest version: {version}',
       'common.open': 'Open',
       'common.delete': 'Delete',
       'common.save': 'Save',
@@ -355,6 +365,26 @@ class AppLocalizations {
   String get readerExitFullscreen =>
       isChinese ? '退出全屏' : _value('reader.exitFullscreen');
   String get readerDownload => isChinese ? '下载' : _value('reader.download');
+  String get settingsCheckUpdate =>
+      isChinese ? '检查更新' : _value('settings.checkUpdate');
+  String get settingsUpdateDialogTitle =>
+      isChinese ? '发现新版本' : _value('settings.updateDialogTitle');
+  String get settingsNoUpdate =>
+      isChinese ? '当前已经是最新版本。' : _value('settings.noUpdate');
+  String get settingsUpdateNow =>
+      isChinese ? '下载更新' : _value('settings.updateNow');
+  String get settingsLater => isChinese ? '稍后' : _value('settings.later');
+  String get settingsDownloadingUpdate =>
+      isChinese ? '正在下载更新...' : _value('settings.downloadingUpdate');
+  String get settingsDownloadComplete =>
+      isChinese ? '下载完成。' : _value('settings.downloadComplete');
+  String get settingsInstallNow =>
+      isChinese ? '立即安装' : _value('settings.installNow');
+  String get settingsUpdateFailed =>
+      isChinese ? '检查或下载更新失败。' : _value('settings.updateFailed');
+  String settingsLatestVersionLabel(String version) =>
+      (isChinese ? '最新版本：{version}' : _value('settings.latestVersionLabel'))
+          .replaceAll('{version}', version);
   String get open => _value('common.open');
   String get delete => _value('common.delete');
   String get save => _value('common.save');

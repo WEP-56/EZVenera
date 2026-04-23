@@ -1,7 +1,12 @@
 import 'dart:io';
 
+import 'package:dio/dio.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../downloads/download_controller.dart';
@@ -357,6 +362,14 @@ class _SettingsPageState extends State<SettingsPage> {
                 trailing: const Icon(Icons.open_in_new),
                 onTap: _openGithub,
               ),
+              ListTile(
+                title: Text(l10n.settingsCheckUpdate),
+                subtitle: Text(
+                  l10n.settingsLatestVersionLabel('GitHub Release'),
+                ),
+                trailing: const Icon(Icons.system_update_alt_outlined),
+                onTap: _checkForUpdates,
+              ),
             ],
           ),
         ],
@@ -512,6 +525,265 @@ class _SettingsPageState extends State<SettingsPage> {
     _showMessage(l10n.settingsLinkOpenFailed);
   }
 
+  Future<void> _checkForUpdates() async {
+    final l10n = AppLocalizations.of(context);
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      final currentVersion = packageInfo.version;
+      final release = await _fetchLatestRelease();
+      if (!_isNewerVersion(release.version, currentVersion)) {
+        if (!mounted) {
+          return;
+        }
+        await showDialog<void>(
+          context: context,
+          builder: (context) {
+            return AlertDialog(
+              title: Text(l10n.settingsCheckUpdate),
+              content: Text(l10n.settingsNoUpdate),
+              actions: [
+                FilledButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: Text(l10n.cancel),
+                ),
+              ],
+            );
+          },
+        );
+        return;
+      }
+
+      if (!mounted) {
+        return;
+      }
+      final shouldDownload = await showDialog<bool>(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            title: Text(l10n.settingsUpdateDialogTitle),
+            content: Text(
+              '${l10n.settingsLatestVersionLabel(release.tag)}\nCurrent: $currentVersion',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: Text(l10n.settingsLater),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: Text(l10n.settingsUpdateNow),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (shouldDownload != true) {
+        return;
+      }
+
+      final downloadedFile = await _downloadLatestRelease(release);
+      if (!mounted) {
+        return;
+      }
+      final shouldInstall = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) {
+          return AlertDialog(
+            title: Text(l10n.settingsCheckUpdate),
+            content: Text(l10n.settingsDownloadComplete),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: Text(l10n.settingsInstallNow),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (shouldInstall == true) {
+        await _launchInstaller(downloadedFile.path);
+      }
+    } catch (error) {
+      _showMessage('${l10n.settingsUpdateFailed} ${error.toString()}');
+    }
+  }
+
+  Future<_ReleaseAsset> _fetchLatestRelease() async {
+    final uri = Uri.parse(
+      'https://api.github.com/repos/WEP-56/EZvenera/releases/latest',
+    );
+    final response = await Dio().getUri<Map<String, dynamic>>(uri);
+    final data = response.data;
+    if (response.statusCode != 200 || data == null) {
+      throw StateError('Invalid update response.');
+    }
+    final tag = data['tag_name']?.toString() ?? '';
+    final version = tag.startsWith('v') ? tag.substring(1) : tag;
+    final assets = (data['assets'] as List? ?? const <dynamic>[])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+    final asset = _pickReleaseAsset(version, tag, assets);
+    return asset;
+  }
+
+  _ReleaseAsset _pickReleaseAsset(
+    String version,
+    String tag,
+    List<Map<String, dynamic>> assets,
+  ) {
+    final targetName = Platform.isWindows
+        ? 'windows-setup.exe'
+        : Platform.isAndroid
+        ? 'android-release.apk'
+        : '';
+    if (targetName.isEmpty) {
+      throw UnsupportedError('Update is not supported on this platform.');
+    }
+
+    for (final asset in assets) {
+      final name = asset['name']?.toString() ?? '';
+      if (name.endsWith(targetName)) {
+        return _ReleaseAsset(
+          tag: tag,
+          version: version,
+          name: name,
+          url: asset['browser_download_url']?.toString() ?? '',
+        );
+      }
+    }
+    throw StateError('No matching installer asset found.');
+  }
+
+  bool _isNewerVersion(String latest, String current) {
+    List<int> parse(String input) {
+      return input
+          .split('.')
+          .map(
+            (part) => int.tryParse(part.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0,
+          )
+          .toList();
+    }
+
+    final latestParts = parse(latest);
+    final currentParts = parse(current);
+    final length = latestParts.length > currentParts.length
+        ? latestParts.length
+        : currentParts.length;
+    for (var index = 0; index < length; index++) {
+      final left = index < latestParts.length ? latestParts[index] : 0;
+      final right = index < currentParts.length ? currentParts[index] : 0;
+      if (left > right) {
+        return true;
+      }
+      if (left < right) {
+        return false;
+      }
+    }
+    return false;
+  }
+
+  Future<File> _downloadLatestRelease(_ReleaseAsset release) async {
+    final l10n = AppLocalizations.of(context);
+    final supportDirectory = await getApplicationSupportDirectory();
+    final updateRoot = Directory(
+      '${supportDirectory.path}${Platform.pathSeparator}updates',
+    );
+    await updateRoot.create(recursive: true);
+    final file = File(
+      '${updateRoot.path}${Platform.pathSeparator}${release.name}',
+    );
+
+    if (!mounted) {
+      return file;
+    }
+
+    final progressNotifier = ValueNotifier<double?>(null);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return AlertDialog(
+          title: Text(l10n.settingsCheckUpdate),
+          content: ValueListenableBuilder<double?>(
+            valueListenable: progressNotifier,
+            builder: (context, progress, _) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(l10n.settingsDownloadingUpdate),
+                  const SizedBox(height: 12),
+                  LinearProgressIndicator(value: progress),
+                  const SizedBox(height: 8),
+                  Text(
+                    progress == null
+                        ? '0%'
+                        : '${(progress * 100).clamp(0, 100).toStringAsFixed(0)}%',
+                  ),
+                ],
+              );
+            },
+          ),
+        );
+      },
+    );
+
+    try {
+      await Dio().download(
+        release.url,
+        file.path,
+        onReceiveProgress: (received, total) {
+          if (total <= 0) {
+            return;
+          }
+          progressNotifier.value = received / total;
+        },
+      );
+    } finally {
+      progressNotifier.dispose();
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+    }
+
+    return file;
+  }
+
+  Future<void> _launchInstaller(String path) async {
+    if (Platform.isWindows) {
+      final escaped = path.replaceAll("'", "''");
+      final script =
+          "while (Get-Process -Id $pid -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 300 }; Start-Process -FilePath '$escaped'";
+      await Process.start('powershell', [
+        '-NoProfile',
+        '-WindowStyle',
+        'Hidden',
+        '-Command',
+        script,
+      ], mode: ProcessStartMode.detached);
+      exit(0);
+    }
+
+    if (Platform.isAndroid) {
+      await OpenFilex.open(path);
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      SystemNavigator.pop();
+      return;
+    }
+
+    final launched = await launchUrl(
+      Uri.file(path),
+      mode: LaunchMode.externalApplication,
+    );
+    if (!launched) {
+      throw StateError('Unable to launch installer.');
+    }
+  }
+
   Future<void> _runBusy(Future<void> Function() action) async {
     showDialog<void>(
       context: context,
@@ -581,6 +853,20 @@ class _SettingsPageState extends State<SettingsPage> {
     final gb = mb / 1024;
     return '${gb.toStringAsFixed(2)} GB';
   }
+}
+
+class _ReleaseAsset {
+  const _ReleaseAsset({
+    required this.tag,
+    required this.version,
+    required this.name,
+    required this.url,
+  });
+
+  final String tag;
+  final String version;
+  final String name;
+  final String url;
 }
 
 class _SettingsGroup extends StatelessWidget {
