@@ -58,3 +58,6 @@ flutter test
 App repository:
 
 - [WEP-56/EZVenera](https://github.com/WEP-56/EZVenera)
+
+## 感谢社区
+https://linux.do/
