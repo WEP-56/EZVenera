@@ -755,22 +755,20 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _launchInstaller(String path) async {
     if (Platform.isWindows) {
-      final escaped = path.replaceAll("'", "''");
-      final script =
-          "while (Get-Process -Id $pid -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 300 }; Start-Process -FilePath '$escaped'";
-      await Process.start('powershell', [
-        '-NoProfile',
-        '-WindowStyle',
-        'Hidden',
-        '-Command',
-        script,
-      ], mode: ProcessStartMode.detached);
+      await Process.start(path, const <String>[], mode: ProcessStartMode.detached);
       exit(0);
     }
 
     if (Platform.isAndroid) {
-      await OpenFilex.open(path);
-      await Future<void>.delayed(const Duration(milliseconds: 300));
+      final result = await OpenFilex.open(path);
+      if (result.type != ResultType.done) {
+        throw StateError(
+          result.message.isEmpty
+              ? 'Unable to launch installer.'
+              : result.message,
+        );
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 1200));
       SystemNavigator.pop();
       return;
     }
