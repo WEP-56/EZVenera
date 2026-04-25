@@ -118,7 +118,8 @@ class _ReaderPageState extends State<ReaderPage> {
   @override
   void dispose() {
     _pendingTapTimer?.cancel();
-    _stopAutoPage(showMessage: false);
+    _autoPageTimer?.cancel();
+    _autoPageTimer = null;
     if (_isFullscreen) {
       _restoreFullscreenOnDispose();
     }
@@ -868,6 +869,9 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   void _stopAutoPage({required bool showMessage}) {
+    if (_autoPageTimer == null) {
+      return;
+    }
     _autoPageTimer?.cancel();
     _autoPageTimer = null;
     if (mounted) {
