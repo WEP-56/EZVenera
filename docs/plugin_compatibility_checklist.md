@@ -24,6 +24,8 @@
 | `search.loadNext` | 已验证 | `hitomi`、`jcomic`、`manhuagui`、`manhuaren` | 仅在未定义 `search.load` 时启用 |
 | `category` | 已验证 | 大多数源 | 固定/随机/动态分组已接入 |
 | `categoryComics.load` | 已验证 | `jm`、`lanraragi` 等 | 基础列表加载可用 |
+| `categoryComics.optionLoader` | 已验证 | `jm`、`mh1234`、`mxs` | 当前已支持动态分类筛选项 |
+| `categoryComics.ranking.loadNext` / `loadWithNext` | 已验证 | `ehentai`、`happy`、`hcomic`、`jm`、`picacg`、`wnacg` | 已兼容 next-token 排行分页 |
 | `comic.loadInfo` | 已验证 | `ehentai`、`lanraragi`、`nhentai` 等 | 详情页主链路可用 |
 | `comic.loadEpisode` | 已验证 | 全部阅读型源 | 阅读器、下载器都依赖该能力 |
 | `comic.onImageLoad` | 已验证 | `ehentai`、`manwaba` | 图片 headers、重试、解扰已接入 |
@@ -35,21 +37,7 @@
 
 ## 已知差异
 
-### 1. 分类页动态选项未补齐
-
-- 状态：`部分实现`
-- 原项目支持：
-  - `categoryComics.optionLoader`
-  - `categoryComics.ranking.loadWithNext`
-- EZVenera 当前情况：
-  - 仅支持静态 `optionList`
-  - `ranking` 只支持按页码 `load(page)`
-- 真实源影响：
-  - `jm`
-  - `mh1234`
-  - `mxs`
-
-### 2. 版本兼容约束未完全对齐
+### 1. 版本兼容约束未完全对齐
 
 - 状态：`部分实现`
 - 当前情况：
@@ -89,7 +77,6 @@
 
 - 源声明了较高 `minAppVersion`
 - 源 heavily 依赖 `explore` / `favorites` / `onClickTag`
-- 分类页依赖 `optionLoader`
 - 详情页或封面依赖复杂缩略图逻辑
 
 ## 建议后续补充的验证样本

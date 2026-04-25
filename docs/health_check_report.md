@@ -48,21 +48,19 @@
   - 安装、更新、重载时都校验 `minAppVersion`。
   - 至少先在 UI 上给出明确告警，再决定是否强制阻止加载。
 
-#### 风险：分类过滤链路缺少 `optionLoader` / `ranking.loadNext`
+#### 风险：分类链路已补齐，但仍缺少系统回归
 
-- 风险等级：中高
-- 原因：
-  - 当前 `lib/src/plugin_runtime/parser/plugin_source_parser.dart` 只解析 `categoryComics.optionList` 和 `categoryComics.ranking.load(page)`。
-  - 原项目还支持 `categoryComics.optionLoader` 与 `categoryComics.ranking.loadWithNext`。
-  - 真实源中已有使用：
-    - `optionLoader`：`jm.js`、`mh1234.js`、`mxs.js`
-    - `ranking`：`ehentai.js`、`happy.js`、`hcomic.js`、`jm.js`、`komiic.js`、`picacg.js`、`wnacg.js`
-- 影响：
-  - 某些分类页的动态筛选项无法展示。
-  - 某些排行分页模型只能工作在“页码模式”，无法兼容“next token 模式”。
-- 建议修复：
-  - 补齐 parser 与 UI 的 `optionLoader` 支持。
-  - 为 `ranking` 增加 `loadNext` 兼容层，至少在模型层保留接口。
+- 风险等级：中
+- 当前状态：
+  - 已支持 `categoryComics.optionLoader`
+  - 已支持 `categoryComics.ranking.loadNext`
+  - 已兼容原模板常见的 `categoryComics.ranking.loadWithNext`
+- 真实源覆盖：
+  - `optionLoader`：`jm.js`、`mh1234.js`、`mxs.js`
+  - `ranking`：`ehentai.js`、`happy.js`、`hcomic.js`、`jm.js`、`komiic.js`、`picacg.js`、`wnacg.js`
+- 剩余风险：
+  - 还缺基于真实源的系统化手测和回归样本。
+  - 动态选项返回空配置、混合分页模式切换等边界仍需继续验证。
 
 #### 风险：保留能力之外的大量插件能力仍会“静默降级”
 
@@ -117,18 +115,19 @@
 
 ### 3. 阅读器
 
-#### 风险：本地/下载页图片排序为纯字符串排序
+#### 风险：本地/下载阅读排序问题已修复，但需要样本回归
 
 - 风险等级：低
-- 原因：
+- 当前状态：
   - `lib/src/pages/reader_page.dart`
   - `lib/src/pages/local_reader_page.dart`
   - `lib/src/local_library/local_library_controller.dart`
-  - 以上位置都按路径字符串排序图片，文件名为 `1.jpg / 2.jpg / 10.jpg` 时会得到 `1 / 10 / 2`。
-- 影响：
-  - 本地漫画和下载漫画在部分目录结构下会出现页序错乱。
-- 建议修复：
-  - 增加自然排序，优先按数字片段比较，再退回到字符串比较。
+  - 以上链路已切换到自然排序，`1 / 2 / 10` 不再按纯字符串顺序排列。
+- 剩余风险：
+  - 仍建议用几组真实目录样本验证：
+    - `1.jpg 2.jpg 10.jpg`
+    - `001.jpg 002.jpg 010.jpg`
+    - `page-1.jpg page-2.jpg page-10.jpg`
 
 ### 4. 下载
 
@@ -181,6 +180,6 @@
 ## 建议的下一步顺序
 
 1. 给插件安装/更新补 `minAppVersion` 校验与用户提示。
-2. 补齐 `categoryComics.optionLoader` 与 `ranking.loadNext`。
-3. 给本地/下载阅读链路加自然排序。
+2. 为分类动态选项和排行 next-token 分页补真实源回归样本。
+3. 用真实本地目录样本回归自然排序。
 4. 把未接入插件能力整理到源管理页的“兼容性说明”。

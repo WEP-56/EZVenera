@@ -1,0 +1,1024 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EZVenera 插件制作文档</title>
+  <style>
+    :root {
+      --bg: #f4f7f5;
+      --surface: rgba(255, 255, 255, 0.9);
+      --surface-strong: #ffffff;
+      --text: #17312c;
+      --muted: #526761;
+      --line: rgba(23, 49, 44, 0.12);
+      --accent: #1c8f73;
+      --accent-soft: rgba(28, 143, 115, 0.12);
+      --code-bg: #10211d;
+      --code-text: #e9fff8;
+      --warn-bg: #fff7e8;
+      --warn-text: #7a5712;
+      --shadow: 0 18px 48px rgba(20, 49, 42, 0.08);
+      --max: 1180px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top right, rgba(28, 143, 115, 0.12), transparent 32%),
+        linear-gradient(180deg, #eef4f1 0%, var(--bg) 100%);
+      font: 16px/1.7 "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    .shell {
+      width: min(calc(100% - 32px), var(--max));
+      margin: 0 auto;
+      padding: 24px 0 64px;
+    }
+
+    .hero {
+      padding: 44px 40px 28px;
+      border-bottom: 1px solid var(--line);
+      background:
+        linear-gradient(135deg, rgba(28, 143, 115, 0.16), rgba(18, 54, 47, 0.04)),
+        var(--surface-strong);
+      border-radius: 18px 18px 0 0;
+    }
+
+    .hero h1 {
+      margin: 0 0 12px;
+      font-size: 34px;
+      line-height: 1.15;
+      font-weight: 800;
+    }
+
+    .hero p {
+      max-width: 820px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 17px;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr);
+      gap: 22px;
+      align-items: start;
+      padding-top: 22px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 14px 18px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--surface);
+      backdrop-filter: blur(12px);
+      box-shadow: var(--shadow);
+    }
+
+    .brand {
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .topnav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .topnav a {
+      display: inline-flex;
+      align-items: center;
+      min-height: 40px;
+      padding: 0 14px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.74);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .topnav a:hover {
+      color: var(--accent);
+      border-color: rgba(28, 143, 115, 0.3);
+      background: rgba(28, 143, 115, 0.08);
+    }
+
+    .toc,
+    .content {
+      background: var(--surface);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+    }
+
+    .toc {
+      position: sticky;
+      top: 18px;
+      border-radius: 16px;
+      padding: 20px 18px;
+    }
+
+    .toc h2 {
+      margin: 0 0 14px;
+      font-size: 14px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .toc a {
+      display: block;
+      padding: 7px 0;
+      color: var(--text);
+      font-size: 14px;
+    }
+
+    .toc a:hover {
+      color: var(--accent);
+    }
+
+    .content {
+      border-radius: 18px;
+      padding: 32px 36px 44px;
+    }
+
+    .content h2 {
+      margin: 36px 0 14px;
+      font-size: 28px;
+      line-height: 1.2;
+    }
+
+    .content h2:first-of-type {
+      margin-top: 0;
+    }
+
+    .content h3 {
+      margin: 28px 0 10px;
+      font-size: 20px;
+      line-height: 1.25;
+    }
+
+    .content h4 {
+      margin: 22px 0 8px;
+      font-size: 17px;
+    }
+
+    .content p,
+    .content li {
+      color: var(--text);
+    }
+
+    .content ul,
+    .content ol {
+      padding-left: 22px;
+      margin: 10px 0 16px;
+    }
+
+    .content code {
+      padding: 0.14em 0.42em;
+      border-radius: 6px;
+      background: rgba(16, 33, 29, 0.08);
+      font-family: Consolas, "SFMono-Regular", monospace;
+      font-size: 0.95em;
+    }
+
+    .content pre {
+      margin: 16px 0 22px;
+      padding: 18px 18px 20px;
+      overflow: auto;
+      border-radius: 14px;
+      background: var(--code-bg);
+      color: var(--code-text);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+    }
+
+    .content pre code {
+      padding: 0;
+      background: transparent;
+      color: inherit;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .callout {
+      margin: 18px 0 22px;
+      padding: 14px 16px;
+      border-radius: 12px;
+      background: var(--warn-bg);
+      color: var(--warn-text);
+      border: 1px solid rgba(122, 87, 18, 0.14);
+    }
+
+    .mini {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin: 16px 0 24px;
+    }
+
+    .mini article {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px 15px;
+      background: rgba(255, 255, 255, 0.76);
+    }
+
+    .mini h4 {
+      margin: 0 0 8px;
+      font-size: 15px;
+    }
+
+    .mini p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0 24px;
+      overflow: hidden;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.7);
+    }
+
+    th,
+    td {
+      text-align: left;
+      vertical-align: top;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      font-size: 14px;
+    }
+
+    th {
+      background: rgba(28, 143, 115, 0.08);
+      font-weight: 700;
+    }
+
+    .footer {
+      margin-top: 28px;
+      padding-top: 20px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    @media (max-width: 980px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .toc {
+        position: static;
+      }
+
+      .mini {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .shell {
+        width: min(calc(100% - 20px), var(--max));
+        padding-top: 12px;
+      }
+
+      .hero {
+        padding: 28px 22px 22px;
+        border-radius: 14px 14px 0 0;
+      }
+
+      .topbar {
+        padding: 12px 14px;
+      }
+
+      .topnav a {
+        min-height: 38px;
+        padding: 0 12px;
+      }
+
+      .hero h1 {
+        font-size: 28px;
+      }
+
+      .content {
+        padding: 24px 20px 32px;
+        border-radius: 14px;
+      }
+
+      .content h2 {
+        font-size: 24px;
+      }
+
+      .content h3 {
+        font-size: 18px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="topbar">
+      <div class="brand">EZVenera Docs</div>
+      <nav class="topnav" aria-label="站点导航">
+        <a href="./index.html">主页</a>
+        <a href="./plugin-guide.html">制作插件</a>
+        <a href="./project-structure.html">项目结构</a>
+        <a href="https://github.com/WEP-56/EZVenera" target="_blank" rel="noreferrer">GitHub</a>
+      </nav>
+    </div>
+
+    <header class="hero">
+      <h1>EZVenera 插件制作文档</h1>
+      <p>面向插件作者的当前实现说明。重点解释 EZVenera 现在真实支持什么、该怎么写、哪些地方容易踩坑，以及哪些 API 看起来存在但当前宿主并没有真正接通。</p>
+    </header>
+
+    <div class="layout">
+      <nav class="toc">
+        <h2>目录</h2>
+        <a href="#intro">1. 插件是什么</a>
+        <a href="#install">2. 安装与存储</a>
+        <a href="#surface">3. 能力边界</a>
+        <a href="#minimal">4. 最小结构</a>
+        <a href="#metadata">5. 元数据</a>
+        <a href="#apis">6. JS API</a>
+        <a href="#search">7. 搜索</a>
+        <a href="#category">8. 分类</a>
+        <a href="#details">9. 详情与章节</a>
+        <a href="#images">10. 图片链路</a>
+        <a href="#account">11. 登录与 cookie</a>
+        <a href="#settings">12. 设置项</a>
+        <a href="#extras">13. 其他字段</a>
+        <a href="#sample">14. 完整示例</a>
+        <a href="#pitfalls">15. 常见坑</a>
+        <a href="#debug">16. 调试建议</a>
+      </nav>
+
+      <main class="content">
+        <section id="intro">
+          <h2>1. 插件是什么</h2>
+          <p>EZVenera 的插件就是一个 JavaScript 文件，宿主会去找 <code>class YourSource extends ComicSource</code>，实例化后读取它的能力对象。EZVenera 尽量兼容原版 <code>venera-configs</code>，但只保留了简化版产品真正要用到的能力。</p>
+          <div class="callout">插件能安装，不等于插件里的所有字段都会在 EZVenera 里生效。当前宿主采取的是“支持的解析，不支持的忽略”的策略。</div>
+        </section>
+
+        <section id="install">
+          <h2>2. 安装与存储</h2>
+          <p>安装后的源文件会落到应用支持目录下的 <code>plugin_runtime/sources/*.js</code>，插件自己的数据放在 <code>plugin_runtime/data/*.json</code>，cookie 放在 <code>plugin_runtime/cookies.db</code>。</p>
+          <div class="mini">
+            <article>
+              <h4>宿主入口</h4>
+              <p>当前源管理页支持直接输入原始地址安装，也支持从源索引列表里选择安装。</p>
+            </article>
+            <article>
+              <h4>对应实现</h4>
+              <p><code>plugin_runtime.dart</code>、<code>plugin_source_repository.dart</code>、<code>sources_page.dart</code></p>
+            </article>
+          </div>
+        </section>
+
+        <section id="surface">
+          <h2>3. 能力边界</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>已支持</th>
+                <th>当前不要依赖</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  <code>account.login</code><br>
+                  <code>account.loginWithWebview</code><br>
+                  <code>account.loginWithCookies</code><br>
+                  <code>search.load</code><br>
+                  <code>search.loadNext</code><br>
+                  <code>category</code><br>
+                  <code>categoryComics.load</code><br>
+                  <code>categoryComics.optionList</code><br>
+                  <code>categoryComics.optionLoader</code><br>
+                  <code>categoryComics.ranking.load</code><br>
+                  <code>categoryComics.ranking.loadNext</code><br>
+                  <code>categoryComics.ranking.loadWithNext</code><br>
+                  <code>comic.loadInfo</code><br>
+                  <code>comic.loadEp</code><br>
+                  <code>comic.onImageLoad</code><br>
+                  <code>comic.onThumbnailLoad</code><br>
+                  <code>comic.idMatch</code><br>
+                  <code>comic.link</code><br>
+                  <code>settings(select/switch/input)</code><br>
+                  <code>translation</code>
+                </td>
+                <td>
+                  <code>explore</code><br>
+                  <code>favorites</code><br>
+                  <code>comment</code> 系列<br>
+                  <code>comic.starRating</code><br>
+                  <code>comic.archive</code><br>
+                  <code>comic.onClickTag</code><br>
+                  <code>comic.enableTagsTranslate</code><br>
+                  <code>comic.loadThumbnails</code><br>
+                  <code>settings.callback</code><br>
+                  <code>UI.*</code> 作为主流程依赖
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p><code>minAppVersion</code> 现在会被读取，也能通过 <code>APP.version</code> 获取真实宿主版本，但安装阶段还没有做严格拦截，所以写插件时还是要自己控制兼容面。</p>
+        </section>
+
+        <section id="minimal">
+          <h2>4. 最小结构</h2>
+          <p>最小可用插件至少要有合法的元数据、一个入口、<code>comic.loadInfo</code> 和 <code>comic.loadEp</code>。</p>
+<pre><code class="language-js">/** @type {import('./_venera_.js')} */
+
+class DemoSource extends ComicSource {
+    name = "示例漫画源"
+    key = "demo_source"
+    version = "1.0.0"
+    minAppVersion = "1.2.2"
+    url = "https://example.com/demo_source.js"
+
+    search = {
+        load: async (keyword, options, page) => {
+            return {
+                comics: [
+                    new Comic({
+                        id: "demo-1",
+                        title: `搜索：${keyword}`,
+                        subTitle: "第一个结果",
+                        cover: "https://example.com/cover.jpg"
+                    })
+                ],
+                maxPage: 1
+            }
+        }
+    }
+
+    comic = {
+        loadInfo: async (id) => new ComicDetails({
+            title: "示例漫画",
+            cover: "https://example.com/cover.jpg",
+            tags: {},
+            chapters: { "ep-1": "第 1 话" }
+        }),
+
+        loadEp: async (comicId, epId) => ({
+            images: [
+                "https://example.com/page-1.jpg",
+                "https://example.com/page-2.jpg"
+            ]
+        })
+    }
+}</code></pre>
+        </section>
+
+        <section id="metadata">
+          <h2>5. 元数据</h2>
+          <p><code>name</code> 用于显示，<code>key</code> 是唯一标识，要求只包含字母、数字和下划线。<code>version</code> 是插件自己的版本，<code>url</code> 是更新地址，<code>minAppVersion</code> 请照实填写。</p>
+<pre><code class="language-js">name = "JM 漫画"
+key = "jm"
+version = "1.0.3"
+minAppVersion = "1.2.2"
+url = "https://example.com/raw/jm.js"</code></pre>
+        </section>
+
+        <section id="apis">
+          <h2>6. JS API</h2>
+          <p>最值得依赖的是 <code>Network</code>、<code>fetch</code>、<code>Convert</code>、<code>HtmlDocument</code>、<code>Comic</code>、<code>ComicDetails</code>、<code>ImageLoadingConfig</code>、<code>Image</code>、<code>APP</code>。</p>
+
+          <h3>6.1 Network / fetch</h3>
+<pre><code class="language-js">let res = await Network.get("https://example.com/api/list", {
+    "user-agent": "Mozilla/5.0",
+    "referer": "https://example.com/"
+})
+
+if (res.status !== 200) {
+    throw `HTTP ${res.status}`
+}
+
+let json = JSON.parse(res.body)</code></pre>
+
+          <h3>6.2 Convert</h3>
+<pre><code class="language-js">let raw = Convert.encodeUtf8("comic-123")
+let hash = Convert.md5(raw)
+let hashText = Convert.hexEncode(hash)</code></pre>
+
+          <h3>6.3 HtmlDocument</h3>
+<pre><code class="language-js">let res = await Network.get("https://example.com/comic/123")
+let doc = new HtmlDocument(res.body)
+let title = doc.querySelector("h1")?.text ?? "未知标题"</code></pre>
+
+          <h3>6.4 APP</h3>
+<pre><code class="language-js">if (APP.platform === "windows") {
+    // 按平台切换站点或请求头
+}</code></pre>
+
+          <h3>6.5 UI</h3>
+          <p><code>init.js</code> 里声明了 <code>UI.showMessage</code>、<code>UI.showDialog</code> 等接口，但当前 EZVenera 宿主没有真正接通这套 bridge。你可以看到 API，但不要把它当成当前版本的可靠能力。</p>
+        </section>
+
+        <section id="search">
+          <h2>7. 搜索</h2>
+          <p>搜索支持两种模型：<code>search.load(keyword, options, page)</code> 和 <code>search.loadNext(keyword, options, nextToken)</code>。如果两者同时存在，宿主优先用 <code>load</code>。</p>
+<pre><code class="language-js">search = {
+    optionList: [
+        {
+            label: "排序",
+            options: [
+                "latest-最新",
+                "popular-热门"
+            ],
+            default: "latest"
+        }
+    ],
+
+    load: async (keyword, options, page) => {
+        let sort = options[0] ?? "latest"
+        let res = await Network.get(
+            `https://example.com/api/search?q=${encodeURIComponent(keyword)}&sort=${sort}&page=${page}`
+        )
+        let json = JSON.parse(res.body)
+
+        return {
+            comics: json.items.map(item => new Comic({
+                id: item.id.toString(),
+                title: item.title,
+                subTitle: item.author ?? "",
+                cover: item.cover
+            })),
+            maxPage: json.maxPage ?? 1
+        }
+    }
+}</code></pre>
+        </section>
+
+        <section id="category">
+          <h2>8. 分类</h2>
+          <p>分类页由 <code>category</code> 定义入口，由 <code>categoryComics</code> 定义实际列表加载。EZVenera 当前已经支持静态筛选项、动态筛选项和两种排行分页模型。</p>
+
+          <h3>8.1 category</h3>
+<pre><code class="language-js">category = {
+    title: "分类",
+    enableRankingPage: true,
+    parts: [
+        {
+            name: "题材",
+            type: "fixed",
+            categories: [
+                {
+                    label: "热血",
+                    target: {
+                        page: "category",
+                        attributes: {
+                            category: "hot_blood",
+                            param: null
+                        }
+                    }
+                }
+            ]
+        }
+    ]
+}</code></pre>
+
+          <h3>8.2 optionList / optionLoader</h3>
+<pre><code class="language-js">categoryComics = {
+    optionLoader: async (category, param) => {
+        if (category === "rank") {
+            return [
+                {
+                    label: "时间",
+                    options: [
+                        "day-日榜",
+                        "week-周榜",
+                        "month-月榜"
+                    ]
+                }
+            ]
+        }
+
+        return [
+            {
+                label: "排序",
+                options: [
+                    "latest-最新",
+                    "popular-热门"
+                ]
+            }
+        ]
+    },
+
+    load: async (category, param, options, page) => {
+        // ...
+    }
+}</code></pre>
+
+          <h3>8.3 ranking.load / ranking.loadNext / ranking.loadWithNext</h3>
+<pre><code class="language-js">categoryComics = {
+    ranking: {
+        options: [
+            "day-日榜",
+            "week-周榜"
+        ],
+        loadNext: async (option, next) => {
+            let url = next
+                ? `https://example.com/api/ranking/next?token=${encodeURIComponent(next)}`
+                : `https://example.com/api/ranking?mode=${option}`
+
+            let res = await Network.get(url)
+            let json = JSON.parse(res.body)
+
+            return {
+                comics: json.items.map(item => new Comic({
+                    id: item.id.toString(),
+                    title: item.title,
+                    cover: item.cover
+                })),
+                next: json.nextToken ?? null
+            }
+        }
+    }
+}</code></pre>
+        </section>
+
+        <section id="details">
+          <h2>9. 详情与章节</h2>
+          <p><code>comic.loadInfo</code> 返回 <code>ComicDetails</code>，最关键的是标题、封面、标签和章节。章节可以是平铺结构，也可以是分组结构。</p>
+<pre><code class="language-js">comic = {
+    loadInfo: async (id) => {
+        let res = await Network.get(`https://example.com/api/comic/${id}`)
+        let data = JSON.parse(res.body)
+
+        return new ComicDetails({
+            title: data.title,
+            subTitle: data.author,
+            cover: data.cover,
+            description: data.description,
+            tags: {
+                author: [data.author],
+                genre: data.tags ?? []
+            },
+            chapters: Object.fromEntries(
+                data.chapters.map(ch => [ch.id.toString(), ch.title])
+            )
+        })
+    },
+
+    loadEp: async (comicId, epId) => {
+        let res = await Network.get(
+            `https://example.com/api/comic/${comicId}/episode/${epId}`
+        )
+        let json = JSON.parse(res.body)
+        return {
+            images: json.images.map(item => item.url)
+        }
+    }
+}</code></pre>
+        </section>
+
+        <section id="images">
+          <h2>10. 图片链路</h2>
+          <p>只有当图片请求不是“直接 GET 一张公开 URL”时，才需要写 <code>onImageLoad</code>。常见用途是补 headers、Referer、cookie、响应转换、解扰、失败重签名。</p>
+
+          <h3>10.1 普通 headers</h3>
+<pre><code class="language-js">comic = {
+    onImageLoad: async (url, comicId, epId) => {
+        return {
+            url,
+            headers: {
+                "referer": "https://example.com/",
+                "user-agent": "Mozilla/5.0"
+            }
+        }
+    }
+}</code></pre>
+
+          <h3>10.2 onThumbnailLoad</h3>
+<pre><code class="language-js">comic = {
+    onThumbnailLoad: (url) => {
+        return {
+            url,
+            headers: {
+                "referer": "https://example.com/"
+            }
+        }
+    }
+}</code></pre>
+
+          <h3>10.3 modifyImage</h3>
+<pre><code class="language-js">comic = {
+    onImageLoad: async (url, comicId, epId) => {
+        return {
+            url,
+            modifyImage: `
+                let modifyImage = (image) => {
+                    let topHalf = image.copyRange(0, 0, image.width, Math.floor(image.height / 2))
+                    let bottomHalf = image.copyRange(
+                        0,
+                        Math.floor(image.height / 2),
+                        image.width,
+                        image.height - Math.floor(image.height / 2)
+                    )
+                    let result = Image.empty(image.width, image.height)
+                    result.fillImageAt(0, 0, bottomHalf)
+                    result.fillImageAt(0, bottomHalf.height, topHalf)
+                    return result
+                }
+            `
+        }
+    }
+}</code></pre>
+
+          <h3>10.4 onLoadFailed</h3>
+<pre><code class="language-js">comic = {
+    onImageLoad: async (url, comicId, epId) => {
+        return {
+            url,
+            onLoadFailed: async () => {
+                let retryUrl = await this.getSignedImageUrl(comicId, epId)
+                return {
+                    url: retryUrl
+                }
+            }
+        }
+    }
+}</code></pre>
+
+          <div class="callout">远程封面现在也会走缩略图链路。需要特殊 Referer 或 cookie 的源，不要只实现 <code>onImageLoad</code>，最好同时实现 <code>onThumbnailLoad</code>。</div>
+        </section>
+
+        <section id="account">
+          <h2>11. 登录与 cookie</h2>
+          <p>EZVenera 支持账号密码登录、WebView 登录和手工 cookie 登录。账号密码成功后，宿主会自动保存传入的账号和密码；你自己的 token、session 还是要自己 <code>saveData</code>。</p>
+<pre><code class="language-js">account = {
+    login: async (account, pwd) => {
+        let res = await Network.post(
+            "https://example.com/api/login",
+            { "content-type": "application/json" },
+            JSON.stringify({ account, password: pwd })
+        )
+
+        let json = JSON.parse(res.body)
+        if (json.code !== 200) {
+            throw json.message ?? "登录失败"
+        }
+
+        this.saveData("token", json.token)
+        return "ok"
+    },
+
+    logout: () => {
+        this.deleteData("token")
+        Network.deleteCookies("https://example.com")
+    }
+}</code></pre>
+        </section>
+
+        <section id="settings">
+          <h2>12. 设置项</h2>
+          <p>当前只支持 <code>select</code>、<code>switch</code>、<code>input</code>。<code>callback</code> 在 EZVenera 中会被忽略。</p>
+<pre><code class="language-js">settings = {
+    domain: {
+        title: "站点域名",
+        type: "select",
+        options: [
+            { value: "https://a.example.com", text: "主站 A" },
+            { value: "https://b.example.com", text: "主站 B" }
+        ],
+        default: "https://a.example.com"
+    },
+
+    useMobileApi: {
+        title: "使用移动接口",
+        type: "switch",
+        default: true
+    },
+
+    customToken: {
+        title: "自定义令牌",
+        type: "input",
+        default: ""
+    }
+}
+
+let domain = this.loadSetting("domain")
+let useMobileApi = this.loadSetting("useMobileApi")</code></pre>
+        </section>
+
+        <section id="extras">
+          <h2>13. 其他字段</h2>
+          <p><code>translation</code> 用于翻译源自己的字符串；<code>comic.idMatch</code> 用于识别用户输入；<code>comic.link</code> 用于把外部链接转换成漫画 ID。</p>
+<pre><code class="language-js">translation = {
+    "zh_CN": {
+        "Latest": "最新",
+        "Popular": "热门"
+    }
+}
+
+comic = {
+    idMatch: "^(\\d+|demo-\\d+)$",
+    link: {
+        domains: ["example.com"],
+        linkToId: (url) => {
+            let match = url.match(/comic\\/(\\d+)/)
+            return match ? match[1] : null
+        }
+    }
+}</code></pre>
+        </section>
+
+        <section id="sample">
+          <h2>14. 更完整的示例插件</h2>
+<pre><code class="language-js">/** @type {import('./_venera_.js')} */
+
+class SampleSource extends ComicSource {
+    name = "Sample Source"
+    key = "sample_source"
+    version = "1.0.0"
+    minAppVersion = "1.2.2"
+    url = "https://example.com/sample_source.js"
+
+    settings = {
+        baseUrl: {
+            title: "站点地址",
+            type: "select",
+            options: [
+                { value: "https://api.example.com", text: "主站" },
+                { value: "https://backup.example.com", text: "备用站" }
+            ],
+            default: "https://api.example.com"
+        }
+    }
+
+    get baseUrl() {
+        return this.loadSetting("baseUrl") || "https://api.example.com"
+    }
+
+    search = {
+        load: async (keyword, options, page) => {
+            let res = await Network.get(
+                `${this.baseUrl}/search?q=${encodeURIComponent(keyword)}&page=${page}`
+            )
+            let json = JSON.parse(res.body)
+            return {
+                comics: json.items.map(item => this.parseComic(item)),
+                maxPage: json.maxPage ?? 1
+            }
+        }
+    }
+
+    category = {
+        title: "分类",
+        parts: [
+            {
+                name: "题材",
+                type: "fixed",
+                categories: [
+                    {
+                        label: "动作",
+                        target: {
+                            page: "category",
+                            attributes: {
+                                category: "action",
+                                param: null
+                            }
+                        }
+                    }
+                ]
+            }
+        ]
+    }
+
+    categoryComics = {
+        optionList: [
+            {
+                label: "排序",
+                options: [
+                    "latest-最新",
+                    "popular-热门"
+                ]
+            }
+        ],
+        load: async (category, param, options, page) => {
+            let res = await Network.get(
+                `${this.baseUrl}/category/${category}?page=${page}`
+            )
+            let json = JSON.parse(res.body)
+            return {
+                comics: json.items.map(item => this.parseComic(item)),
+                maxPage: json.maxPage ?? 1
+            }
+        }
+    }
+
+    comic = {
+        loadInfo: async (id) => {
+            let res = await Network.get(`${this.baseUrl}/comic/${id}`)
+            let data = JSON.parse(res.body)
+            return new ComicDetails({
+                title: data.title,
+                subTitle: data.author,
+                cover: data.cover,
+                description: data.description,
+                tags: {
+                    author: [data.author],
+                    genre: data.tags ?? []
+                },
+                chapters: Object.fromEntries(
+                    data.chapters.map(ch => [ch.id.toString(), ch.title])
+                ),
+                url: data.url
+            })
+        },
+
+        loadEp: async (comicId, epId) => {
+            let res = await Network.get(`${this.baseUrl}/comic/${comicId}/episode/${epId}`)
+            let data = JSON.parse(res.body)
+            return { images: data.images }
+        },
+
+        onImageLoad: async (url, comicId, epId) => ({
+            url,
+            headers: {
+                "referer": `${this.baseUrl}/comic/${comicId}`,
+                "user-agent": "Mozilla/5.0"
+            }
+        })
+    }
+
+    parseComic(item) {
+        return new Comic({
+            id: item.id.toString(),
+            title: item.title,
+            subTitle: item.author ?? "",
+            cover: item.cover,
+            tags: item.tags ?? []
+        })
+    }
+}</code></pre>
+        </section>
+
+        <section id="pitfalls">
+          <h2>15. 常见坑</h2>
+          <ul>
+            <li><code>loadInfo</code> 和 <code>loadEp</code> 往往不是独立的，章节 ID、签名 URL、Referer 经常依赖详情页数据。</li>
+            <li><code>onImageLoad</code> 返回值最好就是普通对象，不要返回宿主不认识的复杂实例。</li>
+            <li><code>modifyImage</code> 是脚本文本，不是直接传函数对象。</li>
+            <li>需要特殊 headers 的封面，不要只写 <code>onImageLoad</code>。</li>
+            <li>cookie 登录一定要同时实现 <code>logout</code>。</li>
+            <li><code>UI.*</code> 现在不要当成关键业务能力。</li>
+          </ul>
+        </section>
+
+        <section id="debug">
+          <h2>16. 调试建议</h2>
+          <p>最稳的顺序是：先把 <code>search</code> 或 <code>category</code> 打通，再做 <code>loadInfo</code>，再做 <code>loadEp</code>，最后才处理 headers、cookie、解扰。这样定位问题最快。</p>
+          <ol>
+            <li>先确认接口返回的 JSON 是对的。</li>
+            <li>再确认 <code>Comic</code> / <code>ComicDetails</code> 字段结构正确。</li>
+            <li>阅读链路出问题时，先去掉 <code>modifyImage</code>，确认是不是“请求错误”还是“解扰错误”。</li>
+            <li>详情页调不通时，先返回最小的 <code>ComicDetails</code>，再一项项补字段。</li>
+          </ol>
+        </section>
+
+        <div class="footer">
+          对照源码时，优先看 <code>plugin_runtime.dart</code>、<code>plugin_source_parser.dart</code>、<code>plugin_js_engine.dart</code>、<code>plugin_image_loader.dart</code>、<code>plugin_image_modifier.dart</code>，再配合 <code>assets/init.js</code>、<code>_template_.js</code> 和真实源样本一起读。也可以返回 <a href="./index.html">主页</a> 或查看 <a href="./project-structure.html">项目结构页</a>。
+        </div>
+      </main>
+    </div>
+  </div>
+</body>
+</html>
