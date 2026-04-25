@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -40,6 +41,11 @@ class PluginRuntime {
       return;
     }
 
+    final packageInfo = await PackageInfo.fromPlatform();
+    final appVersion = packageInfo.version.trim().isEmpty
+        ? '0.1.0'
+        : packageInfo.version.trim();
+
     final supportDir = await getApplicationSupportDirectory();
     final runtimeRoot = Directory(p.join(supportDir.path, 'plugin_runtime'));
     await runtimeRoot.create(recursive: true);
@@ -50,12 +56,12 @@ class PluginRuntime {
     engine = PluginJsEngine(
       dataStore: dataStore,
       cookieStore: cookieStore,
-      appVersion: '0.1.0',
+      appVersion: appVersion,
     );
     parser = PluginSourceParser(
       engine: engine,
       dataStore: dataStore,
-      appVersion: '0.1.0',
+      appVersion: appVersion,
     );
     repository = PluginSourceRepository(
       sourcesPath: p.join(runtimeRoot.path, 'sources'),

@@ -1,336 +1,651 @@
-﻿# EZVenera 下一阶段交接文档
+# EZVenera 下一阶段接手文档
 
-更新时间：2026-04-20
+更新时间：2026-04-25
 
-本文用于在新对话中快速接手 EZVenera 当前工程状态，继续推进：
-- 前端调优
-- 设置页面补全
+本文用于在新对话中快速接手 `EZVenera` 当前状态，并继续推进下一阶段工作。
 
 项目路径：
-- 本体：`D:\venera\EZVenera`
-- 原版参考：`D:\venera\venera`
-- 漫画源仓库：`https://github.com/WEP-56/EZvenera-config`
+- 简化版项目：`D:\venera\EZVenera`
+- 原项目参考：`D:\venera\venera`
+- 打包输出目录：`D:\venera\pack`
+- 插件源仓库：`https://github.com/WEP-56/EZvenera-config`
 
-## 1. 当前总体状态
+当前版本：
+- `pubspec.yaml`：`1.2.2+3`
 
-EZVenera 已经完成了“可用的简化版 venera”这一阶段的核心功能：
-- 平台范围：Windows、Android
-- 导航结构：`Search / Category / Local / Sources / Settings`
-- 插件运行时：已兼容 EZvenera-config / venera-config 中保留能力
-- 搜索、分类、详情、阅读、下载、本地历史/收藏/下载、漫画源管理、基础设置已可用
-- 登录：密码登录、Cookie 登录、WebView 登录均已接入
-- 持久化：历史、收藏、下载库、页面状态、登录状态已具备基础持久化
+当前分支状态：
+- 分支：`main`
+- 远端：`origin/main`
+- 最近提交：
+  - `de6c356` 更新版本号
+  - `fc2f848` 添加更新功能，修复 Windows 安装桌面快捷方式问题，修复漫画卡片文本溢出问题
+  - `b3998e3` Add community appreciation section to README
 
-目前重点已经从“功能补全”转向“界面体验”和“接近原版质感”。
+---
 
-## 2. 已完成的关键能力
+## 1. 本阶段接手目标
 
-### 2.1 插件运行时
+下一阶段的核心目标有 3 个：
 
-保留并实现的插件能力：
-- `account`
-- `search`
+1. 做一轮全面“体检”  
+   对比 `D:\venera\venera` 与 `D:\venera\EZVenera` 的各模块，尤其是插件模块和图片/阅读/下载链路，排查简化过程中遗漏的兼容性细节，提升稳定性、兼容性，避免再次出现类似最初 `jm.js` 图片错乱那种问题。
+
+2. 编写详细易读的中文版文档  
+   目标有两个文档：
+   - 接手开发的程序员可以快速了解项目（项目结构）
+   - 想要自制插件的用户可以更方便（插件制作）
+
+3. 将上述两个文档做成一版 GitHub Pages HTML 文件  
+   用于直接在线阅读。
+
+---
+
+## 2. 当前项目状态总览
+
+EZVenera 目前已经不是“空壳”或“仅能跑起来”的阶段，而是一个可用的 Windows / Android 简化版。
+
+已具备的主能力：
+- 插件运行时
+- 搜索
+- 分类
+- 漫画详情
+- 阅读器
+- 下载
+- 本地页（历史 / 收藏 / 下载 / 自定义漫画文件夹）
+- 漫画源管理
+- 基础设置
+- GitHub Release 更新检测与下载
+- Windows / Android 双平台打包
+
+当前重点已经从“补齐基础功能”转向：
+- 稳定性、兼容性
+- 与原项目关键行为保持一致
+- 文档体系
+- 发布维护能力
+
+---
+
+## 3. 最近这轮会话完成的关键工作
+
+### 3.1 插件与图片处理
+
+已修复 `jm.js` 源图片乱序问题。
+
+根因：
+- `jm.js` 本身没有问题
+- 问题在 EZVenera 的图片解扰执行器
+- EZVenera 复用同一个 JS 引擎执行 `modifyImage`
+- JM 源每次都会声明 `let modifyImage = ...`
+- 第二张图开始重复声明，异常被吞掉，导致返回原始错乱图
+
+修复位置：
+- `lib/src/plugin_runtime/services/plugin_image_modifier.dart`
+
+修复方式：
+- 改为每次在独立作用域中内联执行脚本
+- 避免 `modifyImage` 重复定义污染全局上下文
+
+这是下一阶段“稳定性体检”的典型案例，必须作为检查模板反向推广到其他源和其他插件能力。
+
+### 3.2 本地页重构
+
+本地页已重构为“文件夹”式结构。
+
+当前能力：
+- 左侧目录：
+  - 历史
+  - 收藏
+  - 下载
+  - 用户自定义漫画文件夹
+- 支持添加漫画文件夹
+- 支持扫描本地目录下的漫画
+- 支持本地漫画阅读与历史恢复
+
+关键文件：
+- `lib/src/pages/local_page.dart`
+- `lib/src/local_library/local_library_controller.dart`
+- `lib/src/local_library/local_library_models.dart`
+- `lib/src/pages/local_reader_page.dart`
+- `lib/src/library/history_models.dart`
+
+### 3.3 阅读器增强
+
+本轮已把阅读器从“粗浅实现”推进到“可用的统一阅读器”。
+
+当前已完成：
+- 网络漫画 / 下载漫画 / 本地文件夹漫画统一入口
+- 双击缩放
+- 再次双击缩回
+- 缩放状态下锁定页视图翻页，避免误翻页
+- 去掉滚轮缩放，只保留滚轮翻页
+- 顶部设置按钮
+- 阅读器设置侧边栏
+- 右下角快捷功能：
+  - 下载
+  - 全屏
+  - 自动翻页
+- 阅读器内设置持久化：
+  - 点击翻页
+  - 反转点击翻页
+  - 双击缩放
+  - 页面动画
+  - 自动翻页间隔
+
+关键文件：
+- `lib/src/pages/reader_page.dart`
+- `lib/src/settings/settings_controller.dart`
+- `lib/src/localization/app_localizations.dart`
+
+### 3.4 主壳层与搜索页
+
+已完成：
+- Windows 窗口尺寸记忆
+- 主导航栏支持折叠 / 展开
+- 搜索表单改为“keyword 主导”的展开 / 收起式交互
+
+关键文件：
+- `lib/main.dart`
+- `lib/src/shell/windows_window_frame.dart`
+- `lib/src/shell/main_shell.dart`
+- `lib/src/pages/search_page.dart`
+
+### 3.5 设置页更新流程
+
+已完成设置页“关于”里的更新流程基础版：
+- 检查 GitHub `releases/latest`
+- 识别 tag 格式 `vx.x.x`
+- 判断平台：
+  - Windows 下载 `setup.exe`
+  - Android 下载 `apk`
+- 显示下载进度
+- 下载完成后拉起安装
+- Windows 下尽量保证旧版本退出后再启动安装程序
+
+关键文件：
+- `lib/src/pages/settings_page.dart`
+
+### 3.6 卡片溢出与 Windows 安装器问题
+
+已修复：
+- 搜索结果 / 分类结果卡片文字超出卡片边界
+- Windows 安装器不创建桌面快捷方式
+
+关键文件：
+- `lib/src/widgets/comic_card_grid.dart`
+- `scripts/windows_installer.nsi`
+
+### 3.7 图标、版本、打包
+
+已完成：
+- Windows 图标替换
+- Android 启动图标替换
+- 版本号更新
+- Windows setup / Android APK 打包
+
+关键文件：
+- `assets/ico.ico`
+- `assets/ico.png`
+- `windows/runner/resources/app_icon.ico`
+- `android/app/src/main/res/mipmap-*/ic_launcher.png`
+- `pubspec.yaml`
+- `scripts/build_release.ps1`
+
+---
+
+## 4. 当前代码结构速览
+
+### 4.1 主模块目录
+
+`lib/src` 下主要目录：
+- `bootstrap`：启动初始化
+- `downloads`：下载任务、下载库
+- `library`：历史、收藏、JSON 存储
+- `local_library`：自定义本地漫画文件夹扫描
+- `localization`：本地化文案
+- `navigation`：主导航定义
+- `pages`：主要页面
+- `plugin_runtime`：插件运行时核心
+- `reader`：阅读器缓存等支撑服务
+- `settings`：设置控制器
+- `shell`：Windows 标题栏 / 主壳层
+- `state`：页面状态持久化
+- `widgets`：共用 UI 组件
+
+### 4.2 插件运行时关键文件
+
+必须优先熟悉：
+- `lib/src/plugin_runtime/plugin_runtime.dart`
+- `lib/src/plugin_runtime/plugin_runtime_controller.dart`
+- `lib/src/plugin_runtime/models.dart`
+- `lib/src/plugin_runtime/result.dart`
+- `lib/src/plugin_runtime/parser/plugin_source_parser.dart`
+- `lib/src/plugin_runtime/engine/plugin_js_engine.dart`
+- `lib/src/plugin_runtime/services/plugin_image_loader.dart`
+- `lib/src/plugin_runtime/services/plugin_image_modifier.dart`
+- `lib/src/plugin_runtime/storage/cookie_store.dart`
+- `lib/src/plugin_runtime/storage/plugin_data_store.dart`
+
+### 4.3 阅读器关键文件
+
+- `lib/src/pages/reader_page.dart`
+- `lib/src/reader/reader_image_cache.dart`
+
+### 4.4 本地页关键文件
+
+- `lib/src/pages/local_page.dart`
+- `lib/src/local_library/local_library_controller.dart`
+- `lib/src/local_library/local_library_models.dart`
+- `lib/src/library/history_controller.dart`
+- `lib/src/library/favorite_controller.dart`
+- `lib/src/downloads/download_controller.dart`
+
+### 4.5 打包与安装器
+
+- `scripts/build_release.ps1`
+- `scripts/windows_installer.nsi`
+- `scripts/windows_installer.iss`
+
+---
+
+## 5. 下一阶段任务一：全面“体检”
+
+这是最高优先级任务。
+
+### 5.1 总体原则
+
+不是要把原项目所有功能抄回来，而是：
+- 只对比 EZVenera 保留的功能
+- 找出“简化后缺失的稳定性保护、兼容性细节、边界处理”
+- 尤其关注插件执行链路、阅读链路、图片链路、下载链路
+
+换句话说，目标不是“功能更多”，而是“保留下来的功能更稳、更兼容”。
+
+### 5.2 建议体检范围
+
+建议按模块逐项对照 `D:\venera\venera`：
+
+1. 插件运行时
+   - JS 引擎初始化
+   - `ComicSource` API 暴露完整性
+   - parser 对能力的解析是否一致
+   - 登录态、cookie、持久化数据
+   - `onImageLoad` / `onThumbnailLoad`
+   - `modifyImage`
+   - `onLoadFailed`
+   - `onResponse`
+   - 设置项读取
+   - 本地化 / `translation`
+   - 链接跳转 / `link`
+
+2. 图片下载与图片改造
+   - 图片请求 headers
+   - 请求失败重试
+   - JS 回调结果类型兼容
+   - 图片解扰脚本是否能重复执行
+   - 缓存命中后是否影响新逻辑
+
+3. 阅读器
+   - 章节切换
+   - 历史恢复
+   - 网络 / 下载 / 本地目录 3 类阅读路径
+   - 缩放和翻页的边界行为
+   - 自动翻页与章节末尾行为
+
+4. 下载
+   - 下载封面
+   - 多章节下载
+   - 下载中断 / 失败清理
+   - 下载目录迁移
+
+5. 本地页
+   - 文件夹扫描规则
+   - 目录不存在时的处理
+   - 历史恢复到本地文件夹漫画
+
+6. 设置 / 更新
+   - 设置项持久化
+   - 更新检查与安装链路
+   - Android / Windows 差异处理
+
+### 5.3 插件模块体检重点
+
+插件模块必须作为第一优先级，因为最初的问题就发生在这里。
+
+建议专项输出一份“插件兼容性体检表”，对每个保留能力逐项确认：
+- EZVenera 是否实现
+- 与原项目实现差异
+- 是否有已知风险
+- 是否有已验证的真实源
+
+至少要覆盖这些能力：
+- `account.login`
+- `account.logout`
+- `search.loadPage`
+- `search.loadNext`
 - `category`
-- `categoryComics`
+- `categoryComics.load`
 - `comic.loadInfo`
-- `comic.loadEp`
+- `comic.loadEpisode`
 - `comic.onImageLoad`
 - `comic.onThumbnailLoad`
 - `settings`
+- `idMatcher`
 - `link`
-- `idMatch`
-
-关键文件：
-- [plugin_runtime.dart](D:\venera\EZVenera\lib\src\plugin_runtime\plugin_runtime.dart)
-- [plugin_runtime_controller.dart](D:\venera\EZVenera\lib\src\plugin_runtime\plugin_runtime_controller.dart)
-- [plugin_source_parser.dart](D:\venera\EZVenera\lib\src\plugin_runtime\parser\plugin_source_parser.dart)
-- [plugin_js_engine.dart](D:\venera\EZVenera\lib\src\plugin_runtime\engine\plugin_js_engine.dart)
-- [models.dart](D:\venera\EZVenera\lib\src\plugin_runtime\models.dart)
-
-### 2.2 登录与登录持久化
-
-已实现：
-- 密码登录
-- Cookie 登录
-- WebView 登录
-- 登录状态独立持久化
-- 旧 `_localStorage` 登录状态兼容
-
-关键文件：
-- [sources_page.dart](D:\venera\EZVenera\lib\src\pages\sources_page.dart)
-- [plugin_webview_login_page.dart](D:\venera\EZVenera\lib\src\pages\plugin_webview_login_page.dart)
-- [models.dart](D:\venera\EZVenera\lib\src\plugin_runtime\models.dart)
-
-最近修复：
-- 不再只靠 `account != null` 判断登录状态
-- 新增 `_ez_logged` 持久化标记
-- 修复多源场景下 parser 闭包错误绑定 `sourceKey` 的问题，避免串源
-
-### 2.3 搜索 / 分类 / 本地
-
-已实现：
-- 搜索源选择、搜索选项、分页、详情跳转
-- 分类页、分类漫画页已接入真实业务
-- Local 下已有 `History / Favorites / Downloads`
-- 页面切换状态保留和基础持久化已接入
-
-关键文件：
-- [search_page.dart](D:\venera\EZVenera\lib\src\pages\search_page.dart)
-- [categories_page.dart](D:\venera\EZVenera\lib\src\pages\categories_page.dart)
-- [category_comics_page.dart](D:\venera\EZVenera\lib\src\pages\category_comics_page.dart)
-- [local_page.dart](D:\venera\EZVenera\lib\src\pages\local_page.dart)
-- [app_state_controller.dart](D:\venera\EZVenera\lib\src\state\app_state_controller.dart)
-
-### 2.4 阅读器
-
-已实现：
-- 基础章节阅读
-- 键盘、滚轮、左右区域翻页
-- 历史恢复
-- 章节切换
-- 章节前后页跳转
-- 控制层基础显隐
-- 图片缓存、磁盘缓存、预加载、`precacheImage`
-
-关键文件：
-- [reader_page.dart](D:\venera\EZVenera\lib\src\pages\reader_page.dart)
-- [reader_image_cache.dart](D:\venera\EZVenera\lib\src\reader\reader_image_cache.dart)
-
-注意：
-- 阅读器现在已经明显优于最初简化版，但离原版 `reader.dart + scaffold.dart + images.dart` 体系还有距离
-- 下一阶段仍应继续向原版结构靠拢
-
-### 2.5 Windows 构建
-
-已修复：
-- `flutter_inappwebview_windows` 构建依赖 `nuget` 的问题
-- 项目内会自动 bootstrap 本地 `nuget.exe`
-
-关键文件：
-- [windows/CMakeLists.txt](D:\venera\EZVenera\windows\CMakeLists.txt)
-
-## 3. 当前已经确认的体验问题
-
-### 3.1 还未完成的 UI/体验类目标
-
-用户已明确要求下一阶段重点做：
-1. Windows 自定义顶部边框
-2. 更像原版的左侧侧边栏
-3. 搜索 / 分类结果改为带封面的瀑布流卡片
-4. 引入更多原版风格的动效
-5. 设置页面逐步复用原版结构
-
-### 3.2 已处理但建议复测
-
-- 源管理页展开时报的 Windows accessibility 警告
-  - 已将 `ExpansionTile` 改为自定义折叠卡片
-  - 需复测是否还会出现：
-    - `[ERROR:flutter/shell/platform/windows/accessibility_plugin.cc(73)] Announce message 'viewId' property must be a FlutterViewId.`
-
-- 登录状态持久化
-  - 已修
-  - 需复测密码登录、Cookie 登录、WebView 登录三类源
-
-## 4. 下一阶段工作目标
-
-## 4.1 前端调优
-
-### A. Windows 自定义顶部栏
-
-目标：
-- 仅 Windows 使用自定义顶部栏
-- 显示：
-  - 标题：`EZVenera`
-  - 最小化
-  - 最大化 / 还原
-  - 关闭
-- 删掉当前左侧栏内部那块大标题和说明文案：
-  - `EZVenera`
-  - `Windows and Android only. Plugin-first architecture.`
-
-当前相关文件：
-- [main_shell.dart](D:\venera\EZVenera\lib\src\shell\main_shell.dart)
-- [app.dart](D:\venera\EZVenera\lib\src\app.dart)
-
-原版参考建议：
-- 原版有自己的窗口框架能力，可参考：
-  - [reader.dart](D:\venera\venera\lib\pages\reader\reader.dart)
-  - 以及原版工程内窗口相关实现
-
-建议做法：
-- Windows 下在 `Scaffold` 外层或顶部加入自定义 title bar 容器
-- Android 保持现状
-- 注意拖动区域、双击最大化、按钮 hover/pressed 状态
-
-### B. 侧边栏重构
-
-目标：
-- 更接近图 1
-- 两个分区：
-  - 上部：`Search / Category / Local / Sources`
-  - 下部：`Settings`
-- 宽度适中，不要太宽
-- 去掉当前侧栏上方说明区
-
-当前相关文件：
-- [main_shell.dart](D:\venera\EZVenera\lib\src\shell\main_shell.dart)
-- [app_destination.dart](D:\venera\EZVenera\lib\src\navigation\app_destination.dart)
-
-建议做法：
-- 不再直接依赖 `NavigationRail` 的默认布局
-- 改为自绘侧边栏组件
-- 保留 `IndexedStack` 的页面保活逻辑
-
-### C. 窗口最小尺寸与布局切换
-
-目标：
-- Windows 窗口有最小尺寸限制
-- 缩小到某阈值时自动切换到移动端布局
-- 行为类似原版
-
-当前相关文件：
-- [main_shell.dart](D:\venera\EZVenera\lib\src\shell\main_shell.dart)
-- Windows runner 相关：
-  - [main.cpp](D:\venera\EZVenera\windows\runner\main.cpp)
-  - runner 目录其他窗口文件
-
-建议做法：
-- 布局切换不要只依赖平台，要加宽度阈值判断
-- 例如：
-  - Windows 宽度较大：桌面侧栏布局
-  - Windows 宽度较小：顶部栏 + 底部导航移动布局
-- 最小宽高限制在 runner 层做
-
-### D. 搜索 / 分类结果卡片化
-
-目标：
-- 搜索结果、分类结果改为瀑布流 / 卡片流
-- 必须有封面
-- 卡片上至少显示：
-  - 封面
-  - 标题
-  - 副标题
-  - 标签或语言/来源信息
-
-当前相关文件：
-- [search_page.dart](D:\venera\EZVenera\lib\src\pages\search_page.dart)
-- [category_comics_page.dart](D:\venera\EZVenera\lib\src\pages\category_comics_page.dart)
-
-建议做法：
-- 为 Windows 和 Android 做自适应列数
-- 不要继续用单纯 `ListTile`
-- 可以增加：
-  - 懒加载封面
-  - 占位图
-  - Hover 态 / 点击缩放 / Hero 动画
-
-原版参考：
-- 分类和搜索结果页表现
-- 用户给的图 4 作为目标风格
-
-### E. 动效补强
-
-目标：
-- 不做“通用 Flutter demo 动效”
-- 要更接近原版那种轻巧、克制、有效的动效
-
-优先补的动效：
-- 页面切换淡入 / 滑入
-- 卡片 staggered reveal
-- 搜索结果加载完成时的渐入
-- 侧边栏选中态过渡
-- 阅读器控制层滑入滑出
-- Sources 卡片展开收起动画细化
-
-建议先查原版：
-- [scaffold.dart](D:\venera\venera\lib\pages\reader\scaffold.dart)
-- 其他页面中的 AnimatedPositioned / AnimatedContainer / blur / overlay 用法
-
-## 4.2 设置页面补全
-
-目标：
-- 慢慢复用原版，不要求一口气做完
-- 优先补“结构”和“分组”，再补具体项
-
-当前文件：
-- [settings_page.dart](D:\venera\EZVenera\lib\src\pages\settings_page.dart)
-- [settings_controller.dart](D:\venera\EZVenera\lib\src\settings\settings_controller.dart)
-
-当前已有：
-- 主题模式
-- 漫画源索引 URL
-
-建议下一批优先补：
-1. 阅读器设置
-2. 网络设置
-3. 下载设置
-4. 外观设置
-5. 关于 / 调试信息
-
-原版参考：
-- 原版 settings 页面及其分组结构
-
-## 5. 推荐的下一阶段实施顺序
-
-建议严格按这个顺序做，避免 UI 改来改去：
-
-1. `MainShell` 重构
-   - 自定义 title bar
-   - 自定义侧边栏
-   - 小窗口切移动布局
-
-2. 结果页视觉重构
-   - Search 瀑布流卡片
-   - CategoryComics 瀑布流卡片
-
-3. 动效补强
-   - 主导航
-   - 卡片
-   - 页面切换
-
-4. Settings 页面结构升级
-   - 分组先做
-   - 项目逐步迁移
-
-5. 阅读器第二轮 UI 靠拢
-   - 更完整的控制面板
-   - 更像原版的顶部/底部结构
-   - 阅读设置入口
-
-## 6. 关键技术约束
-
-- 不要脱离原版项目太远
-- UI 可以简化，但结构和交互风格要尽量继承原版
-- 插件能力范围不要再扩大，维持当前精简集合
-- 默认漫画源索引必须继续使用 EZvenera-config，不回退到原版源仓库
-
-## 7. 近期重要修复记录
-
-以下是本轮会话中已经做过、接手时不应重复返工的内容：
-
-- 搜索链路已打通
-- 分类 / 分类漫画页已接业务
-- 阅读器已支持基础翻页、章节切换、历史恢复
-- 阅读器新增图片缓存 / 磁盘缓存 / 预取
-- 本地历史 / 收藏 / 下载已可用
-- 页面状态持久化已做基础版本
-- 登录状态持久化已修
-- WebView 登录已接入
-- `flutter_inappwebview_windows` 的 NuGet 构建问题已修
-- Sources 页展开控件已替换为自定义折叠卡片
-
-## 8. 新对话接手时建议直接说明的内容
-
-建议新对话开场直接说明：
-- 继续做前端调优和设置页补全
-- 以 [EZVenera_next_phase_handoff.md](D:\venera\EZVenera\docs\EZVenera_next_phase_handoff.md) 为上下文
-- 第一阶段先重构 `MainShell`
-- 保持接近原版 venera，不做大幅脱离原项目风格的 UI
-
-## 9. 交接时的代码状态
-
-截至本文写入时：
-- 工程可正常 `analyze`
-- 工程可正常 `test`
-- 当前工作区无待说明的异常状态
 
+### 5.4 体检产出要求
+
+建议最后至少产出两份东西：
+
+1. 模块体检报告  
+   以“模块 -> 风险 -> 原因 -> 建议修复”的形式输出。
+
+2. 插件兼容性清单  
+   明确哪些功能是“已验证稳定”、哪些是“理论支持但未系统验证”。
+
+### 5.5 建议体检顺序
+
+建议顺序：
+
+1. 插件运行时
+2. 图片下载 / 图片改造
+3. 阅读器
+4. 下载
+5. 本地页
+6. 设置 / 更新
+
+---
+
+## 6. 下一阶段任务二：中文版文档
+
+这一项要产出两份“详细易读”的中文文档。
+
+### 6.1 文档目标
+
+要同时满足两类读者：
+
+1. 接手开发的程序员
+   - 能快速了解项目结构
+   - 能快速定位关键模块
+   - 能知道主要运行流程
+   - 能知道哪些地方和原项目不同
+
+2. 想自制插件的用户
+   - 能理解 EZVenera 插件的能力边界
+   - 能知道如何写一个插件
+   - 能知道如何调试常见问题
+
+### 6.2 建议文档一：项目结构文档
+
+建议文件目标：
+- 面向开发者
+
+建议内容大纲：
+
+1. 项目定位
+   - EZVenera 是什么
+   - 和原项目 `venera` 的关系
+   - 平台范围：Windows / Android
+
+2. 目录结构
+   - `lib/src` 各目录职责
+   - `docs`
+   - `scripts`
+   - `windows`
+   - `android`
+
+3. 运行流程
+   - 启动流程
+   - 主壳层与页面切换
+   - 插件加载流程
+   - 搜索 / 分类 / 详情 / 阅读 / 下载 流程
+
+4. 核心模块说明
+   - `plugin_runtime`
+   - `reader`
+   - `downloads`
+   - `local_library`
+   - `settings`
+   - `shell`
+
+5. 持久化
+   - AppState
+   - 设置
+   - 历史 / 收藏
+   - 插件数据 / cookie
+
+6. 与原项目的主要差异
+   - 保留了什么
+   - 删掉了什么
+   - 简化的代价与注意事项
+
+7. 构建与打包
+   - 分析命令
+   - 打包命令
+   - Windows setup / Android APK
+
+### 6.3 建议文档二：插件编写文档
+
+建议文件目标：
+- 面向插件作者
+
+建议内容大纲：
+
+1. 插件是什么
+   - 插件脚本文件位置
+   - 插件能力边界
+
+2. 插件最小结构
+   - `name`
+   - `key`
+   - `version`
+   - `minAppVersion`
+   - `search`
+   - `category`
+   - `comic`
+
+3. 可用 API 说明
+   - `Convert`
+   - `Network`
+   - `HtmlDocument`
+   - `UI`
+   - `Comic`
+   - `ComicDetails`
+   - `ImageLoadingConfig`
+   - `Image`
+
+4. 能力逐项说明
+   - 登录
+   - 搜索
+   - 分类
+   - 详情
+   - 章节页
+   - 图片加载
+   - 图片解扰
+   - 设置项
+   - 链接识别
+
+5. 常见示例
+   - 最小搜索源
+   - 带分类源
+   - 带图片解扰源
+   - 带登录源
+
+6. 常见坑
+   - `onImageLoad` 返回值格式
+   - `modifyImage` 作用域
+   - cookie 与登录态保存
+   - `loadInfo` 和 `loadEpisode` 的耦合
+   - 需要 headers 的图片源
+
+7. 调试建议
+   - 如何打印日志
+   - 如何隔离问题
+   - 如何确认是插件问题还是宿主问题
+
+### 6.4 文档写作要求
+
+要求：
+- 全中文
+- 结构清楚
+- 例子尽量完整
+- 不要只写“概念”，必须带路径、带真实文件名、带最小代码示例
+- 要尽量贴合 EZVenera 当前实现，而不是原项目旧实现
+
+---
+
+## 7. 下一阶段任务三：GitHub Pages HTML
+
+要把“项目结构文档”和“插件编写文档”各做一版 HTML。
+
+### 7.1 建议输出方式
+
+建议不要一开始就引入复杂站点生成器，先做一版静态 HTML 即可。
+
+建议目录：
+- `docs/site/index.html`
+- `docs/site/project-structure.html`
+- `docs/site/plugin-guide.html`
+- `docs/site/assets/*`
+
+### 7.2 建议要求
+
+1. 页面可直接在 GitHub Pages 托管
+2. 中文排版清晰
+3. 目录导航清晰
+4. 代码块样式清楚
+5. 移动端可阅读
+
+### 7.3 建议内容结构
+
+`index.html`
+- 项目简介
+- 两个文档入口
+
+`project-structure.html`
+- 项目结构文档 HTML 版
+
+`plugin-guide.html`
+- 插件编写文档 HTML 版
+
+### 7.4 视觉要求
+
+不要做成默认白底黑字文档页就交差。
+
+建议：
+- 和 EZVenera 当前产品视觉保持一致
+- 有明确的标题层级
+- 代码块、提示块、注意事项要可视化区分
+
+---
+
+## 8. 当前实现中需要特别知道的事实
+
+### 8.1 平台范围
+
+当前项目明确只做：
+- Windows
+- Android
+
+不要再为 iOS / macOS / Linux / Web 扩功能。
+
+### 8.2 更新功能现状
+
+设置页关于区域已有更新流程基础版，但仍建议下一阶段复核：
+- GitHub API 请求
+- 下载进度展示
+- Windows 安装器拉起
+- Android APK 打开安装
+- 错误提示与边界处理
+
+### 8.3 阅读器现状
+
+阅读器已经比最初版本强很多，但还不等同于原版完整阅读器体系。
+
+当前更像：
+- 一个显著增强后的简化版
+
+如果后续体检中发现和原版差距导致兼容性问题，要优先补稳定性，不要先追视觉。
+
+### 8.4 打包命令
+
+当前统一打包命令：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File D:\venera\EZVenera\scripts\build_release.ps1 -ProjectRoot D:\venera\EZVenera -OutputRoot D:\venera\pack
+```
+
+仅打 Windows：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File D:\venera\EZVenera\scripts\build_release.ps1 -ProjectRoot D:\venera\EZVenera -OutputRoot D:\venera\pack -SkipAndroid
+```
+
+仅打 Android：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File D:\venera\EZVenera\scripts\build_release.ps1 -ProjectRoot D:\venera\EZVenera -OutputRoot D:\venera\pack -SkipWindows
+```
+
+### 8.5 最近一次已知成功打包
+
+最近成功打包版本：
+- `1.2.2+3`
+
+产物路径：
+- `D:\venera\pack\EZVenera-1.2.2-windows-setup.exe`
+- `D:\venera\pack\EZVenera-1.2.2-android-release.apk`
+
+---
+
+## 9. 推荐的下一阶段执行顺序
+
+建议严格按下面顺序推进：
+
+1. 做全面体检
+   - 先出问题清单
+   - 先看插件运行时，再看阅读器和图片链路
+
+2. 先修稳定性 / 兼容性问题
+   - 不要还没体检完就先写大文档
+
+3. 写“项目结构文档”
+   - 面向开发者
+
+4. 写“插件编写文档”
+   - 面向插件作者
+
+5. 再做 GitHub Pages HTML
+   - 优先把 Markdown 内容打磨清楚
+   - HTML 只是展示层
+
+---
+
+## 10. 新会话建议开场方式
+
+新会话建议直接这样说明：
+
+1. 以 `D:\venera\EZVenera\docs\EZVenera_next_phase_handoff.md` 为上下文
+2. 当前目标是：
+   - 先做稳定性 / 兼容性体检
+   - 再写两份中文版文档
+   - 最后做 GitHub Pages HTML
+3. 先从插件模块对比 `D:\venera\venera` 开始
+4. 不对比已移除功能，只对比保留功能
+
+---
+
+## 11. 最后提醒
+
+下一阶段最容易跑偏的地方有两个：
+
+1. 只顾着补原项目功能，忘了“简化版”的边界  
+   目标是稳定性和兼容性，不是把删掉的功能全补回来。
+
+2. 文档写成“概念说明”，没有真实路径和真实代码  
+   文档必须能真正帮助接手开发者和插件作者。
+
+如果下一阶段只能抓一件事，优先抓：
+
+**插件模块稳定性体检。**
+
+这是当前项目最值得投入的方向，也是最能直接提升整体可靠性的方向。

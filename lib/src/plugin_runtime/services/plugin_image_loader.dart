@@ -27,7 +27,7 @@ class PluginImageLoader {
         ? const PluginImageRequest()
         : await source.comic!.onImageLoad!(imageUrl, comicId, episodeId);
 
-    return _loadBytes(imageUrl, request, allowRetry: true);
+    return _loadBytes(imageUrl, request, remainingRetries: 5);
   }
 
   Future<Uint8List> loadThumbnail({
@@ -38,13 +38,13 @@ class PluginImageLoader {
         ? const PluginImageRequest()
         : source.comic!.onThumbnailLoad!(imageUrl);
 
-    return _loadBytes(imageUrl, request, allowRetry: false);
+    return _loadBytes(imageUrl, request, remainingRetries: 0);
   }
 
   Future<Uint8List> _loadBytes(
     String fallbackUrl,
     PluginImageRequest request, {
-    required bool allowRetry,
+    required int remainingRetries,
   }) async {
     final dio =
         Dio(
@@ -91,7 +91,7 @@ class PluginImageLoader {
 
       return bytes;
     } catch (error) {
-      if (!allowRetry || request.onLoadFailed == null) {
+      if (remainingRetries <= 0 || request.onLoadFailed == null) {
         rethrow;
       }
 
@@ -103,7 +103,7 @@ class PluginImageLoader {
       return _loadBytes(
         fallbackUrl,
         _parseRequestFromDynamic(retryConfig),
-        allowRetry: false,
+        remainingRetries: remainingRetries - 1,
       );
     }
   }

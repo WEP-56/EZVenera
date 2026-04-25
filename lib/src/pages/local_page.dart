@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
@@ -14,6 +15,8 @@ import '../local_library/local_library_controller.dart';
 import '../local_library/local_library_models.dart';
 import '../localization/app_localizations.dart';
 import '../plugin_runtime/models.dart';
+import '../plugin_runtime/plugin_runtime_controller.dart';
+import '../plugin_runtime/services/plugin_image_loader.dart';
 import '../state/app_state_controller.dart';
 import 'comic_details_page.dart';
 import 'network_resume_page.dart';
@@ -364,6 +367,7 @@ class _LocalPageState extends State<LocalPage> {
                     : (entry.subtitle ?? entry.comicId),
                 meta: _formatDateTime(entry.timestamp),
                 accent: entry.sourceKey,
+                sourceKey: entry.isLocal ? null : entry.sourceKey,
                 coverPath: entry.isLocal ? entry.cover : null,
                 coverUrl: entry.isLocal ? null : entry.cover,
                 onTap: () => _openHistory(context, entry),
@@ -403,6 +407,7 @@ class _LocalPageState extends State<LocalPage> {
                     ? l10n.localFavoriteMeta
                     : entry.tags.take(3).join(' | '),
                 accent: entry.sourceKey,
+                sourceKey: entry.sourceKey,
                 coverUrl: entry.cover,
                 onTap: () => _openFavorite(context, entry),
                 topRight: IconButton(
@@ -1385,6 +1390,7 @@ class _LocalComicCard extends StatelessWidget {
     required this.meta,
     required this.accent,
     required this.onTap,
+    this.sourceKey,
     this.coverPath,
     this.coverUrl,
     this.topRight,
@@ -1394,6 +1400,7 @@ class _LocalComicCard extends StatelessWidget {
   final String subtitle;
   final String meta;
   final String accent;
+  final String? sourceKey;
   final String? coverPath;
   final String? coverUrl;
   final VoidCallback onTap;
@@ -1423,6 +1430,7 @@ class _LocalComicCard extends StatelessWidget {
                   children: [
                     Positioned.fill(
                       child: _LocalComicCover(
+                        sourceKey: sourceKey,
                         coverPath: coverPath,
                         coverUrl: coverUrl,
                       ),
@@ -1500,16 +1508,42 @@ class _LocalComicCard extends StatelessWidget {
   }
 }
 
-class _LocalComicCover extends StatelessWidget {
-  const _LocalComicCover({this.coverPath, this.coverUrl});
+class _LocalComicCover extends StatefulWidget {
+  const _LocalComicCover({this.sourceKey, this.coverPath, this.coverUrl});
 
+  final String? sourceKey;
   final String? coverPath;
   final String? coverUrl;
 
   @override
+  State<_LocalComicCover> createState() => _LocalComicCoverState();
+}
+
+class _LocalComicCoverState extends State<_LocalComicCover> {
+  static final Map<String, Future<Uint8List>> _thumbnailCache =
+      <String, Future<Uint8List>>{};
+
+  Future<Uint8List>? _imageFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _imageFuture = _loadRemoteThumbnail();
+  }
+
+  @override
+  void didUpdateWidget(covariant _LocalComicCover oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.sourceKey != widget.sourceKey ||
+        oldWidget.coverUrl != widget.coverUrl) {
+      _imageFuture = _loadRemoteThumbnail();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final filePath = coverPath?.trim();
-    final networkUrl = coverUrl?.trim();
+    final filePath = widget.coverPath?.trim();
+    final networkUrl = widget.coverUrl?.trim();
 
     Widget child;
     if (filePath != null &&
@@ -1517,11 +1551,27 @@ class _LocalComicCover extends StatelessWidget {
         File(filePath).existsSync()) {
       child = Image.file(File(filePath), fit: BoxFit.cover);
     } else if (networkUrl != null && networkUrl.isNotEmpty) {
-      child = Image.network(
-        networkUrl,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) {
-          return const _LocalCoverFallback();
+      child = FutureBuilder<Uint8List>(
+        future: _imageFuture,
+        builder: (context, snapshot) {
+          if (snapshot.hasData) {
+            return Image.memory(snapshot.data!, fit: BoxFit.cover);
+          }
+          if (snapshot.hasError) {
+            return Image.network(
+              networkUrl,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) {
+                return const _LocalCoverFallback();
+              },
+            );
+          }
+          return const Center(
+            child: SizedBox.square(
+              dimension: 24,
+              child: CircularProgressIndicator(strokeWidth: 2.2),
+            ),
+          );
         },
       );
     } else {
@@ -1535,6 +1585,28 @@ class _LocalComicCover extends StatelessWidget {
         child: SizedBox.expand(child: child),
       ),
     );
+  }
+
+  Future<Uint8List>? _loadRemoteThumbnail() {
+    final sourceKey = widget.sourceKey?.trim();
+    final imageUrl = widget.coverUrl?.trim();
+    if (sourceKey == null ||
+        sourceKey.isEmpty ||
+        imageUrl == null ||
+        imageUrl.isEmpty) {
+      return null;
+    }
+    final key = '$sourceKey|$imageUrl';
+    return _thumbnailCache.putIfAbsent(key, () async {
+      final source = PluginRuntimeController.instance.find(sourceKey);
+      if (source == null) {
+        throw StateError('Missing source for thumbnail loading.');
+      }
+      return PluginImageLoader.instance.loadThumbnail(
+        source: source,
+        imageUrl: imageUrl,
+      );
+    });
   }
 }
 

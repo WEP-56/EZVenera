@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import '../downloads/download_controller.dart';
@@ -6,6 +8,7 @@ import '../library/favorite_controller.dart';
 import '../library/favorite_models.dart';
 import '../plugin_runtime/models.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
+import '../plugin_runtime/services/plugin_image_loader.dart';
 import 'reader_page.dart';
 
 class ComicDetailsPage extends StatefulWidget {
@@ -272,6 +275,7 @@ class _ComicDetailsBody extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _CoverCard(
+              sourceKey: summary.sourceKey,
               imageUrl: details.cover.isNotEmpty
                   ? details.cover
                   : summary.cover,
@@ -386,10 +390,36 @@ class _ComicDetailsBody extends StatelessWidget {
   }
 }
 
-class _CoverCard extends StatelessWidget {
-  const _CoverCard({required this.imageUrl});
+class _CoverCard extends StatefulWidget {
+  const _CoverCard({required this.sourceKey, required this.imageUrl});
 
+  final String sourceKey;
   final String imageUrl;
+
+  @override
+  State<_CoverCard> createState() => _CoverCardState();
+}
+
+class _CoverCardState extends State<_CoverCard> {
+  static final Map<String, Future<Uint8List>> _thumbnailCache =
+      <String, Future<Uint8List>>{};
+
+  Future<Uint8List>? _imageFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _imageFuture = _loadThumbnail();
+  }
+
+  @override
+  void didUpdateWidget(covariant _CoverCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.imageUrl != widget.imageUrl ||
+        oldWidget.sourceKey != widget.sourceKey) {
+      _imageFuture = _loadThumbnail();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -404,24 +434,54 @@ class _CoverCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: theme.colorScheme.outlineVariant),
       ),
-      child: imageUrl.isEmpty
+      child: widget.imageUrl.isEmpty
           ? Icon(
               Icons.image_not_supported_outlined,
               color: theme.colorScheme.onSurfaceVariant,
               size: 40,
             )
-          : Image.network(
-              imageUrl,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) {
-                return Icon(
-                  Icons.broken_image_outlined,
-                  color: theme.colorScheme.onSurfaceVariant,
-                  size: 40,
+          : FutureBuilder<Uint8List>(
+              future: _imageFuture,
+              builder: (context, snapshot) {
+                if (snapshot.hasData) {
+                  return Image.memory(snapshot.data!, fit: BoxFit.cover);
+                }
+                if (snapshot.hasError) {
+                  return Image.network(
+                    widget.imageUrl,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Icon(
+                        Icons.broken_image_outlined,
+                        color: theme.colorScheme.onSurfaceVariant,
+                        size: 40,
+                      );
+                    },
+                  );
+                }
+                return const Center(
+                  child: SizedBox.square(
+                    dimension: 26,
+                    child: CircularProgressIndicator(strokeWidth: 2.2),
+                  ),
                 );
               },
             ),
     );
+  }
+
+  Future<Uint8List> _loadThumbnail() {
+    final key = '${widget.sourceKey}|${widget.imageUrl}';
+    return _thumbnailCache.putIfAbsent(key, () async {
+      final source = PluginRuntimeController.instance.find(widget.sourceKey);
+      if (source == null) {
+        throw StateError('Missing source for thumbnail loading.');
+      }
+      return PluginImageLoader.instance.loadThumbnail(
+        source: source,
+        imageUrl: widget.imageUrl,
+      );
+    });
   }
 }
 
