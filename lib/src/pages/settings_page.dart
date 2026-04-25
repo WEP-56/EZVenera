@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -25,10 +26,6 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   final controller = SettingsController.instance;
-  late final TextEditingController sourceIndexController =
-      TextEditingController(text: controller.sourceIndexUrl);
-
-  static final _githubUri = Uri.parse('https://github.com/WEP-56/EZVenera');
 
   String? downloadPath;
   String? cachePath;
@@ -38,13 +35,18 @@ class _SettingsPageState extends State<SettingsPage> {
   void initState() {
     super.initState();
     controller.addListener(_onSettingsChanged);
-    _refreshStorageInfo();
+    DownloadController.instance.addListener(_onSettingsChanged);
+    PluginRuntimeController.instance.addListener(_onSettingsChanged);
+    HistoryController.instance.addListener(_onSettingsChanged);
+    unawaited(_refreshStorageInfo());
   }
 
   @override
   void dispose() {
     controller.removeListener(_onSettingsChanged);
-    sourceIndexController.dispose();
+    DownloadController.instance.removeListener(_onSettingsChanged);
+    PluginRuntimeController.instance.removeListener(_onSettingsChanged);
+    HistoryController.instance.removeListener(_onSettingsChanged);
     super.dispose();
   }
 
@@ -53,6 +55,126 @@ class _SettingsPageState extends State<SettingsPage> {
     final l10n = AppLocalizations.of(context);
 
     return SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          _SettingsHero(
+            title: l10n.isChinese ? '设置' : 'Settings',
+            subtitle: l10n.isChinese
+                ? '浏览设置项'
+                : 'Begin to Settings',
+          ),
+          const SizedBox(height: 20),
+          _SettingsMenuCard(
+            title: l10n.settingsReader,
+            subtitle: l10n.settingsPrefetchPagesSubtitle(
+              controller.readerPrefetchCount,
+            ),
+            icon: Icons.chrome_reader_mode_outlined,
+            onTap: () => _openSection(context, const _ReaderSettingsPage()),
+          ),
+          const SizedBox(height: 14),
+          _SettingsMenuCard(
+            title: l10n.settingsAppearance,
+            subtitle:
+                '${l10n.languageLabel(controller.language)} 路 ${l10n.themePresetLabel(controller.themePreset)}',
+            icon: Icons.palette_outlined,
+            onTap: () => _openSection(context, const _AppearanceSettingsPage()),
+          ),
+          const SizedBox(height: 14),
+          _SettingsMenuCard(
+            title: l10n.settingsNetwork,
+            subtitle: controller.sourceIndexUrl,
+            icon: Icons.public_outlined,
+            onTap: () => _openSection(context, const _NetworkSettingsPage()),
+          ),
+          const SizedBox(height: 14),
+          _SettingsMenuCard(
+            title: l10n.settingsDownloads,
+            subtitle: downloadPath ??
+                l10n.settingsDownloadedComicsCount(
+                  DownloadController.instance.downloads.length,
+                ),
+            icon: Icons.download_outlined,
+            onTap: () => _openSection(context, const _DownloadsSettingsPage()),
+          ),
+          const SizedBox(height: 14),
+          _SettingsMenuCard(
+            title: l10n.settingsApp,
+            subtitle:
+                '${_formatBytes(cacheSizeBytes)} 路 ${l10n.settingsInstalledSourcesCount(PluginRuntimeController.instance.sources.length)}',
+            icon: Icons.apps_outlined,
+            onTap: () => _openSection(context, const _AppSettingsPage()),
+          ),
+          const SizedBox(height: 14),
+          _SettingsMenuCard(
+            title: l10n.settingsAbout,
+            subtitle: l10n.settingsGithubSubtitle,
+            icon: Icons.info_outline,
+            onTap: () => _openSection(context, const _AboutSettingsPage()),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _refreshStorageInfo() async {
+    final nextDownloadPath = await DownloadController.instance.getStoragePath();
+    final nextCachePath = await ReaderImageCache.instance.currentRootPath();
+    final nextCacheSize = await ReaderImageCache.instance.diskUsageBytes();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      downloadPath = nextDownloadPath;
+      cachePath = nextCachePath;
+      cacheSizeBytes = nextCacheSize;
+    });
+  }
+
+  void _onSettingsChanged() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {});
+    unawaited(_refreshStorageInfo());
+  }
+
+  void _openSection(BuildContext context, Widget page) {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (context) => page));
+  }
+}
+
+class _ReaderSettingsPage extends StatefulWidget {
+  const _ReaderSettingsPage();
+
+  @override
+  State<_ReaderSettingsPage> createState() => _ReaderSettingsPageState();
+}
+
+class _ReaderSettingsPageState extends State<_ReaderSettingsPage> {
+  final controller = SettingsController.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    controller.addListener(_handleChange);
+  }
+
+  @override
+  void dispose() {
+    controller.removeListener(_handleChange);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+
+    return _SettingsSectionScaffold(
+      title: l10n.settingsReader,
       child: ListView(
         padding: const EdgeInsets.all(24),
         children: [
@@ -93,7 +215,49 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
+
+  void _handleChange() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+}
+
+class _AppearanceSettingsPage extends StatefulWidget {
+  const _AppearanceSettingsPage();
+
+  @override
+  State<_AppearanceSettingsPage> createState() => _AppearanceSettingsPageState();
+}
+
+class _AppearanceSettingsPageState extends State<_AppearanceSettingsPage> {
+  final controller = SettingsController.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    controller.addListener(_handleChange);
+  }
+
+  @override
+  void dispose() {
+    controller.removeListener(_handleChange);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+
+    return _SettingsSectionScaffold(
+      title: l10n.settingsAppearance,
+      child: ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
           _SettingsGroup(
             title: l10n.settingsAppearance,
             icon: Icons.palette_outlined,
@@ -169,7 +333,52 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
+
+  void _handleChange() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+}
+
+class _NetworkSettingsPage extends StatefulWidget {
+  const _NetworkSettingsPage();
+
+  @override
+  State<_NetworkSettingsPage> createState() => _NetworkSettingsPageState();
+}
+
+class _NetworkSettingsPageState extends State<_NetworkSettingsPage> {
+  final controller = SettingsController.instance;
+  late final TextEditingController sourceIndexController =
+      TextEditingController(text: controller.sourceIndexUrl);
+
+  @override
+  void initState() {
+    super.initState();
+    controller.addListener(_handleChange);
+  }
+
+  @override
+  void dispose() {
+    controller.removeListener(_handleChange);
+    sourceIndexController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+
+    return _SettingsSectionScaffold(
+      title: l10n.settingsNetwork,
+      child: ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
           _SettingsGroup(
             title: l10n.settingsNetwork,
             icon: Icons.public_outlined,
@@ -193,8 +402,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         labelText: l10n.settingsIndexUrl,
                         hintText: SettingsController.defaultSourceIndexUrl,
                       ),
-                      onSubmitted: (value) =>
-                          controller.setSourceIndexUrl(value),
+                      onSubmitted: controller.setSourceIndexUrl,
                     ),
                     const SizedBox(height: 12),
                     Row(
@@ -225,7 +433,59 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
+
+  void _handleChange() {
+    if (!mounted) {
+      return;
+    }
+    if (sourceIndexController.text != controller.sourceIndexUrl) {
+      sourceIndexController.text = controller.sourceIndexUrl;
+    }
+    setState(() {});
+  }
+}
+
+class _DownloadsSettingsPage extends StatefulWidget {
+  const _DownloadsSettingsPage();
+
+  @override
+  State<_DownloadsSettingsPage> createState() => _DownloadsSettingsPageState();
+}
+
+class _DownloadsSettingsPageState extends State<_DownloadsSettingsPage> {
+  final controller = SettingsController.instance;
+
+  String? downloadPath;
+
+  @override
+  void initState() {
+    super.initState();
+    controller.addListener(_handleChange);
+    DownloadController.instance.addListener(_handleChange);
+    DownloadController.instance.initialize();
+    unawaited(_refreshStorageInfo());
+  }
+
+  @override
+  void dispose() {
+    controller.removeListener(_handleChange);
+    DownloadController.instance.removeListener(_handleChange);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+
+    return _SettingsSectionScaffold(
+      title: l10n.settingsDownloads,
+      child: ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
           _SettingsGroup(
             title: l10n.settingsDownloads,
             icon: Icons.download_outlined,
@@ -245,7 +505,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 defaultLabel: l10n.settingsUseDefaultPath,
                 onOpen: downloadPath == null
                     ? null
-                    : () => _openDirectory(downloadPath!),
+                    : () => _openDirectory(context, downloadPath!),
                 onSelect: _pickDownloadDirectory,
                 onUseDefault: controller.downloadDirectoryPath == null
                     ? null
@@ -261,7 +521,116 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _refreshStorageInfo() async {
+    final nextDownloadPath = await DownloadController.instance.getStoragePath();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      downloadPath = nextDownloadPath;
+    });
+  }
+
+  Future<void> _pickDownloadDirectory() async {
+    final l10n = AppLocalizations.of(context);
+    try {
+      final selected = await getDirectoryPath();
+      if (selected == null || selected.trim().isEmpty) {
+        return;
+      }
+      if (!mounted) {
+        return;
+      }
+      final navigator = Navigator.of(context, rootNavigator: true);
+      await _runBusyDialog(navigator, () async {
+        await DownloadController.instance.relocateLibrary(selected);
+        await _refreshStorageInfo();
+      });
+      if (!mounted) {
+        return;
+      }
+      _showSettingsMessage(context, l10n.settingsPathUpdated);
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      _showSettingsMessage(context, l10n.settingsSelectFolderFailed);
+    }
+  }
+
+  Future<void> _resetDownloadDirectory() async {
+    final l10n = AppLocalizations.of(context);
+    try {
+      final navigator = Navigator.of(context, rootNavigator: true);
+      await _runBusyDialog(navigator, () async {
+        await DownloadController.instance.relocateLibrary(null);
+        await _refreshStorageInfo();
+      });
+      if (!mounted) {
+        return;
+      }
+      _showSettingsMessage(context, l10n.settingsPathUpdated);
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      _showSettingsMessage(context, l10n.settingsPathUpdateFailed);
+    }
+  }
+
+  void _handleChange() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {});
+    unawaited(_refreshStorageInfo());
+  }
+}
+
+class _AppSettingsPage extends StatefulWidget {
+  const _AppSettingsPage();
+
+  @override
+  State<_AppSettingsPage> createState() => _AppSettingsPageState();
+}
+
+class _AppSettingsPageState extends State<_AppSettingsPage> {
+  final controller = SettingsController.instance;
+
+  String? cachePath;
+  int cacheSizeBytes = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    controller.addListener(_handleChange);
+    PluginRuntimeController.instance.addListener(_handleChange);
+    HistoryController.instance.addListener(_handleChange);
+    unawaited(_refreshStorageInfo());
+  }
+
+  @override
+  void dispose() {
+    controller.removeListener(_handleChange);
+    PluginRuntimeController.instance.removeListener(_handleChange);
+    HistoryController.instance.removeListener(_handleChange);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+
+    return _SettingsSectionScaffold(
+      title: l10n.settingsApp,
+      child: ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
           _SettingsGroup(
             title: l10n.settingsApp,
             icon: Icons.apps_outlined,
@@ -275,7 +644,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 defaultLabel: l10n.settingsUseDefaultPath,
                 onOpen: cachePath == null
                     ? null
-                    : () => _openDirectory(cachePath!),
+                    : () => _openDirectory(context, cachePath!),
                 onSelect: _pickCacheDirectory,
                 onUseDefault: controller.readerCacheDirectoryPath == null
                     ? null
@@ -343,82 +712,21 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          _SettingsGroup(
-            title: l10n.settingsAbout,
-            icon: Icons.info_outline,
-            children: [
-              ListTile(
-                title: const Text('EZVenera'),
-                subtitle: Text(l10n.settingsAboutDescription),
-              ),
-              ListTile(
-                title: Text(l10n.settingsSourceRepository),
-                subtitle: Text(l10n.settingsSourceRepositorySubtitle),
-              ),
-              ListTile(
-                title: Text(l10n.settingsGithub),
-                subtitle: Text(l10n.settingsGithubSubtitle),
-                trailing: const Icon(Icons.open_in_new),
-                onTap: _openGithub,
-              ),
-              ListTile(
-                title: Text(l10n.settingsCheckUpdate),
-                subtitle: Text(
-                  l10n.settingsLatestVersionLabel('GitHub Release'),
-                ),
-                trailing: const Icon(Icons.system_update_alt_outlined),
-                onTap: _checkForUpdates,
-              ),
-            ],
-          ),
         ],
       ),
     );
   }
 
   Future<void> _refreshStorageInfo() async {
-    final nextDownloadPath = await DownloadController.instance.getStoragePath();
     final nextCachePath = await ReaderImageCache.instance.currentRootPath();
     final nextCacheSize = await ReaderImageCache.instance.diskUsageBytes();
     if (!mounted) {
       return;
     }
     setState(() {
-      downloadPath = nextDownloadPath;
       cachePath = nextCachePath;
       cacheSizeBytes = nextCacheSize;
     });
-  }
-
-  Future<void> _pickDownloadDirectory() async {
-    final l10n = AppLocalizations.of(context);
-    try {
-      final selected = await getDirectoryPath();
-      if (selected == null || selected.trim().isEmpty) {
-        return;
-      }
-      await _runBusy(() async {
-        await DownloadController.instance.relocateLibrary(selected);
-        await _refreshStorageInfo();
-      });
-      _showMessage(l10n.settingsPathUpdated);
-    } catch (_) {
-      _showMessage(l10n.settingsSelectFolderFailed);
-    }
-  }
-
-  Future<void> _resetDownloadDirectory() async {
-    final l10n = AppLocalizations.of(context);
-    try {
-      await _runBusy(() async {
-        await DownloadController.instance.relocateLibrary(null);
-        await _refreshStorageInfo();
-      });
-      _showMessage(l10n.settingsPathUpdated);
-    } catch (_) {
-      _showMessage(l10n.settingsPathUpdateFailed);
-    }
   }
 
   Future<void> _pickCacheDirectory() async {
@@ -428,57 +736,59 @@ class _SettingsPageState extends State<SettingsPage> {
       if (selected == null || selected.trim().isEmpty) {
         return;
       }
-      await _runBusy(() async {
+      if (!mounted) {
+        return;
+      }
+      final navigator = Navigator.of(context, rootNavigator: true);
+      await _runBusyDialog(navigator, () async {
         await controller.setReaderCacheDirectoryPath(selected);
         await ReaderImageCache.instance.reloadConfiguration();
         await _refreshStorageInfo();
       });
-      _showMessage(l10n.settingsPathUpdated);
+      if (!mounted) {
+        return;
+      }
+      _showSettingsMessage(context, l10n.settingsPathUpdated);
     } catch (_) {
-      _showMessage(l10n.settingsSelectFolderFailed);
+      if (!mounted) {
+        return;
+      }
+      _showSettingsMessage(context, l10n.settingsSelectFolderFailed);
     }
   }
 
   Future<void> _resetCacheDirectory() async {
     final l10n = AppLocalizations.of(context);
     try {
-      await _runBusy(() async {
+      final navigator = Navigator.of(context, rootNavigator: true);
+      await _runBusyDialog(navigator, () async {
         await controller.setReaderCacheDirectoryPath(null);
         await ReaderImageCache.instance.reloadConfiguration();
         await _refreshStorageInfo();
       });
-      _showMessage(l10n.settingsPathUpdated);
+      if (!mounted) {
+        return;
+      }
+      _showSettingsMessage(context, l10n.settingsPathUpdated);
     } catch (_) {
-      _showMessage(l10n.settingsPathUpdateFailed);
+      if (!mounted) {
+        return;
+      }
+      _showSettingsMessage(context, l10n.settingsPathUpdateFailed);
     }
   }
 
   Future<void> _clearReaderCache() async {
     final l10n = AppLocalizations.of(context);
-    await _runBusy(() async {
+    final navigator = Navigator.of(context, rootNavigator: true);
+    await _runBusyDialog(navigator, () async {
       await ReaderImageCache.instance.clearDiskCache();
       await _refreshStorageInfo();
     });
-    _showMessage(l10n.settingsCacheCleared);
-  }
-
-  Future<void> _openDirectory(String path) async {
-    final l10n = AppLocalizations.of(context);
-    try {
-      if (Platform.isWindows) {
-        await Process.start('explorer.exe', [path]);
-        return;
-      }
-      final opened = await launchUrl(
-        Uri.directory(path),
-        mode: LaunchMode.externalApplication,
-      );
-      if (!opened) {
-        throw StateError('open failed');
-      }
-    } catch (_) {
-      _showMessage(l10n.settingsDirectoryOpenFailed);
+    if (!mounted) {
+      return;
     }
+    _showSettingsMessage(context, l10n.settingsCacheCleared);
   }
 
   Future<void> _confirmReset() async {
@@ -513,6 +823,67 @@ class _SettingsPageState extends State<SettingsPage> {
     await _refreshStorageInfo();
   }
 
+  void _handleChange() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {});
+    unawaited(_refreshStorageInfo());
+  }
+}
+
+class _AboutSettingsPage extends StatefulWidget {
+  const _AboutSettingsPage();
+
+  @override
+  State<_AboutSettingsPage> createState() => _AboutSettingsPageState();
+}
+
+class _AboutSettingsPageState extends State<_AboutSettingsPage> {
+  static final _githubUri = Uri.parse('https://github.com/WEP-56/EZVenera');
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+
+    return _SettingsSectionScaffold(
+      title: l10n.settingsAbout,
+      child: ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          _SettingsGroup(
+            title: l10n.settingsAbout,
+            icon: Icons.info_outline,
+            children: [
+              ListTile(
+                title: const Text('EZVenera'),
+                subtitle: Text(l10n.settingsAboutDescription),
+              ),
+              ListTile(
+                title: Text(l10n.settingsSourceRepository),
+                subtitle: Text(l10n.settingsSourceRepositorySubtitle),
+              ),
+              ListTile(
+                title: Text(l10n.settingsGithub),
+                subtitle: Text(l10n.settingsGithubSubtitle),
+                trailing: const Icon(Icons.open_in_new),
+                onTap: _openGithub,
+              ),
+              ListTile(
+                title: Text(l10n.settingsCheckUpdate),
+                subtitle: Text(
+                  l10n.settingsLatestVersionLabel('GitHub Release'),
+                ),
+                trailing: const Icon(Icons.system_update_alt_outlined),
+                onTap: _checkForUpdates,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _openGithub() async {
     final l10n = AppLocalizations.of(context);
     final success = await launchUrl(
@@ -522,7 +893,7 @@ class _SettingsPageState extends State<SettingsPage> {
     if (success || !mounted) {
       return;
     }
-    _showMessage(l10n.settingsLinkOpenFailed);
+    _showSettingsMessage(context, l10n.settingsLinkOpenFailed);
   }
 
   Future<void> _checkForUpdates() async {
@@ -607,7 +978,13 @@ class _SettingsPageState extends State<SettingsPage> {
         await _launchInstaller(downloadedFile.path);
       }
     } catch (error) {
-      _showMessage('${l10n.settingsUpdateFailed} ${error.toString()}');
+      if (!mounted) {
+        return;
+      }
+      _showSettingsMessage(
+        context,
+        '${l10n.settingsUpdateFailed} ${error.toString()}',
+      );
     }
   }
 
@@ -781,90 +1158,139 @@ class _SettingsPageState extends State<SettingsPage> {
       throw StateError('Unable to launch installer.');
     }
   }
+}
 
-  Future<void> _runBusy(Future<void> Function() action) async {
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) {
-        return const PopScope(
-          canPop: false,
-          child: Center(
-            child: SizedBox.square(
-              dimension: 36,
-              child: CircularProgressIndicator(strokeWidth: 2.6),
-            ),
-          ),
-        );
-      },
+class _SettingsSectionScaffold extends StatelessWidget {
+  const _SettingsSectionScaffold({
+    required this.title,
+    required this.child,
+  });
+
+  final String title;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(title)),
+      body: SafeArea(child: child),
     );
-
-    try {
-      await action();
-    } finally {
-      if (mounted) {
-        Navigator.of(context, rootNavigator: true).pop();
-      }
-    }
-  }
-
-  String _themeModeLabel(AppLocalizations l10n, ThemeMode mode) {
-    return switch (mode) {
-      ThemeMode.light => l10n.light,
-      ThemeMode.dark => l10n.dark,
-      ThemeMode.system => l10n.systemLabel,
-    };
-  }
-
-  void _showMessage(String message) {
-    if (!mounted) {
-      return;
-    }
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
-  }
-
-  void _onSettingsChanged() {
-    if (!mounted) {
-      return;
-    }
-    if (sourceIndexController.text != controller.sourceIndexUrl) {
-      sourceIndexController.text = controller.sourceIndexUrl;
-    }
-    setState(() {});
-    _refreshStorageInfo();
-  }
-
-  String _formatBytes(int bytes) {
-    if (bytes < 1024) {
-      return '$bytes B';
-    }
-    final kb = bytes / 1024;
-    if (kb < 1024) {
-      return '${kb.toStringAsFixed(1)} KB';
-    }
-    final mb = kb / 1024;
-    if (mb < 1024) {
-      return '${mb.toStringAsFixed(1)} MB';
-    }
-    final gb = mb / 1024;
-    return '${gb.toStringAsFixed(2)} GB';
   }
 }
 
-class _ReleaseAsset {
-  const _ReleaseAsset({
-    required this.tag,
-    required this.version,
-    required this.name,
-    required this.url,
+class _SettingsHero extends StatelessWidget {
+  const _SettingsHero({required this.title, required this.subtitle});
+
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: theme.textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            subtitle,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsMenuCard extends StatelessWidget {
+  const _SettingsMenuCard({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.onTap,
   });
 
-  final String tag;
-  final String version;
-  final String name;
-  final String url;
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: onTap,
+        child: Ink(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: theme.colorScheme.outlineVariant),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  icon,
+                  color: theme.colorScheme.onPrimaryContainer,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Icon(Icons.chevron_right),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _SettingsGroup extends StatelessWidget {
@@ -991,4 +1417,102 @@ class _PathSettingTile extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ReleaseAsset {
+  const _ReleaseAsset({
+    required this.tag,
+    required this.version,
+    required this.name,
+    required this.url,
+  });
+
+  final String tag;
+  final String version;
+  final String name;
+  final String url;
+}
+
+Future<void> _runBusyDialog(
+  NavigatorState navigator,
+  Future<void> Function() action,
+) async {
+  showDialog<void>(
+    context: navigator.context,
+    barrierDismissible: false,
+    builder: (context) {
+      return const PopScope(
+        canPop: false,
+        child: Center(
+          child: SizedBox.square(
+            dimension: 36,
+            child: CircularProgressIndicator(strokeWidth: 2.6),
+          ),
+        ),
+      );
+    },
+  );
+
+  try {
+    await action();
+  } finally {
+    if (navigator.mounted) {
+      navigator.pop();
+    }
+  }
+}
+
+void _showSettingsMessage(BuildContext context, String message) {
+  if (!context.mounted) {
+    return;
+  }
+  ScaffoldMessenger.of(
+    context,
+  ).showSnackBar(SnackBar(content: Text(message)));
+}
+
+Future<void> _openDirectory(BuildContext context, String path) async {
+  final l10n = AppLocalizations.of(context);
+  try {
+    if (Platform.isWindows) {
+      await Process.start('explorer.exe', [path]);
+      return;
+    }
+    final opened = await launchUrl(
+      Uri.directory(path),
+      mode: LaunchMode.externalApplication,
+    );
+    if (!opened) {
+      throw StateError('open failed');
+    }
+  } catch (_) {
+    if (!context.mounted) {
+      return;
+    }
+    _showSettingsMessage(context, l10n.settingsDirectoryOpenFailed);
+  }
+}
+
+String _themeModeLabel(AppLocalizations l10n, ThemeMode mode) {
+  return switch (mode) {
+    ThemeMode.light => l10n.light,
+    ThemeMode.dark => l10n.dark,
+    ThemeMode.system => l10n.systemLabel,
+  };
+}
+
+String _formatBytes(int bytes) {
+  if (bytes < 1024) {
+    return '$bytes B';
+  }
+  final kb = bytes / 1024;
+  if (kb < 1024) {
+    return '${kb.toStringAsFixed(1)} KB';
+  }
+  final mb = kb / 1024;
+  if (mb < 1024) {
+    return '${mb.toStringAsFixed(1)} MB';
+  }
+  final gb = mb / 1024;
+  return '${gb.toStringAsFixed(2)} GB';
 }
