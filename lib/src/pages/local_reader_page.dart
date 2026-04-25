@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../library/history_controller.dart';
 import '../library/history_models.dart';
 import '../local_library/local_library_models.dart';
+import '../utils/natural_sort.dart';
 
 class LocalReaderPage extends StatefulWidget {
   const LocalReaderPage({
@@ -113,7 +114,7 @@ class _LocalReaderPageState extends State<LocalReaderPage> {
     }
 
     final files = directory.listSync().whereType<File>().toList();
-    files.sort((a, b) => a.path.compareTo(b.path));
+    files.sort((a, b) => naturalComparePaths(a.path, b.path));
     return files;
   }
 

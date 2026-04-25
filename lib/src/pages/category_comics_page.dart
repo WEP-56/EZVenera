@@ -28,12 +28,15 @@ class CategoryComicsPage extends StatefulWidget {
 }
 
 class _CategoryComicsPageState extends State<CategoryComicsPage> {
-  late List<String> optionValues = _defaultOptions();
+  List<PluginCategoryComicsOption> resolvedOptions =
+      const <PluginCategoryComicsOption>[];
+  List<String> optionValues = const <String>[];
   List<PluginComic> comics = const <PluginComic>[];
   bool isLoading = true;
   String? error;
   int currentPage = 1;
   int? maxPage;
+  String? nextToken;
 
   bool get isRanking => widget.ranking != null;
   bool get isSearchBridge => widget.searchKeyword != null;
@@ -41,7 +44,9 @@ class _CategoryComicsPageState extends State<CategoryComicsPage> {
   @override
   void initState() {
     super.initState();
-    _loadPage(1, replace: true);
+    resolvedOptions = _filteredOptions(widget.source.categoryComics?.options);
+    optionValues = _defaultOptions();
+    _initialize();
   }
 
   @override
@@ -61,19 +66,7 @@ class _CategoryComicsPageState extends State<CategoryComicsPage> {
     if (isRanking) {
       return const <PluginCategoryComicsOption>[];
     }
-    return (widget.source.categoryComics?.options ??
-            const <PluginCategoryComicsOption>[])
-        .where((option) {
-          final category = widget.categoryName ?? '';
-          if (option.notShowWhen.contains(category)) {
-            return false;
-          }
-          if (option.showWhen != null) {
-            return option.showWhen!.contains(category);
-          }
-          return true;
-        })
-        .toList();
+    return resolvedOptions;
   }
 
   Widget _buildOptions() {
@@ -188,10 +181,75 @@ class _CategoryComicsPageState extends State<CategoryComicsPage> {
     );
   }
 
-  bool get _canLoadMore => maxPage != null && currentPage < maxPage!;
+  bool get _canLoadMore {
+    if (isLoading || comics.isEmpty) {
+      return false;
+    }
+    if (isRanking) {
+      if (widget.ranking?.load != null) {
+        return maxPage != null && currentPage < maxPage!;
+      }
+      return widget.ranking?.loadNext != null && nextToken != null;
+    }
+    return maxPage != null && currentPage < maxPage!;
+  }
 
   List<String> _defaultOptions() {
     return _options.map((option) => option.options.keys.first).toList();
+  }
+
+  Future<void> _initialize() async {
+    await _loadDynamicOptions();
+    if (!mounted) {
+      return;
+    }
+    await _loadPage(1, replace: true);
+  }
+
+  Future<void> _loadDynamicOptions() async {
+    if (isRanking || isSearchBridge) {
+      return;
+    }
+    final loader = widget.source.categoryComics?.optionsLoader;
+    if (loader == null || widget.categoryName == null) {
+      resolvedOptions = _filteredOptions(widget.source.categoryComics?.options);
+      optionValues = _defaultOptions();
+      return;
+    }
+
+    final result = await loader(widget.categoryName!, widget.categoryParam);
+    if (!mounted) {
+      return;
+    }
+    if (result.isError) {
+      error = result.errorMessage;
+      resolvedOptions = _filteredOptions(widget.source.categoryComics?.options);
+      optionValues = _defaultOptions();
+      return;
+    }
+
+    resolvedOptions = _filteredOptions(result.data);
+    optionValues = _defaultOptions();
+  }
+
+  List<PluginCategoryComicsOption> _filteredOptions(
+    List<PluginCategoryComicsOption>? options,
+  ) {
+    return (options ?? const <PluginCategoryComicsOption>[])
+        .where((option) {
+          if (option.options.isEmpty) {
+            return false;
+          }
+          final category = widget.categoryName ?? '';
+          if (option.notShowWhen.contains(category)) {
+            return false;
+          }
+          if (option.showWhen != null) {
+            return option.showWhen!.contains(category);
+          }
+          return true;
+        })
+        .toList();
   }
 
   Future<void> _loadPage(int page, {bool replace = false}) async {
@@ -201,17 +259,13 @@ class _CategoryComicsPageState extends State<CategoryComicsPage> {
         error = null;
         currentPage = 1;
         maxPage = null;
+        nextToken = null;
       }
     });
 
     try {
       final result = isRanking
-          ? await widget.ranking!.load(
-              optionValues.isEmpty
-                  ? widget.ranking!.options.keys.first
-                  : optionValues.first,
-              page,
-            )
+          ? await _loadRankingPage(page, replace: replace)
           : isSearchBridge
           ? await _loadSearchPage(page)
           : await widget.source.categoryComics!.load(
@@ -228,8 +282,12 @@ class _CategoryComicsPageState extends State<CategoryComicsPage> {
       final loadedComics = result.data;
       setState(() {
         comics = replace ? loadedComics : [...comics, ...loadedComics];
-        currentPage = page;
-        maxPage = (result.subData as num?)?.toInt();
+        if (isRanking && widget.ranking?.loadNext != null) {
+          nextToken = result.subData?.toString();
+        } else {
+          currentPage = page;
+          maxPage = (result.subData as num?)?.toInt();
+        }
       });
     } catch (err) {
       setState(() {
@@ -242,6 +300,26 @@ class _CategoryComicsPageState extends State<CategoryComicsPage> {
         });
       }
     }
+  }
+
+  Future<PluginResult<List<PluginComic>>> _loadRankingPage(
+    int page, {
+    required bool replace,
+  }) async {
+    final ranking = widget.ranking;
+    if (ranking == null) {
+      return PluginResult<List<PluginComic>>.error('Ranking is not available.');
+    }
+    final selectedOption = ranking.options.keys.first;
+    if (ranking.load != null) {
+      return ranking.load!(selectedOption, page);
+    }
+    if (ranking.loadNext != null) {
+      return ranking.loadNext!(selectedOption, replace ? null : nextToken);
+    }
+    return PluginResult<List<PluginComic>>.error(
+      'Ranking does not support pagination.',
+    );
   }
 
   Future<PluginResult<List<PluginComic>>> _loadSearchPage(int page) async {

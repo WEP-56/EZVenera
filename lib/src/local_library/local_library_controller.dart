@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 
 import '../library/json_store.dart';
+import '../utils/natural_sort.dart';
 import 'local_library_models.dart';
 
 class LocalLibraryController extends ChangeNotifier {
@@ -160,7 +161,7 @@ class LocalLibraryController extends ChangeNotifier {
         childDirectories.add(entity);
       }
     }
-    childDirectories.sort((a, b) => a.path.compareTo(b.path));
+    childDirectories.sort((a, b) => naturalComparePaths(a.path, b.path));
 
     final comics = <LocalLibraryComic>[];
     for (final child in childDirectories) {
@@ -211,8 +212,8 @@ class LocalLibraryController extends ChangeNotifier {
       }
     }
 
-    rootImages.sort((a, b) => a.path.compareTo(b.path));
-    childDirectories.sort((a, b) => a.path.compareTo(b.path));
+    rootImages.sort((a, b) => naturalComparePaths(a.path, b.path));
+    childDirectories.sort((a, b) => naturalComparePaths(a.path, b.path));
 
     final chapters = <LocalLibraryChapter>[];
     for (final child in childDirectories) {
@@ -297,7 +298,7 @@ class LocalLibraryController extends ChangeNotifier {
         images.add(entity);
       }
     }
-    images.sort((a, b) => a.path.compareTo(b.path));
+    images.sort((a, b) => naturalComparePaths(a.path, b.path));
     return images;
   }
 

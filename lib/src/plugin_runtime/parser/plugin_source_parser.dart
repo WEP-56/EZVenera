@@ -433,35 +433,102 @@ class PluginSourceParser {
       );
     }
 
+    PluginCategoryOptionsLoader? optionsLoader;
+    if (_existsSync(sourceKey, 'categoryComics.optionLoader')) {
+      optionsLoader = (category, param) async {
+        try {
+          final result = await _resolve(
+            engine.runCode('''
+              ComicSource.sources.$sourceKey.categoryComics.optionLoader(
+                ${jsonEncode(category)},
+                ${jsonEncode(param)}
+              )
+            '''),
+          );
+          if (result is! List) {
+            return PluginResult<List<PluginCategoryComicsOption>>.error(
+              'Invalid category options result.',
+            );
+          }
+          return PluginResult<List<PluginCategoryComicsOption>>(
+            result.whereType<Map>().map((item) {
+              return PluginCategoryComicsOption(
+                label: item['label']?.toString() ?? '',
+                options: _optionMap(item['options'] as List?),
+                notShowWhen:
+                    _stringList(item['notShowWhen']) ?? const <String>[],
+                showWhen: _stringList(item['showWhen']),
+              );
+            }).toList(),
+          );
+        } catch (error) {
+          return PluginResult<List<PluginCategoryComicsOption>>.error(
+            error.toString(),
+          );
+        }
+      };
+    }
+
     PluginRankingCapability? ranking;
-    if (_existsSync(sourceKey, 'categoryComics.ranking.load')) {
+    if (_existsSync(sourceKey, 'categoryComics.ranking')) {
       ranking = PluginRankingCapability(
         options: _optionMap(
           _get(sourceKey, 'categoryComics.ranking.options') as List?,
         ),
-        load: (option, page) async {
-          try {
-            final result = await _resolve(
-              engine.runCode('''
-                ComicSource.sources.$sourceKey.categoryComics.ranking.load(
-                  ${jsonEncode(option)},
-                  ${jsonEncode(page)}
-                )
-              '''),
-            );
-            return PluginResult<List<PluginComic>>(
-              _comicList(result['comics'] as List, sourceKey),
-              subData: result['maxPage'],
-            );
-          } catch (error) {
-            return PluginResult<List<PluginComic>>.error(error.toString());
-          }
-        },
+        load: _existsSync(sourceKey, 'categoryComics.ranking.load')
+            ? (option, page) async {
+                try {
+                  final result = await _resolve(
+                    engine.runCode('''
+                      ComicSource.sources.$sourceKey.categoryComics.ranking.load(
+                        ${jsonEncode(option)},
+                        ${jsonEncode(page)}
+                      )
+                    '''),
+                  );
+                  return PluginResult<List<PluginComic>>(
+                    _comicList(result['comics'] as List, sourceKey),
+                    subData: result['maxPage'],
+                  );
+                } catch (error) {
+                  return PluginResult<List<PluginComic>>.error(error.toString());
+                }
+              }
+            : null,
+        loadNext:
+            _existsSync(sourceKey, 'categoryComics.ranking.loadNext') ||
+                _existsSync(sourceKey, 'categoryComics.ranking.loadWithNext')
+            ? (option, next) async {
+                try {
+                  final functionName = _existsSync(
+                    sourceKey,
+                    'categoryComics.ranking.loadNext',
+                  )
+                      ? 'loadNext'
+                      : 'loadWithNext';
+                  final result = await _resolve(
+                    engine.runCode('''
+                      ComicSource.sources.$sourceKey.categoryComics.ranking.$functionName(
+                        ${jsonEncode(option)},
+                        ${jsonEncode(next)}
+                      )
+                    '''),
+                  );
+                  return PluginResult<List<PluginComic>>(
+                    _comicList(result['comics'] as List, sourceKey),
+                    subData: result['next'],
+                  );
+                } catch (error) {
+                  return PluginResult<List<PluginComic>>.error(error.toString());
+                }
+              }
+            : null,
       );
     }
 
     return PluginCategoryComicsCapability(
       options: options,
+      optionsLoader: optionsLoader,
       ranking: ranking,
       load: (category, param, selectedOptions, page) async {
         try {

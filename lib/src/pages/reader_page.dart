@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:path/path.dart' as p;
 import 'package:window_manager/window_manager.dart';
 
 import '../downloads/download_models.dart';
@@ -17,6 +18,7 @@ import '../plugin_runtime/plugin_runtime_controller.dart';
 import '../plugin_runtime/result.dart';
 import '../reader/reader_image_cache.dart';
 import '../settings/settings_controller.dart';
+import '../utils/natural_sort.dart';
 
 class ReaderPage extends StatefulWidget {
   const ReaderPage({
@@ -561,10 +563,11 @@ class _ReaderPageState extends State<ReaderPage> {
             .listSync()
             .whereType<File>()
             .where(
-              (file) => !file.path.contains('${Platform.pathSeparator}cover.'),
+              (file) =>
+                  p.basenameWithoutExtension(file.path).toLowerCase() != 'cover',
             )
             .toList()
-          ..sort((a, b) => a.path.compareTo(b.path));
+          ..sort((a, b) => naturalComparePaths(a.path, b.path));
     return files.map((file) => file.path).toList();
   }
 
@@ -575,7 +578,7 @@ class _ReaderPageState extends State<ReaderPage> {
     }
 
     final files = directory.listSync().whereType<File>().toList()
-      ..sort((a, b) => a.path.compareTo(b.path));
+      ..sort((a, b) => naturalComparePaths(a.path, b.path));
     return files.map((file) => file.path).toList();
   }
 

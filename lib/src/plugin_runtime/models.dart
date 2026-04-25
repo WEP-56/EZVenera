@@ -26,8 +26,15 @@ typedef PluginCategoryComicsLoader =
       List<String> options,
       int page,
     );
+typedef PluginCategoryOptionsLoader =
+    Future<PluginResult<List<PluginCategoryComicsOption>>> Function(
+      String category,
+      String? param,
+    );
 typedef PluginRankingLoader =
     Future<PluginResult<List<PluginComic>>> Function(String option, int page);
+typedef PluginRankingLoadNext =
+    Future<PluginResult<List<PluginComic>>> Function(String option, String? next);
 typedef PluginComicInfoLoader =
     Future<PluginResult<PluginComicDetails>> Function(String id);
 typedef PluginComicPagesLoader =
@@ -225,11 +232,13 @@ class PluginCategoryComicsCapability {
   const PluginCategoryComicsCapability({
     required this.load,
     required this.options,
+    this.optionsLoader,
     this.ranking,
   });
 
   final PluginCategoryComicsLoader load;
   final List<PluginCategoryComicsOption> options;
+  final PluginCategoryOptionsLoader? optionsLoader;
   final PluginRankingCapability? ranking;
 }
 
@@ -248,10 +257,15 @@ class PluginCategoryComicsOption {
 }
 
 class PluginRankingCapability {
-  const PluginRankingCapability({required this.options, required this.load});
+  const PluginRankingCapability({
+    required this.options,
+    this.load,
+    this.loadNext,
+  });
 
   final Map<String, String> options;
-  final PluginRankingLoader load;
+  final PluginRankingLoader? load;
+  final PluginRankingLoadNext? loadNext;
 }
 
 class PluginComicCapability {
