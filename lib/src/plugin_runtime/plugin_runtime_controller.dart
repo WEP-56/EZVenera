@@ -65,7 +65,33 @@ class PluginRuntimeController extends ChangeNotifier {
         fileName = 'source.js';
       }
 
-      final source = await _runtime.installFromString(response.data!, fileName);
+      final source = await _runtime.installFromString(
+        response.data!,
+        fileName,
+        url,
+      );
+      _initialized = true;
+      return source;
+    });
+  }
+
+  Future<PluginSource> installFromLocalFile(String filePath) async {
+    return _runBusy(() async {
+      final file = File(filePath);
+      if (!await file.exists()) {
+        throw StateError('Plugin file not found.');
+      }
+
+      final javascript = await file.readAsString();
+      final fileName = file.uri.pathSegments.isEmpty
+          ? 'source.js'
+          : file.uri.pathSegments.last;
+
+      final source = await _runtime.installFromString(
+        javascript,
+        fileName.isEmpty ? 'source.js' : fileName,
+        null,
+      );
       _initialized = true;
       return source;
     });
@@ -78,12 +104,13 @@ class PluginRuntimeController extends ChangeNotifier {
   }
 
   Future<void> updateSource(PluginSource source) async {
-    if (source.url.trim().isEmpty) {
+    final updateUrl = source.updateUrl;
+    if (updateUrl.isEmpty) {
       throw StateError('This source does not define an update URL.');
     }
 
     await _runBusy(() async {
-      final response = await _dio.get<String>(source.url);
+      final response = await _dio.get<String>(updateUrl);
       if (response.statusCode == null ||
           response.statusCode! < 200 ||
           response.statusCode! >= 300 ||

@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import '../plugin_runtime/models.dart';
@@ -116,6 +117,11 @@ class _SourcesPageState extends State<SourcesPage> {
                   label: const Text('Comic Source List'),
                 ),
                 OutlinedButton.icon(
+                  onPressed: controller.isBusy ? null : _installFromLocalFile,
+                  icon: const Icon(Icons.folder_open_outlined),
+                  label: const Text('Install Local'),
+                ),
+                OutlinedButton.icon(
                   onPressed: controller.isBusy ? null : _reloadSources,
                   icon: const Icon(Icons.refresh),
                   label: const Text('Reload'),
@@ -196,6 +202,36 @@ class _SourcesPageState extends State<SourcesPage> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Failed to reload sources')));
+    }
+  }
+
+  Future<void> _installFromLocalFile() async {
+    try {
+      const typeGroup = XTypeGroup(
+        label: 'JavaScript',
+        extensions: <String>['js'],
+      );
+      final file = await openFile(acceptedTypeGroups: const <XTypeGroup>[
+        typeGroup,
+      ]);
+      if (file == null) {
+        return;
+      }
+
+      final source = await controller.installFromLocalFile(file.path);
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Installed ${source.name}')));
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
     }
   }
 
@@ -374,7 +410,7 @@ class _SourceCardState extends State<_SourceCard> {
                       runSpacing: 12,
                       children: [
                         OutlinedButton.icon(
-                          onPressed: source.url.trim().isEmpty
+                          onPressed: source.updateUrl.isEmpty
                               ? null
                               : () => _updateSource(context, source),
                           icon: const Icon(Icons.update),

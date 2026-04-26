@@ -45,15 +45,21 @@ class PluginSourceRepository {
 
   Future<PluginSource> installFromString(
     String javascript,
-    String fileName,
-  ) async {
+    String fileName, {
+    String? installSourceUrl,
+  }) async {
     await ensureInitialized();
 
     final targetFile = await _findAvailableFile(fileName);
     await targetFile.writeAsString(javascript);
 
     try {
-      return await parser.parse(javascript, filePath: targetFile.path);
+      final source = await parser.parse(javascript, filePath: targetFile.path);
+      if (installSourceUrl != null && installSourceUrl.trim().isNotEmpty) {
+        source.data['_installSourceUrl'] = installSourceUrl.trim();
+        await source.saveData();
+      }
+      return source;
     } catch (_) {
       await targetFile.delete();
       rethrow;

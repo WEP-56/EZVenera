@@ -84,8 +84,13 @@ class PluginRuntime {
   Future<PluginSource> installFromString(
     String javascript,
     String fileName,
+    String? installSourceUrl,
   ) async {
-    final source = await repository.installFromString(javascript, fileName);
+    final source = await repository.installFromString(
+      javascript,
+      fileName,
+      installSourceUrl: installSourceUrl,
+    );
     _sources.add(source);
     return source;
   }

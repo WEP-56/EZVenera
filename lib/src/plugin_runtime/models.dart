@@ -95,6 +95,14 @@ class PluginSource {
   final PluginLinkCapability? link;
   final PluginTagSuggestionSelect? onTagSuggestionSelected;
 
+  String get updateUrl {
+    final installSourceUrl = data['_installSourceUrl']?.toString().trim() ?? '';
+    if (installSourceUrl.isNotEmpty) {
+      return installSourceUrl;
+    }
+    return url.trim();
+  }
+
   bool get isLogged {
     if (data['_ez_logged'] == true || data['account'] != null) {
       return true;
