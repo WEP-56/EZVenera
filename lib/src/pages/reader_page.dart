@@ -19,6 +19,7 @@ import '../plugin_runtime/result.dart';
 import '../reader/reader_image_cache.dart';
 import '../settings/settings_controller.dart';
 import '../utils/natural_sort.dart';
+import '../utils/volume_listener.dart';
 
 class ReaderPage extends StatefulWidget {
   const ReaderPage({
@@ -82,6 +83,7 @@ class _ReaderPageState extends State<ReaderPage> {
 
   bool _isFullscreen = false;
   Timer? _autoPageTimer;
+  VolumeListener? _volumeListener;
 
   bool get _isPureLocalReader =>
       widget.localComic != null || widget.localLibraryComic != null;
@@ -90,6 +92,7 @@ class _ReaderPageState extends State<ReaderPage> {
   void initState() {
     super.initState();
     SettingsController.instance.addListener(_onSettingsChanged);
+    _updateVolumeListener();
     final history = HistoryController.instance.find(
       widget.sourceKey,
       widget.comicId,
@@ -122,6 +125,8 @@ class _ReaderPageState extends State<ReaderPage> {
   @override
   void dispose() {
     SettingsController.instance.removeListener(_onSettingsChanged);
+    _volumeListener?.cancel();
+    _volumeListener = null;
     _pendingTapTimer?.cancel();
     _autoPageTimer?.cancel();
     _autoPageTimer = null;
@@ -146,7 +151,48 @@ class _ReaderPageState extends State<ReaderPage> {
       pageController = PageController(initialPage: previousPage - 1);
       _pageControllerMode = newMode;
     }
+    _updateVolumeListener();
     setState(() {});
+  }
+
+  /// Attaches or detaches the Android volume-key listener to match the
+  /// current user preference. The reader is the only place volume-key
+  /// paging is active, so ownership of the subscription lives here.
+  void _updateVolumeListener() {
+    final wantsVolumeKeys =
+        VolumeListener.isSupported &&
+        SettingsController.instance.readerEnableVolumeKeys;
+    if (wantsVolumeKeys) {
+      if (_volumeListener != null) {
+        return;
+      }
+      _volumeListener = VolumeListener(
+        onUp: _handleVolumeKeyUp,
+        onDown: _handleVolumeKeyDown,
+      )..listen();
+    } else {
+      _volumeListener?.cancel();
+      _volumeListener = null;
+    }
+  }
+
+  void _handleVolumeKeyUp() {
+    // Volume up = previous page by default; the "reverse" user preference
+    // swaps it, so users who read right-to-left manga can keep the physical
+    // "down is forward" mapping if they prefer.
+    if (SettingsController.instance.readerReverseTapToTurnPages) {
+      _goToNextPage();
+    } else {
+      _goToPreviousPage();
+    }
+  }
+
+  void _handleVolumeKeyDown() {
+    if (SettingsController.instance.readerReverseTapToTurnPages) {
+      _goToPreviousPage();
+    } else {
+      _goToNextPage();
+    }
   }
 
   @override
@@ -164,8 +210,15 @@ class _ReaderPageState extends State<ReaderPage> {
         autoPageIntervalSeconds:
             SettingsController.instance.readerAutoPageIntervalSeconds,
         pageMode: SettingsController.instance.readerPageMode,
+        volumeKeys: SettingsController.instance.readerEnableVolumeKeys,
         onPageModeChanged: (value) async {
           await SettingsController.instance.setReaderPageMode(value);
+          if (mounted) {
+            setState(() {});
+          }
+        },
+        onVolumeKeysChanged: (value) async {
+          await SettingsController.instance.setReaderEnableVolumeKeys(value);
           if (mounted) {
             setState(() {});
           }
@@ -1739,12 +1792,14 @@ class _ReaderSettingsDrawer extends StatelessWidget {
     required this.pageAnimation,
     required this.autoPageIntervalSeconds,
     required this.pageMode,
+    required this.volumeKeys,
     required this.onTapToTurnChanged,
     required this.onReverseTapToTurnChanged,
     required this.onDoubleTapZoomChanged,
     required this.onPageAnimationChanged,
     required this.onAutoPageIntervalChanged,
     required this.onPageModeChanged,
+    required this.onVolumeKeysChanged,
   });
 
   final VoidCallback onClose;
@@ -1754,12 +1809,14 @@ class _ReaderSettingsDrawer extends StatelessWidget {
   final bool pageAnimation;
   final double autoPageIntervalSeconds;
   final ReaderPageMode pageMode;
+  final bool volumeKeys;
   final ValueChanged<bool> onTapToTurnChanged;
   final ValueChanged<bool> onReverseTapToTurnChanged;
   final ValueChanged<bool> onDoubleTapZoomChanged;
   final ValueChanged<bool> onPageAnimationChanged;
   final ValueChanged<double> onAutoPageIntervalChanged;
   final ValueChanged<ReaderPageMode> onPageModeChanged;
+  final ValueChanged<bool> onVolumeKeysChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -1827,6 +1884,13 @@ class _ReaderSettingsDrawer extends StatelessWidget {
                     value: tapToTurn,
                     onChanged: onTapToTurnChanged,
                   ),
+                  if (VolumeListener.isSupported)
+                    SwitchListTile(
+                      title: Text(l10n.readerVolumeKeys),
+                      subtitle: Text(l10n.readerVolumeKeysSubtitle),
+                      value: volumeKeys,
+                      onChanged: onVolumeKeysChanged,
+                    ),
                   SwitchListTile(
                     title: Text(l10n.readerReverseTapToTurn),
                     value: reverseTapToTurn,

@@ -39,6 +39,7 @@ class SettingsController extends ChangeNotifier {
   bool _readerEnablePageAnimation = true;
   double _readerAutoPageIntervalSeconds = 5;
   ReaderPageMode _readerPageMode = ReaderPageMode.galleryLeftToRight;
+  bool _readerEnableVolumeKeys = true;
   ComicDisplayMode _comicDisplayMode = ComicDisplayMode.grid;
   bool _downloadSaveCover = true;
   AppLanguageOption _language = AppLanguageOption.system;
@@ -58,6 +59,7 @@ class SettingsController extends ChangeNotifier {
   bool get readerEnablePageAnimation => _readerEnablePageAnimation;
   double get readerAutoPageIntervalSeconds => _readerAutoPageIntervalSeconds;
   ReaderPageMode get readerPageMode => _readerPageMode;
+  bool get readerEnableVolumeKeys => _readerEnableVolumeKeys;
   ComicDisplayMode get comicDisplayMode => _comicDisplayMode;
   bool get downloadSaveCover => _downloadSaveCover;
   AppLanguageOption get language => _language;
@@ -114,6 +116,8 @@ class SettingsController extends ChangeNotifier {
         _readerPageMode = _parseReaderPageMode(
           decoded['readerPageMode']?.toString(),
         );
+        _readerEnableVolumeKeys =
+            decoded['readerEnableVolumeKeys'] != false;
         _comicDisplayMode = _parseComicDisplayMode(
           decoded['comicDisplayMode']?.toString(),
         );
@@ -233,6 +237,15 @@ class SettingsController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setReaderEnableVolumeKeys(bool value) async {
+    if (_readerEnableVolumeKeys == value) {
+      return;
+    }
+    _readerEnableVolumeKeys = value;
+    await _persist();
+    notifyListeners();
+  }
+
   Future<void> setComicDisplayMode(ComicDisplayMode value) async {
     if (_comicDisplayMode == value) {
       return;
@@ -310,6 +323,7 @@ class SettingsController extends ChangeNotifier {
     _readerEnablePageAnimation = true;
     _readerAutoPageIntervalSeconds = 5;
     _readerPageMode = ReaderPageMode.galleryLeftToRight;
+    _readerEnableVolumeKeys = true;
     _comicDisplayMode = ComicDisplayMode.grid;
     _downloadSaveCover = true;
     _language = AppLanguageOption.system;
@@ -334,6 +348,7 @@ class SettingsController extends ChangeNotifier {
         'readerEnablePageAnimation': _readerEnablePageAnimation,
         'readerAutoPageIntervalSeconds': _readerAutoPageIntervalSeconds,
         'readerPageMode': _readerPageMode.name,
+        'readerEnableVolumeKeys': _readerEnableVolumeKeys,
         'comicDisplayMode': _comicDisplayMode.name,
         'downloadSaveCover': _downloadSaveCover,
         'language': _language.name,

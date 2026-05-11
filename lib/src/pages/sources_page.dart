@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
+import '../localization/app_localizations.dart';
 import '../plugin_runtime/models.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
 import '../settings/settings_controller.dart';
@@ -70,6 +71,7 @@ class _SourcesPageState extends State<SourcesPage> {
 
   Widget _buildAddSourceCard(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
 
     return Container(
       decoration: BoxDecoration(
@@ -80,22 +82,20 @@ class _SourcesPageState extends State<SourcesPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const ListTile(
-            leading: Icon(Icons.extension_outlined),
-            title: Text('Add comic source'),
-            subtitle: Text(
-              'Install a source by raw URL or from repository index',
-            ),
+          ListTile(
+            leading: const Icon(Icons.extension_outlined),
+            title: Text(l10n.sourcesAddTitle),
+            subtitle: Text(l10n.sourcesAddSubtitle),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             child: TextField(
               controller: urlController,
               enabled: !controller.isBusy,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                labelText: 'Source URL',
-                hintText: 'https://example.com/source.js',
+              decoration: InputDecoration(
+                border: const OutlineInputBorder(),
+                labelText: l10n.sourcesUrlLabel,
+                hintText: l10n.sourcesUrlHint,
               ),
               onSubmitted: (_) => _installFromUrl(),
             ),
@@ -109,22 +109,22 @@ class _SourcesPageState extends State<SourcesPage> {
                 FilledButton.icon(
                   onPressed: controller.isBusy ? null : _installFromUrl,
                   icon: const Icon(Icons.download_outlined),
-                  label: const Text('Install'),
+                  label: Text(l10n.sourcesInstall),
                 ),
                 OutlinedButton.icon(
                   onPressed: controller.isBusy ? null : _browseRepoIndex,
                   icon: const Icon(Icons.list_alt_outlined),
-                  label: const Text('Comic Source List'),
+                  label: Text(l10n.sourcesComicSourceList),
                 ),
                 OutlinedButton.icon(
                   onPressed: controller.isBusy ? null : _installFromLocalFile,
                   icon: const Icon(Icons.folder_open_outlined),
-                  label: const Text('Install Local'),
+                  label: Text(l10n.sourcesInstallLocal),
                 ),
                 OutlinedButton.icon(
                   onPressed: controller.isBusy ? null : _reloadSources,
                   icon: const Icon(Icons.refresh),
-                  label: const Text('Reload'),
+                  label: Text(l10n.sourcesReload),
                 ),
               ],
             ),
@@ -136,6 +136,7 @@ class _SourcesPageState extends State<SourcesPage> {
 
   Widget _buildEmptyState(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
 
     return Container(
       padding: const EdgeInsets.all(24),
@@ -147,10 +148,10 @@ class _SourcesPageState extends State<SourcesPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('No sources installed', style: theme.textTheme.titleLarge),
+          Text(l10n.sourcesNoSources, style: theme.textTheme.titleLarge),
           const SizedBox(height: 8),
           Text(
-            'Install a source config first. Existing Venera source files are supported as long as they stay within the retained EZVenera capability set.',
+            l10n.sourcesNoSourcesBody,
             style: theme.textTheme.bodyMedium?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
               height: 1.5,
@@ -167,26 +168,28 @@ class _SourcesPageState extends State<SourcesPage> {
       return;
     }
 
+    final l10n = AppLocalizations.of(context);
     try {
       final source = await controller.installFromUrl(url);
       if (!mounted) {
         return;
       }
       urlController.clear();
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Installed ${source.name}')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.sourcesInstalled(source.name))),
+      );
     } catch (_) {
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Failed to install source')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.sourcesInstallFailed)),
+      );
     }
   }
 
   Future<void> _reloadSources() async {
+    final l10n = AppLocalizations.of(context);
     try {
       await controller.reload();
       if (!mounted) {
@@ -194,26 +197,27 @@ class _SourcesPageState extends State<SourcesPage> {
       }
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Sources reloaded')));
+      ).showSnackBar(SnackBar(content: Text(l10n.sourcesReloaded)));
     } catch (_) {
       if (!mounted) {
         return;
       }
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Failed to reload sources')));
+      ).showSnackBar(SnackBar(content: Text(l10n.sourcesReloadFailed)));
     }
   }
 
   Future<void> _installFromLocalFile() async {
+    final l10n = AppLocalizations.of(context);
     try {
       const typeGroup = XTypeGroup(
         label: 'JavaScript',
         extensions: <String>['js'],
       );
-      final file = await openFile(acceptedTypeGroups: const <XTypeGroup>[
-        typeGroup,
-      ]);
+      final file = await openFile(
+        acceptedTypeGroups: const <XTypeGroup>[typeGroup],
+      );
       if (file == null) {
         return;
       }
@@ -222,9 +226,9 @@ class _SourcesPageState extends State<SourcesPage> {
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Installed ${source.name}')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.sourcesInstalled(source.name))),
+      );
     } catch (error) {
       if (!mounted) {
         return;
@@ -311,6 +315,7 @@ class _SourceCardState extends State<_SourceCard> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -380,7 +385,7 @@ class _SourceCardState extends State<_SourceCard> {
                 children: [
                   const Divider(height: 1),
                   if (source.settings.isNotEmpty) ...[
-                    _SectionTitle(title: 'Settings'),
+                    _SectionTitle(title: l10n.sourcesSettings),
                     ...source.settings.entries.map((entry) {
                       return _SourceSettingTile(
                         source: source,
@@ -392,11 +397,11 @@ class _SourceCardState extends State<_SourceCard> {
                     }),
                   ],
                   if (source.account != null) ...[
-                    _SectionTitle(title: 'Account'),
+                    _SectionTitle(title: l10n.sourcesAccount),
                     _SourceAccountTile(source: source),
                   ],
                   ListTile(
-                    title: const Text('Path'),
+                    title: Text(l10n.sourcesPath),
                     subtitle: Text(
                       source.filePath,
                       maxLines: 2,
@@ -414,12 +419,12 @@ class _SourceCardState extends State<_SourceCard> {
                               ? null
                               : () => _updateSource(context, source),
                           icon: const Icon(Icons.update),
-                          label: const Text('Update'),
+                          label: Text(l10n.sourcesUpdate),
                         ),
                         OutlinedButton.icon(
                           onPressed: () => _deleteSource(context, source),
                           icon: const Icon(Icons.delete_outline),
-                          label: const Text('Delete'),
+                          label: Text(l10n.sourcesDelete),
                         ),
                       ],
                     ),
@@ -449,14 +454,15 @@ class _SourceCardState extends State<_SourceCard> {
   }
 
   Future<void> _updateSource(BuildContext context, PluginSource source) async {
+    final l10n = AppLocalizations.of(context);
     try {
       await PluginRuntimeController.instance.updateSource(source);
       if (!context.mounted) {
         return;
       }
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Updated ${source.name}')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.sourcesUpdated(source.name))),
+      );
     } catch (error) {
       if (!context.mounted) {
         return;
@@ -468,20 +474,21 @@ class _SourceCardState extends State<_SourceCard> {
   }
 
   Future<void> _deleteSource(BuildContext context, PluginSource source) async {
+    final l10n = AppLocalizations.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Delete Source'),
-          content: Text('Delete ${source.name}?'),
+          title: Text(l10n.sourcesDeleteTitle),
+          content: Text(l10n.sourcesDeleteBody(source.name)),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancel'),
+              child: Text(l10n.cancel),
             ),
             FilledButton(
               onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Delete'),
+              child: Text(l10n.sourcesDelete),
             ),
           ],
         );
@@ -497,9 +504,9 @@ class _SourceCardState extends State<_SourceCard> {
       if (!context.mounted) {
         return;
       }
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Deleted ${source.name}')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.sourcesDeleted(source.name))),
+      );
     } catch (error) {
       if (!context.mounted) {
         return;
@@ -607,6 +614,7 @@ class _SourceSettingTile extends StatelessWidget {
     String initialValue,
   ) async {
     final controller = TextEditingController(text: initialValue);
+    final l10n = AppLocalizations.of(context);
     final result = await showDialog<String>(
       context: context,
       builder: (context) {
@@ -625,7 +633,7 @@ class _SourceSettingTile extends StatelessWidget {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Cancel'),
+                  child: Text(l10n.cancel),
                 ),
                 FilledButton(
                   onPressed: () {
@@ -635,13 +643,13 @@ class _SourceSettingTile extends StatelessWidget {
                         validator.isNotEmpty &&
                         !RegExp(validator).hasMatch(value)) {
                       setState(() {
-                        error = 'Invalid value';
+                        error = l10n.sourcesInvalidValue;
                       });
                       return;
                     }
                     Navigator.of(context).pop(value);
                   },
-                  child: const Text('Save'),
+                  child: Text(l10n.save),
                 ),
               ],
             );
@@ -676,6 +684,7 @@ class _SourceAccountTileState extends State<_SourceAccountTile> {
   @override
   Widget build(BuildContext context) {
     final account = source.account!;
+    final l10n = AppLocalizations.of(context);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -683,12 +692,15 @@ class _SourceAccountTileState extends State<_SourceAccountTile> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           ListTile(
-            title: Text(source.isLogged ? 'Logged in' : 'Not logged in'),
+            title: Text(
+              source.isLogged ? l10n.sourcesLoggedIn : l10n.sourcesNotLoggedIn,
+            ),
             subtitle: Text(
               [
-                if (account.login != null) 'Password login',
-                if (account.cookieFields != null) 'Cookie login',
-                if (account.loginWebsite != null) 'Web login URL available',
+                if (account.login != null) l10n.sourcesPasswordLogin,
+                if (account.cookieFields != null) l10n.sourcesCookieLogin,
+                if (account.loginWebsite != null)
+                  l10n.sourcesWebLoginAvailable,
               ].join(' / '),
             ),
             trailing: isLoading
@@ -705,29 +717,29 @@ class _SourceAccountTileState extends State<_SourceAccountTile> {
               if (!source.isLogged && account.login != null)
                 FilledButton(
                   onPressed: isLoading ? null : _loginWithPassword,
-                  child: const Text('Log in'),
+                  child: Text(l10n.sourcesLogIn),
                 ),
               if (!source.isLogged && account.cookieFields != null)
                 OutlinedButton(
                   onPressed: isLoading ? null : _loginWithCookies,
-                  child: const Text('Cookies'),
+                  child: Text(l10n.sourcesCookies),
                 ),
               if (!source.isLogged && account.loginWebsite != null)
                 OutlinedButton(
                   onPressed: isLoading ? null : _loginWithWebview,
-                  child: const Text('Webview'),
+                  child: Text(l10n.sourcesWebview),
                 ),
               if (source.isLogged)
                 OutlinedButton(
                   onPressed: isLoading ? null : _logout,
-                  child: const Text('Log out'),
+                  child: Text(l10n.sourcesLogOut),
                 ),
               if (source.isLogged &&
                   account.login != null &&
                   source.data['account'] is List)
                 OutlinedButton(
                   onPressed: isLoading ? null : _relogin,
-                  child: const Text('Re-login'),
+                  child: Text(l10n.sourcesReLogin),
                 ),
             ],
           ),
@@ -739,28 +751,29 @@ class _SourceAccountTileState extends State<_SourceAccountTile> {
   Future<void> _loginWithPassword() async {
     final accountController = TextEditingController();
     final passwordController = TextEditingController();
+    final l10n = AppLocalizations.of(context);
 
     final credentials = await showDialog<(String, String)>(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Log in'),
+          title: Text(l10n.sourcesLogIn),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
                 controller: accountController,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  labelText: 'Username',
+                decoration: InputDecoration(
+                  border: const OutlineInputBorder(),
+                  labelText: l10n.sourcesUsername,
                 ),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: passwordController,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  labelText: 'Password',
+                decoration: InputDecoration(
+                  border: const OutlineInputBorder(),
+                  labelText: l10n.sourcesPassword,
                 ),
                 obscureText: true,
               ),
@@ -769,7 +782,7 @@ class _SourceAccountTileState extends State<_SourceAccountTile> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
+              child: Text(l10n.cancel),
             ),
             FilledButton(
               onPressed: () {
@@ -777,7 +790,7 @@ class _SourceAccountTileState extends State<_SourceAccountTile> {
                   context,
                 ).pop((accountController.text.trim(), passwordController.text));
               },
-              child: const Text('Continue'),
+              child: Text(l10n.sourcesContinue),
             ),
           ],
         );
@@ -806,7 +819,7 @@ class _SourceAccountTileState extends State<_SourceAccountTile> {
       }
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Login successful')));
+      ).showSnackBar(SnackBar(content: Text(l10n.sourcesLoginSuccess)));
     } catch (error) {
       if (!mounted) {
         return;
@@ -828,12 +841,13 @@ class _SourceAccountTileState extends State<_SourceAccountTile> {
     final controllers = {
       for (final field in fields) field: TextEditingController(),
     };
+    final l10n = AppLocalizations.of(context);
 
     final values = await showDialog<List<String>>(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Cookie Login'),
+          title: Text(l10n.sourcesCookieLoginTitle),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -854,7 +868,7 @@ class _SourceAccountTileState extends State<_SourceAccountTile> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
+              child: Text(l10n.cancel),
             ),
             FilledButton(
               onPressed: () {
@@ -862,7 +876,7 @@ class _SourceAccountTileState extends State<_SourceAccountTile> {
                   context,
                 ).pop(fields.map((field) => controllers[field]!.text).toList());
               },
-              child: const Text('Continue'),
+              child: Text(l10n.sourcesContinue),
             ),
           ],
         );
@@ -879,7 +893,7 @@ class _SourceAccountTileState extends State<_SourceAccountTile> {
     try {
       final result = await source.account!.validateCookies!(values);
       if (!result) {
-        throw StateError('Invalid cookies');
+        throw StateError(l10n.sourcesInvalidCookies);
       }
       source.markLoggedIn();
       await source.saveData();
@@ -888,7 +902,7 @@ class _SourceAccountTileState extends State<_SourceAccountTile> {
       }
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Cookie login successful')));
+      ).showSnackBar(SnackBar(content: Text(l10n.sourcesCookieLoginSuccess)));
     } catch (error) {
       if (!mounted) {
         return;
@@ -910,6 +924,7 @@ class _SourceAccountTileState extends State<_SourceAccountTile> {
     if (accountData is! List || accountData.length < 2) {
       return;
     }
+    final l10n = AppLocalizations.of(context);
 
     setState(() {
       isLoading = true;
@@ -929,7 +944,7 @@ class _SourceAccountTileState extends State<_SourceAccountTile> {
       }
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Re-login successful')));
+      ).showSnackBar(SnackBar(content: Text(l10n.sourcesReloginSuccess)));
     } catch (error) {
       if (!mounted) {
         return;
@@ -960,14 +975,13 @@ class _SourceAccountTileState extends State<_SourceAccountTile> {
     if (source.account?.loginWebsite == null) {
       return;
     }
+    final l10n = AppLocalizations.of(context);
     if (source.account?.checkLoginStatus == null) {
       if (!mounted) {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('This source does not expose login status detection.'),
-        ),
+        SnackBar(content: Text(l10n.sourcesWebviewNoStatus)),
       );
       return;
     }
@@ -984,7 +998,7 @@ class _SourceAccountTileState extends State<_SourceAccountTile> {
     setState(() {});
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(const SnackBar(content: Text('Webview login successful')));
+    ).showSnackBar(SnackBar(content: Text(l10n.sourcesWebviewLoginSuccess)));
   }
 }
 
@@ -1001,12 +1015,13 @@ class _RepoIndexSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return SafeArea(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           ListTile(
-            title: const Text('Comic Source List'),
+            title: Text(l10n.sourcesComicSourceList),
             subtitle: Text(indexUrl),
           ),
           Flexible(

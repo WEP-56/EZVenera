@@ -109,6 +109,56 @@ class AppLocalizations {
       'reader.direction.leftToRight': 'Left to Right',
       'reader.direction.rightToLeft': 'Right to Left',
       'reader.direction.topToBottom': 'Top to Bottom',
+      'reader.volumeKeys': 'Volume-key page turning',
+      'reader.volumeKeysSubtitle':
+          'Use the device volume buttons to flip pages while reading.',
+      'sources.addTitle': 'Add comic source',
+      'sources.addSubtitle':
+          'Install a source by raw URL or from repository index',
+      'sources.urlLabel': 'Source URL',
+      'sources.urlHint': 'https://example.com/source.js',
+      'sources.install': 'Install',
+      'sources.comicSourceList': 'Comic Source List',
+      'sources.installLocal': 'Install Local',
+      'sources.reload': 'Reload',
+      'sources.installed': 'Installed {name}',
+      'sources.installFailed': 'Failed to install source',
+      'sources.reloaded': 'Sources reloaded',
+      'sources.reloadFailed': 'Failed to reload sources',
+      'sources.noSources': 'No sources installed',
+      'sources.noSourcesBody':
+          'Install a source config first. Existing Venera source files are supported as long as they stay within the retained EZVenera capability set.',
+      'sources.settings': 'Settings',
+      'sources.account': 'Account',
+      'sources.path': 'Path',
+      'sources.update': 'Update',
+      'sources.delete': 'Delete',
+      'sources.updated': 'Updated {name}',
+      'sources.deleteTitle': 'Delete Source',
+      'sources.deleteBody': 'Delete {name}?',
+      'sources.deleted': 'Deleted {name}',
+      'sources.loggedIn': 'Logged in',
+      'sources.notLoggedIn': 'Not logged in',
+      'sources.passwordLogin': 'Password login',
+      'sources.cookieLogin': 'Cookie login',
+      'sources.webLoginAvailable': 'Web login URL available',
+      'sources.logIn': 'Log in',
+      'sources.cookies': 'Cookies',
+      'sources.webview': 'Webview',
+      'sources.logOut': 'Log out',
+      'sources.reLogin': 'Re-login',
+      'sources.username': 'Username',
+      'sources.password': 'Password',
+      'sources.continueAction': 'Continue',
+      'sources.cookieLoginTitle': 'Cookie Login',
+      'sources.invalidCookies': 'Invalid cookies',
+      'sources.loginSuccess': 'Login successful',
+      'sources.cookieLoginSuccess': 'Cookie login successful',
+      'sources.reloginSuccess': 'Re-login successful',
+      'sources.webviewLoginSuccess': 'Webview login successful',
+      'sources.webviewNoStatus':
+          'This source does not expose login status detection.',
+      'sources.invalidValue': 'Invalid value',
       'common.open': 'Open',
       'common.delete': 'Delete',
       'common.save': 'Save',
@@ -415,6 +465,104 @@ class AppLocalizations {
       isChinese ? '从右至左' : _value('reader.direction.rightToLeft');
   String get readerDirectionTopToBottom =>
       isChinese ? '从上至下' : _value('reader.direction.topToBottom');
+  String get readerVolumeKeys =>
+      isChinese ? '音量键翻页' : _value('reader.volumeKeys');
+  String get readerVolumeKeysSubtitle => isChinese
+      ? '使用手机音量上下键翻页（仅 Android）。'
+      : _value('reader.volumeKeysSubtitle');
+  String get sourcesAddTitle =>
+      isChinese ? '添加图源' : _value('sources.addTitle');
+  String get sourcesAddSubtitle => isChinese
+      ? '通过链接或仓库索引安装一个图源。'
+      : _value('sources.addSubtitle');
+  String get sourcesUrlLabel =>
+      isChinese ? '图源 URL' : _value('sources.urlLabel');
+  String get sourcesUrlHint => _value('sources.urlHint');
+  String get sourcesInstall =>
+      isChinese ? '安装' : _value('sources.install');
+  String get sourcesComicSourceList =>
+      isChinese ? '图源列表' : _value('sources.comicSourceList');
+  String get sourcesInstallLocal =>
+      isChinese ? '本地安装' : _value('sources.installLocal');
+  String get sourcesReload =>
+      isChinese ? '重新加载' : _value('sources.reload');
+  String sourcesInstalled(String name) =>
+      (isChinese ? '已安装 {name}' : _value('sources.installed'))
+          .replaceAll('{name}', name);
+  String get sourcesInstallFailed =>
+      isChinese ? '安装图源失败' : _value('sources.installFailed');
+  String get sourcesReloaded =>
+      isChinese ? '图源已重新加载' : _value('sources.reloaded');
+  String get sourcesReloadFailed =>
+      isChinese ? '重新加载失败' : _value('sources.reloadFailed');
+  String get sourcesNoSources =>
+      isChinese ? '尚未安装图源' : _value('sources.noSources');
+  String get sourcesNoSourcesBody => isChinese
+      ? '先安装一个图源配置。现有的 Venera 图源文件只要使用了 EZVenera 支持的能力子集，都可以直接安装。'
+      : _value('sources.noSourcesBody');
+  String get sourcesSettings =>
+      isChinese ? '设置' : _value('sources.settings');
+  String get sourcesAccount =>
+      isChinese ? '账号' : _value('sources.account');
+  String get sourcesPath => isChinese ? '路径' : _value('sources.path');
+  String get sourcesUpdate =>
+      isChinese ? '更新' : _value('sources.update');
+  String get sourcesDelete =>
+      isChinese ? '删除' : _value('sources.delete');
+  String sourcesUpdated(String name) =>
+      (isChinese ? '已更新 {name}' : _value('sources.updated'))
+          .replaceAll('{name}', name);
+  String get sourcesDeleteTitle =>
+      isChinese ? '删除图源' : _value('sources.deleteTitle');
+  String sourcesDeleteBody(String name) =>
+      (isChinese ? '确定要删除 {name} 吗？' : _value('sources.deleteBody'))
+          .replaceAll('{name}', name);
+  String sourcesDeleted(String name) =>
+      (isChinese ? '已删除 {name}' : _value('sources.deleted'))
+          .replaceAll('{name}', name);
+  String get sourcesLoggedIn =>
+      isChinese ? '已登录' : _value('sources.loggedIn');
+  String get sourcesNotLoggedIn =>
+      isChinese ? '未登录' : _value('sources.notLoggedIn');
+  String get sourcesPasswordLogin =>
+      isChinese ? '密码登录' : _value('sources.passwordLogin');
+  String get sourcesCookieLogin =>
+      isChinese ? 'Cookie 登录' : _value('sources.cookieLogin');
+  String get sourcesWebLoginAvailable =>
+      isChinese ? '支持网页登录' : _value('sources.webLoginAvailable');
+  String get sourcesLogIn =>
+      isChinese ? '登录' : _value('sources.logIn');
+  String get sourcesCookies =>
+      isChinese ? 'Cookie' : _value('sources.cookies');
+  String get sourcesWebview =>
+      isChinese ? '浏览器登录' : _value('sources.webview');
+  String get sourcesLogOut =>
+      isChinese ? '退出登录' : _value('sources.logOut');
+  String get sourcesReLogin =>
+      isChinese ? '重新登录' : _value('sources.reLogin');
+  String get sourcesUsername =>
+      isChinese ? '账号' : _value('sources.username');
+  String get sourcesPassword =>
+      isChinese ? '密码' : _value('sources.password');
+  String get sourcesContinue =>
+      isChinese ? '继续' : _value('sources.continueAction');
+  String get sourcesCookieLoginTitle =>
+      isChinese ? 'Cookie 登录' : _value('sources.cookieLoginTitle');
+  String get sourcesInvalidCookies =>
+      isChinese ? 'Cookie 无效' : _value('sources.invalidCookies');
+  String get sourcesLoginSuccess =>
+      isChinese ? '登录成功' : _value('sources.loginSuccess');
+  String get sourcesCookieLoginSuccess =>
+      isChinese ? 'Cookie 登录成功' : _value('sources.cookieLoginSuccess');
+  String get sourcesReloginSuccess =>
+      isChinese ? '重新登录成功' : _value('sources.reloginSuccess');
+  String get sourcesWebviewLoginSuccess =>
+      isChinese ? '浏览器登录成功' : _value('sources.webviewLoginSuccess');
+  String get sourcesWebviewNoStatus => isChinese
+      ? '此图源未提供登录状态检测。'
+      : _value('sources.webviewNoStatus');
+  String get sourcesInvalidValue =>
+      isChinese ? '值无效' : _value('sources.invalidValue');
   String get open => _value('common.open');
   String get delete => _value('common.delete');
   String get save => _value('common.save');
