@@ -4,6 +4,33 @@ import 'package:flutter/material.dart';
 import '../plugin_runtime/models.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
 import '../plugin_runtime/services/plugin_image_loader.dart';
+import '../settings/settings_controller.dart';
+
+/// Adaptive list/grid renderer for search & category results.
+///
+/// Switches between the default [ComicDisplayMode.grid] layout and the
+/// venera-inspired [ComicDisplayMode.list] layout based on the current
+/// [SettingsController.comicDisplayMode] preference.
+class ComicDisplay extends StatelessWidget {
+  const ComicDisplay({super.key, required this.comics, required this.onTap});
+
+  final List<PluginComic> comics;
+  final ValueChanged<PluginComic> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: SettingsController.instance,
+      builder: (context, _) {
+        final mode = SettingsController.instance.comicDisplayMode;
+        if (mode == ComicDisplayMode.list) {
+          return ComicCardList(comics: comics, onTap: onTap);
+        }
+        return ComicCardGrid(comics: comics, onTap: onTap);
+      },
+    );
+  }
+}
 
 class ComicCardGrid extends StatelessWidget {
   const ComicCardGrid({super.key, required this.comics, required this.onTap});
@@ -55,6 +82,27 @@ class ComicCardGrid extends StatelessWidget {
       return 3;
     }
     return 2;
+  }
+}
+
+class ComicCardList extends StatelessWidget {
+  const ComicCardList({super.key, required this.comics, required this.onTap});
+
+  final List<PluginComic> comics;
+  final ValueChanged<PluginComic> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.separated(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: comics.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 10),
+      itemBuilder: (context, index) {
+        final comic = comics[index];
+        return _ComicListTile(comic: comic, onTap: () => onTap(comic));
+      },
+    );
   }
 }
 
@@ -170,7 +218,7 @@ class _ComicCardState extends State<_ComicCard> {
                             const Spacer(),
                             if (tags != null && tags.isNotEmpty)
                               Text(
-                                tags.take(3).join('  路  '),
+                                tags.take(3).join('  ·  '),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 softWrap: false,
@@ -219,7 +267,7 @@ class _ComicCardState extends State<_ComicCard> {
 
   String _trailingMeta(PluginComic comic) {
     if (comic.stars case final stars?) {
-      return '鈽?${stars.toStringAsFixed(1)}';
+      return '★ ${stars.toStringAsFixed(1)}';
     }
     if (comic.maxPage case final maxPage?) {
       return '$maxPage pages';
@@ -228,11 +276,187 @@ class _ComicCardState extends State<_ComicCard> {
   }
 }
 
+/// List variant inspired by the venera detailed comic tile. Left cover,
+/// right-hand metadata with compact tag chips - better suited to narrow
+/// (phone) viewports where grid cards cannot fit full titles.
+class _ComicListTile extends StatefulWidget {
+  const _ComicListTile({required this.comic, required this.onTap});
+
+  final PluginComic comic;
+  final VoidCallback onTap;
+
+  @override
+  State<_ComicListTile> createState() => _ComicListTileState();
+}
+
+class _ComicListTileState extends State<_ComicListTile> {
+  bool isHovering = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final comic = widget.comic;
+    final subtitle = comic.subtitle?.trim();
+    final description = comic.description.trim();
+    final tags = (comic.tags ?? const <String>[])
+        .where((tag) => tag.trim().isNotEmpty)
+        .toList();
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => isHovering = true),
+      onExit: (_) => setState(() => isHovering = false),
+      child: Material(
+        color: Colors.transparent,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: widget.onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            curve: Curves.easeOutCubic,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surface,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: isHovering
+                    ? theme.colorScheme.primary.withValues(alpha: 0.32)
+                    : theme.colorScheme.outlineVariant,
+              ),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 84,
+                  height: 112,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: _ComicCover(
+                      sourceKey: comic.sourceKey,
+                      imageUrl: comic.cover,
+                      compact: true,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        comic.maxPage == null
+                            ? comic.title.replaceAll('\n', ' ')
+                            : '[${comic.maxPage}P]${comic.title.replaceAll('\n', ' ')}',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          height: 1.25,
+                        ),
+                      ),
+                      if (subtitle != null && subtitle.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 6),
+                      if (tags.isNotEmpty)
+                        Wrap(
+                          spacing: 4,
+                          runSpacing: 4,
+                          children: [
+                            for (final tag in tags.take(4))
+                              _MiniTag(label: tag),
+                          ],
+                        )
+                      else if (description.isNotEmpty)
+                        Text(
+                          description,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          _MetaPill(label: comic.sourceKey),
+                          if (comic.language case final language?
+                              when language.trim().isNotEmpty) ...[
+                            const SizedBox(width: 6),
+                            _MetaPill(label: language),
+                          ],
+                          const Spacer(),
+                          if (comic.stars case final stars?)
+                            Text(
+                              '★ ${stars.toStringAsFixed(1)}',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.primary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MiniTag extends StatelessWidget {
+  const _MiniTag({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      constraints: const BoxConstraints(maxWidth: 140),
+      child: Text(
+        label.split(':').last,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: theme.colorScheme.onSecondaryContainer,
+        ),
+      ),
+    );
+  }
+}
+
 class _ComicCover extends StatefulWidget {
-  const _ComicCover({required this.sourceKey, required this.imageUrl});
+  const _ComicCover({
+    required this.sourceKey,
+    required this.imageUrl,
+    this.compact = false,
+  });
 
   final String sourceKey;
   final String imageUrl;
+
+  /// Small-mode cover used for the list tile. Removes the outer rounded
+  /// container so the parent can apply its own shape.
+  final bool compact;
 
   @override
   State<_ComicCover> createState() => _ComicCoverState();
@@ -263,43 +487,47 @@ class _ComicCoverState extends State<_ComicCover> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
+    final child = Container(
+      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.45),
+      width: double.infinity,
+      child: widget.imageUrl.trim().isEmpty
+          ? const _CoverFallback(icon: Icons.image_not_supported_outlined)
+          : FutureBuilder<Uint8List>(
+              future: imageFuture,
+              builder: (context, snapshot) {
+                if (snapshot.hasData) {
+                  return Image.memory(snapshot.data!, fit: BoxFit.cover);
+                }
+
+                if (snapshot.hasError) {
+                  return Image.network(
+                    widget.imageUrl,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return const _CoverFallback(
+                        icon: Icons.broken_image_outlined,
+                      );
+                    },
+                  );
+                }
+
+                return const Center(
+                  child: SizedBox.square(
+                    dimension: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2.2),
+                  ),
+                );
+              },
+            ),
+    );
+
+    if (widget.compact) {
+      return child;
+    }
+
     return ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      child: Container(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(
-          alpha: 0.45,
-        ),
-        width: double.infinity,
-        child: widget.imageUrl.trim().isEmpty
-            ? _CoverFallback(icon: Icons.image_not_supported_outlined)
-            : FutureBuilder<Uint8List>(
-                future: imageFuture,
-                builder: (context, snapshot) {
-                  if (snapshot.hasData) {
-                    return Image.memory(snapshot.data!, fit: BoxFit.cover);
-                  }
-
-                  if (snapshot.hasError) {
-                    return Image.network(
-                      widget.imageUrl,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) {
-                        return const _CoverFallback(
-                          icon: Icons.broken_image_outlined,
-                        );
-                      },
-                    );
-                  }
-
-                  return const Center(
-                    child: SizedBox.square(
-                      dimension: 26,
-                      child: CircularProgressIndicator(strokeWidth: 2.2),
-                    ),
-                  );
-                },
-              ),
-      ),
+      child: child,
     );
   }
 

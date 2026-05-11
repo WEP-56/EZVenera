@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../plugin_runtime/models.dart';
 import '../plugin_runtime/result.dart';
 import '../widgets/comic_card_grid.dart';
+import '../widgets/comic_display_toggle.dart';
 import 'comic_details_page.dart';
 
 class CategoryComicsPage extends StatefulWidget {
@@ -52,7 +53,10 @@ class _CategoryComicsPageState extends State<CategoryComicsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.pageTitle)),
+      appBar: AppBar(
+        title: Text(widget.pageTitle),
+        actions: const [ComicDisplayToggle(dense: true), SizedBox(width: 4)],
+      ),
       body: Column(
         children: [
           if (_options.isNotEmpty) _buildOptions(),
@@ -147,7 +151,7 @@ class _CategoryComicsPageState extends State<CategoryComicsPage> {
       padding: const EdgeInsets.all(16),
       children: [
         if (comics.isNotEmpty)
-          ComicCardGrid(
+          ComicDisplay(
             comics: comics,
             onTap: (comic) {
               Navigator.of(context).push(

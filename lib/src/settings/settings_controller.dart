@@ -7,6 +7,19 @@ import 'package:path_provider/path_provider.dart';
 
 import '../localization/app_localizations.dart';
 
+/// Layout mode for browsing results such as search output and category lists.
+enum ComicDisplayMode { grid, list }
+
+/// Reading orientation / direction for the comic reader.
+///
+/// * [galleryLeftToRight] - horizontal paging with left-to-right flow (western
+///   comics, default for most sources).
+/// * [galleryRightToLeft] - horizontal paging with right-to-left flow
+///   (Japanese manga).
+/// * [continuousTopToBottom] - vertical paging with top-to-bottom flow
+///   (webtoons).
+enum ReaderPageMode { galleryLeftToRight, galleryRightToLeft, continuousTopToBottom }
+
 class SettingsController extends ChangeNotifier {
   SettingsController._();
 
@@ -25,6 +38,8 @@ class SettingsController extends ChangeNotifier {
   bool _readerEnableDoubleTapZoom = true;
   bool _readerEnablePageAnimation = true;
   double _readerAutoPageIntervalSeconds = 5;
+  ReaderPageMode _readerPageMode = ReaderPageMode.galleryLeftToRight;
+  ComicDisplayMode _comicDisplayMode = ComicDisplayMode.grid;
   bool _downloadSaveCover = true;
   AppLanguageOption _language = AppLanguageOption.system;
   AppThemePreset _themePreset = AppThemePreset.teal;
@@ -42,6 +57,8 @@ class SettingsController extends ChangeNotifier {
   bool get readerEnableDoubleTapZoom => _readerEnableDoubleTapZoom;
   bool get readerEnablePageAnimation => _readerEnablePageAnimation;
   double get readerAutoPageIntervalSeconds => _readerAutoPageIntervalSeconds;
+  ReaderPageMode get readerPageMode => _readerPageMode;
+  ComicDisplayMode get comicDisplayMode => _comicDisplayMode;
   bool get downloadSaveCover => _downloadSaveCover;
   AppLanguageOption get language => _language;
   AppThemePreset get themePreset => _themePreset;
@@ -93,6 +110,12 @@ class SettingsController extends ChangeNotifier {
             decoded['readerEnablePageAnimation'] != false;
         _readerAutoPageIntervalSeconds = _parseAutoPageIntervalSeconds(
           (decoded['readerAutoPageIntervalSeconds'] as num?)?.toDouble(),
+        );
+        _readerPageMode = _parseReaderPageMode(
+          decoded['readerPageMode']?.toString(),
+        );
+        _comicDisplayMode = _parseComicDisplayMode(
+          decoded['comicDisplayMode']?.toString(),
         );
         _downloadSaveCover = decoded['downloadSaveCover'] != false;
         _language = _parseLanguage(decoded['language']?.toString());
@@ -201,6 +224,24 @@ class SettingsController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setReaderPageMode(ReaderPageMode value) async {
+    if (_readerPageMode == value) {
+      return;
+    }
+    _readerPageMode = value;
+    await _persist();
+    notifyListeners();
+  }
+
+  Future<void> setComicDisplayMode(ComicDisplayMode value) async {
+    if (_comicDisplayMode == value) {
+      return;
+    }
+    _comicDisplayMode = value;
+    await _persist();
+    notifyListeners();
+  }
+
   Future<void> setDownloadSaveCover(bool value) async {
     if (_downloadSaveCover == value) {
       return;
@@ -268,6 +309,8 @@ class SettingsController extends ChangeNotifier {
     _readerEnableDoubleTapZoom = true;
     _readerEnablePageAnimation = true;
     _readerAutoPageIntervalSeconds = 5;
+    _readerPageMode = ReaderPageMode.galleryLeftToRight;
+    _comicDisplayMode = ComicDisplayMode.grid;
     _downloadSaveCover = true;
     _language = AppLanguageOption.system;
     _themePreset = AppThemePreset.teal;
@@ -290,6 +333,8 @@ class SettingsController extends ChangeNotifier {
         'readerEnableDoubleTapZoom': _readerEnableDoubleTapZoom,
         'readerEnablePageAnimation': _readerEnablePageAnimation,
         'readerAutoPageIntervalSeconds': _readerAutoPageIntervalSeconds,
+        'readerPageMode': _readerPageMode.name,
+        'comicDisplayMode': _comicDisplayMode.name,
         'downloadSaveCover': _downloadSaveCover,
         'language': _language.name,
         'themePreset': _themePreset.name,
@@ -320,6 +365,21 @@ class SettingsController extends ChangeNotifier {
       return 5;
     }
     return value.clamp(1, 15).toDouble();
+  }
+
+  ReaderPageMode _parseReaderPageMode(String? value) {
+    return switch (value) {
+      'galleryRightToLeft' => ReaderPageMode.galleryRightToLeft,
+      'continuousTopToBottom' => ReaderPageMode.continuousTopToBottom,
+      _ => ReaderPageMode.galleryLeftToRight,
+    };
+  }
+
+  ComicDisplayMode _parseComicDisplayMode(String? value) {
+    return switch (value) {
+      'list' => ComicDisplayMode.list,
+      _ => ComicDisplayMode.grid,
+    };
   }
 
   AppLanguageOption _parseLanguage(String? value) {

@@ -264,128 +264,343 @@ class _ComicDetailsBody extends StatelessWidget {
   final bool isFavorite;
   final ValueChanged<_ChapterSelection> onChapterSelected;
 
+  /// Desktop <-> mobile breakpoint. Matches venera's `changePoint` so narrow
+  /// desktop windows and phones share the same compact layout.
+  static const double _mobileBreakpoint = 600;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isMobile = constraints.maxWidth < _mobileBreakpoint;
+        return ListView(
+          padding: EdgeInsets.symmetric(
+            horizontal: isMobile ? 0 : 24,
+            vertical: isMobile ? 0 : 24,
+          ),
+          children: [
+            const SizedBox(height: 8),
+            _HeaderRow(
+              summary: summary,
+              details: details,
+              isMobile: isMobile,
+            ),
+            const SizedBox(height: 16),
+            _ActionStrip(
+              isMobile: isMobile,
+              isFavorite: isFavorite,
+              onRead: onRead,
+              onDownload: onDownload,
+              onFavorite: onFavorite,
+            ),
+            const Divider(height: 24),
+            if ((details.description ?? summary.description).trim().isNotEmpty)
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 0),
+                child: _SectionCard(
+                  title: 'Description',
+                  child: Text(
+                    details.description ?? summary.description,
+                    style: Theme.of(context).textTheme.bodyLarge
+                        ?.copyWith(height: 1.6),
+                  ),
+                ),
+              ),
+            if (details.tags.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 0),
+                child: _SectionCard(
+                  title: 'Tags',
+                  child: _TagsBlock(tags: details.tags),
+                ),
+              ),
+            ],
+            if (details.chapters != null) ...[
+              const SizedBox(height: 16),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 0),
+                child: _SectionCard(
+                  title: 'Chapters',
+                  child: _ChaptersView(
+                    chapters: details.chapters!,
+                    onChapterSelected: onChapterSelected,
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 32),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// Compact cover + title row used on both mobile and desktop.
+///
+/// Inspired by venera's `buildTitle`: the cover stays at a fixed
+/// portrait-friendly size (144h × 104w) so the text column gets all the
+/// remaining width and the title wraps naturally on phones.
+class _HeaderRow extends StatelessWidget {
+  const _HeaderRow({
+    required this.summary,
+    required this.details,
+    required this.isMobile,
+  });
+
+  final PluginComic summary;
+  final PluginComicDetails details;
+  final bool isMobile;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final subtitle = (details.subtitle ?? summary.subtitle ?? '').trim();
 
-    return ListView(
-      padding: const EdgeInsets.all(24),
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _CoverCard(
-              sourceKey: summary.sourceKey,
-              imageUrl: details.cover.isNotEmpty
-                  ? details.cover
-                  : summary.cover,
-            ),
-            const SizedBox(width: 20),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    details.title,
-                    style: theme.textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  if ((details.subtitle ?? summary.subtitle ?? '')
-                      .isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      details.subtitle ?? summary.subtitle!,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      _MetaChip(label: details.sourceKey),
-                      _MetaChip(label: details.id),
-                      if (details.maxPage case final maxPage?)
-                        _MetaChip(label: '$maxPage pages'),
-                      if (details.url case final url? when url.isNotEmpty)
-                        _MetaChip(label: 'detail url'),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: [
-                      _ActionButton(label: 'Read', onPressed: onRead),
-                      _ActionButton(label: 'Download', onPressed: onDownload),
-                      _ActionButton(
-                        label: isFavorite ? 'Favorited' : 'Favorite',
-                        onPressed: onFavorite,
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        if ((details.description ?? summary.description).trim().isNotEmpty) ...[
-          const SizedBox(height: 24),
-          _SectionCard(
-            title: 'Description',
-            child: Text(
-              details.description ?? summary.description,
-              style: theme.textTheme.bodyLarge?.copyWith(height: 1.6),
-            ),
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _CoverCard(
+            sourceKey: summary.sourceKey,
+            imageUrl: details.cover.isNotEmpty ? details.cover : summary.cover,
           ),
-        ],
-        if (details.tags.isNotEmpty) ...[
-          const SizedBox(height: 16),
-          _SectionCard(
-            title: 'Tags',
+          const SizedBox(width: 16),
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: details.tags.entries.map((entry) {
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        entry.key,
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: entry.value
-                            .map((tag) => Chip(label: Text(tag)))
-                            .toList(),
-                      ),
-                    ],
+              children: [
+                SelectableText(
+                  details.title,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    height: 1.3,
                   ),
-                );
-              }).toList(),
+                ),
+                if (subtitle.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  SelectableText(
+                    subtitle,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 10),
+                Text(
+                  details.sourceKey,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: theme.colorScheme.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                if (details.maxPage case final maxPage?) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    '$maxPage pages',
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
         ],
-        if (details.chapters != null) ...[
-          const SizedBox(height: 16),
-          _SectionCard(
-            title: 'Chapters',
-            child: _ChaptersView(
-              chapters: details.chapters!,
-              onChapterSelected: onChapterSelected,
+      ),
+    );
+  }
+}
+
+/// Venera-inspired action bar.
+///
+/// Desktop / wide: a single row of colored icon buttons (Read, Download,
+/// Favorite) laid out horizontally.
+///
+/// Mobile / narrow: the horizontal icon strip stays compact (icons are
+/// horizontally scrollable if needed), and two full-width primary actions
+/// - Download and Read - are stacked beneath it for thumb reach.
+class _ActionStrip extends StatelessWidget {
+  const _ActionStrip({
+    required this.isMobile,
+    required this.isFavorite,
+    required this.onRead,
+    required this.onDownload,
+    required this.onFavorite,
+  });
+
+  final bool isMobile;
+  final bool isFavorite;
+  final VoidCallback onRead;
+  final VoidCallback onDownload;
+  final VoidCallback onFavorite;
+
+  @override
+  Widget build(BuildContext context) {
+    final iconRow = SizedBox(
+      height: 64,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        children: [
+          if (!isMobile)
+            _IconAction(
+              icon: Icons.play_circle_outline,
+              label: 'Read',
+              color: Colors.orange,
+              onPressed: onRead,
             ),
+          if (!isMobile)
+            _IconAction(
+              icon: Icons.download_outlined,
+              label: 'Download',
+              color: Colors.cyan,
+              onPressed: onDownload,
+            ),
+          _IconAction(
+            icon: isFavorite ? Icons.bookmark : Icons.bookmark_outline,
+            label: isFavorite ? 'Favorited' : 'Favorite',
+            color: Colors.purple,
+            active: isFavorite,
+            onPressed: onFavorite,
           ),
         ],
+      ),
+    );
+
+    if (!isMobile) {
+      return iconRow;
+    }
+
+    return Column(
+      children: [
+        iconRow,
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: FilledButton.tonal(
+                  onPressed: onDownload,
+                  child: const Text('Download'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton(
+                  onPressed: onRead,
+                  child: const Text('Read'),
+                ),
+              ),
+            ],
+          ),
+        ),
       ],
+    );
+  }
+}
+
+class _IconAction extends StatelessWidget {
+  const _IconAction({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onPressed,
+    this.active = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onPressed;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final effectiveColor = _contrastColor(theme, color);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onPressed,
+        child: Container(
+          width: 72,
+          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+          decoration: BoxDecoration(
+            color: active
+                ? effectiveColor.withValues(alpha: 0.14)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: effectiveColor, size: 24),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Ensures the decorative color stays readable on both light and dark
+  /// themes without looking too bright.
+  Color _contrastColor(ThemeData theme, Color base) {
+    final hsl = HSLColor.fromColor(base);
+    final isDark = theme.brightness == Brightness.dark;
+    return hsl
+        .withLightness(isDark ? 0.72 : 0.42)
+        .withSaturation((hsl.saturation * 0.9).clamp(0.0, 1.0))
+        .toColor();
+  }
+}
+
+class _TagsBlock extends StatelessWidget {
+  const _TagsBlock({required this.tags});
+
+  final Map<String, List<String>> tags;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: tags.entries.map((entry) {
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                entry.key,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: entry.value
+                    .map((tag) => Chip(label: Text(tag)))
+                    .toList(),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
     );
   }
 }
@@ -426,12 +641,12 @@ class _CoverCardState extends State<_CoverCard> {
     final theme = Theme.of(context);
 
     return Container(
-      width: 156,
-      height: 220,
+      width: 104,
+      height: 144,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: theme.colorScheme.outlineVariant),
       ),
       child: widget.imageUrl.isEmpty
@@ -482,29 +697,6 @@ class _CoverCardState extends State<_CoverCard> {
         imageUrl: widget.imageUrl,
       );
     });
-  }
-}
-
-class _MetaChip extends StatelessWidget {
-  const _MetaChip({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Chip(label: Text(label));
-  }
-}
-
-class _ActionButton extends StatelessWidget {
-  const _ActionButton({required this.label, required this.onPressed});
-
-  final String label;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return FilledButton(onPressed: onPressed, child: Text(label));
   }
 }
 

@@ -99,6 +99,16 @@ class AppLocalizations {
       'settings.installNow': 'Install Now',
       'settings.updateFailed': 'Failed to check or download the update.',
       'settings.latestVersionLabel': 'Latest version: {version}',
+      'settings.installFailed':
+          'Failed to launch the installer. You can open it manually at {path}.',
+      'settings.enableInstallFromUnknownSources':
+          'Allow this app to install packages in system settings, then try again.',
+      'comicDisplay.showList': 'Switch to List View',
+      'comicDisplay.showGrid': 'Switch to Grid View',
+      'reader.direction': 'Reading Direction',
+      'reader.direction.leftToRight': 'Left to Right',
+      'reader.direction.rightToLeft': 'Right to Left',
+      'reader.direction.topToBottom': 'Top to Bottom',
       'common.open': 'Open',
       'common.delete': 'Delete',
       'common.save': 'Save',
@@ -385,6 +395,26 @@ class AppLocalizations {
   String settingsLatestVersionLabel(String version) =>
       (isChinese ? '最新版本：{version}' : _value('settings.latestVersionLabel'))
           .replaceAll('{version}', version);
+  String settingsInstallFailed(String path) =>
+      (isChinese
+              ? '无法启动安装程序，可以手动在 {path} 打开。'
+              : _value('settings.installFailed'))
+          .replaceAll('{path}', path);
+  String get settingsEnableInstallFromUnknownSources => isChinese
+      ? '请在系统设置中允许本应用安装应用包后再试。'
+      : _value('settings.enableInstallFromUnknownSources');
+  String get comicDisplayShowList =>
+      isChinese ? '切换为列表视图' : _value('comicDisplay.showList');
+  String get comicDisplayShowGrid =>
+      isChinese ? '切换为网格视图' : _value('comicDisplay.showGrid');
+  String get readerDirection =>
+      isChinese ? '阅读方向' : _value('reader.direction');
+  String get readerDirectionLeftToRight =>
+      isChinese ? '从左至右' : _value('reader.direction.leftToRight');
+  String get readerDirectionRightToLeft =>
+      isChinese ? '从右至左' : _value('reader.direction.rightToLeft');
+  String get readerDirectionTopToBottom =>
+      isChinese ? '从上至下' : _value('reader.direction.topToBottom');
   String get open => _value('common.open');
   String get delete => _value('common.delete');
   String get save => _value('common.save');

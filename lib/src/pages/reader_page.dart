@@ -65,6 +65,7 @@ class _ReaderPageState extends State<ReaderPage> {
   String? error;
   int currentPage = 1;
   PageController? pageController;
+  ReaderPageMode? _pageControllerMode;
   final FocusNode focusNode = FocusNode();
   final GlobalKey<ScaffoldState> scaffoldKey = GlobalKey<ScaffoldState>();
   bool _attemptedContextLoad = false;
@@ -88,6 +89,7 @@ class _ReaderPageState extends State<ReaderPage> {
   @override
   void initState() {
     super.initState();
+    SettingsController.instance.addListener(_onSettingsChanged);
     final history = HistoryController.instance.find(
       widget.sourceKey,
       widget.comicId,
@@ -119,6 +121,7 @@ class _ReaderPageState extends State<ReaderPage> {
 
   @override
   void dispose() {
+    SettingsController.instance.removeListener(_onSettingsChanged);
     _pendingTapTimer?.cancel();
     _autoPageTimer?.cancel();
     _autoPageTimer = null;
@@ -128,6 +131,22 @@ class _ReaderPageState extends State<ReaderPage> {
     focusNode.dispose();
     pageController?.dispose();
     super.dispose();
+  }
+
+  void _onSettingsChanged() {
+    if (!mounted) {
+      return;
+    }
+    final newMode = SettingsController.instance.readerPageMode;
+    if (_pageControllerMode != null && _pageControllerMode != newMode) {
+      // PageView does not support changing scrollDirection in place; we must
+      // recreate the controller so the new axis/reverse is picked up cleanly.
+      final previousPage = currentPage;
+      pageController?.dispose();
+      pageController = PageController(initialPage: previousPage - 1);
+      _pageControllerMode = newMode;
+    }
+    setState(() {});
   }
 
   @override
@@ -144,6 +163,13 @@ class _ReaderPageState extends State<ReaderPage> {
         pageAnimation: SettingsController.instance.readerEnablePageAnimation,
         autoPageIntervalSeconds:
             SettingsController.instance.readerAutoPageIntervalSeconds,
+        pageMode: SettingsController.instance.readerPageMode,
+        onPageModeChanged: (value) async {
+          await SettingsController.instance.setReaderPageMode(value);
+          if (mounted) {
+            setState(() {});
+          }
+        },
         onTapToTurnChanged: (value) async {
           await SettingsController.instance.setReaderEnableTapToTurnPages(
             value,
@@ -233,14 +259,22 @@ class _ReaderPageState extends State<ReaderPage> {
       },
       child: LayoutBuilder(
         builder: (context, constraints) {
+          final pageMode = SettingsController.instance.readerPageMode;
+          final isVertical =
+              pageMode == ReaderPageMode.continuousTopToBottom;
+          final isRtl = pageMode == ReaderPageMode.galleryRightToLeft;
           return GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTapUp: (details) => _handleTapUp(details, constraints.biggest),
             child: Stack(
               children: [
                 PageView.builder(
+                  key: ValueKey<ReaderPageMode>(pageMode),
                   controller: pageController,
                   itemCount: images.length,
+                  scrollDirection:
+                      isVertical ? Axis.vertical : Axis.horizontal,
+                  reverse: isRtl,
                   physics: _isCurrentImageZoomed
                       ? const NeverScrollableScrollPhysics()
                       : null,
@@ -441,6 +475,7 @@ class _ReaderPageState extends State<ReaderPage> {
 
       pageController?.dispose();
       pageController = PageController(initialPage: currentPage - 1);
+      _pageControllerMode = SettingsController.instance.readerPageMode;
       _isCurrentImageZoomed = false;
       _prefetchAround(currentPage);
       await _recordHistory();
@@ -727,7 +762,8 @@ class _ReaderPageState extends State<ReaderPage> {
 
   void _handleSingleTap(TapUpDetails details, Size viewportSize) {
     final width = viewportSize.width;
-    if (width <= 0) {
+    final height = viewportSize.height;
+    if (width <= 0 || height <= 0) {
       return;
     }
     final settings = SettingsController.instance;
@@ -738,20 +774,48 @@ class _ReaderPageState extends State<ReaderPage> {
       return;
     }
     if (settings.readerEnableTapToTurnPages) {
-      final localDx = details.localPosition.dx;
-      final tapPrev = settings.readerReverseTapToTurnPages
-          ? _goToNextPage
-          : _goToPreviousPage;
-      final tapNext = settings.readerReverseTapToTurnPages
-          ? _goToPreviousPage
-          : _goToNextPage;
-      if (localDx < width * _tapToTurnPagePercent) {
-        tapPrev();
-        return;
-      }
-      if (localDx > width * (1 - _tapToTurnPagePercent)) {
-        tapNext();
-        return;
+      final pageMode = settings.readerPageMode;
+      final isVertical =
+          pageMode == ReaderPageMode.continuousTopToBottom;
+      final isRtl = pageMode == ReaderPageMode.galleryRightToLeft;
+
+      // Right-to-left mode swaps which side is "previous". The user's
+      // `readerReverseTapToTurnPages` toggle still applies on top of this
+      // so people can further customize their preferred mapping.
+      final naturalReverse =
+          isRtl ^ settings.readerReverseTapToTurnPages;
+      final tapPrev = naturalReverse ? _goToNextPage : _goToPreviousPage;
+      final tapNext = naturalReverse ? _goToPreviousPage : _goToNextPage;
+
+      if (isVertical) {
+        final localDy = details.localPosition.dy;
+        // Vertical reader uses top/bottom tap zones; reverse here is
+        // intentionally ignored because scrolling direction itself is fixed
+        // top-to-bottom in webtoon layout.
+        final verticalPrev = settings.readerReverseTapToTurnPages
+            ? _goToNextPage
+            : _goToPreviousPage;
+        final verticalNext = settings.readerReverseTapToTurnPages
+            ? _goToPreviousPage
+            : _goToNextPage;
+        if (localDy < height * _tapToTurnPagePercent) {
+          verticalPrev();
+          return;
+        }
+        if (localDy > height * (1 - _tapToTurnPagePercent)) {
+          verticalNext();
+          return;
+        }
+      } else {
+        final localDx = details.localPosition.dx;
+        if (localDx < width * _tapToTurnPagePercent) {
+          tapPrev();
+          return;
+        }
+        if (localDx > width * (1 - _tapToTurnPagePercent)) {
+          tapNext();
+          return;
+        }
       }
     }
     setState(() {
@@ -1674,11 +1738,13 @@ class _ReaderSettingsDrawer extends StatelessWidget {
     required this.doubleTapZoom,
     required this.pageAnimation,
     required this.autoPageIntervalSeconds,
+    required this.pageMode,
     required this.onTapToTurnChanged,
     required this.onReverseTapToTurnChanged,
     required this.onDoubleTapZoomChanged,
     required this.onPageAnimationChanged,
     required this.onAutoPageIntervalChanged,
+    required this.onPageModeChanged,
   });
 
   final VoidCallback onClose;
@@ -1687,11 +1753,13 @@ class _ReaderSettingsDrawer extends StatelessWidget {
   final bool doubleTapZoom;
   final bool pageAnimation;
   final double autoPageIntervalSeconds;
+  final ReaderPageMode pageMode;
   final ValueChanged<bool> onTapToTurnChanged;
   final ValueChanged<bool> onReverseTapToTurnChanged;
   final ValueChanged<bool> onDoubleTapZoomChanged;
   final ValueChanged<bool> onPageAnimationChanged;
   final ValueChanged<double> onAutoPageIntervalChanged;
+  final ValueChanged<ReaderPageMode> onPageModeChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -1718,6 +1786,42 @@ class _ReaderSettingsDrawer extends StatelessWidget {
               child: ListView(
                 padding: const EdgeInsets.only(bottom: 24),
                 children: [
+                  ListTile(
+                    title: Text(l10n.readerDirection),
+                    subtitle: Text(_pageModeLabel(l10n, pageMode)),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 4,
+                    ),
+                    child: SegmentedButton<ReaderPageMode>(
+                      segments: [
+                        ButtonSegment(
+                          value: ReaderPageMode.galleryLeftToRight,
+                          icon: const Icon(Icons.east),
+                          tooltip: l10n.readerDirectionLeftToRight,
+                        ),
+                        ButtonSegment(
+                          value: ReaderPageMode.galleryRightToLeft,
+                          icon: const Icon(Icons.west),
+                          tooltip: l10n.readerDirectionRightToLeft,
+                        ),
+                        ButtonSegment(
+                          value: ReaderPageMode.continuousTopToBottom,
+                          icon: const Icon(Icons.south),
+                          tooltip: l10n.readerDirectionTopToBottom,
+                        ),
+                      ],
+                      selected: <ReaderPageMode>{pageMode},
+                      onSelectionChanged: (set) => onPageModeChanged(set.first),
+                      showSelectedIcon: false,
+                      style: ButtonStyle(
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ),
+                  ),
+                  const Divider(height: 24),
                   SwitchListTile(
                     title: Text(l10n.readerTapToTurn),
                     value: tapToTurn,
@@ -1761,4 +1865,12 @@ class _ReaderSettingsDrawer extends StatelessWidget {
       ),
     );
   }
+}
+
+String _pageModeLabel(AppLocalizations l10n, ReaderPageMode mode) {
+  return switch (mode) {
+    ReaderPageMode.galleryLeftToRight => l10n.readerDirectionLeftToRight,
+    ReaderPageMode.galleryRightToLeft => l10n.readerDirectionRightToLeft,
+    ReaderPageMode.continuousTopToBottom => l10n.readerDirectionTopToBottom,
+  };
 }

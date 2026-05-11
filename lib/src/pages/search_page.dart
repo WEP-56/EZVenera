@@ -7,6 +7,7 @@ import '../plugin_runtime/models.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
 import '../state/app_state_controller.dart';
 import '../widgets/comic_card_grid.dart';
+import '../widgets/comic_display_toggle.dart';
 import 'comic_details_page.dart';
 
 class SearchPage extends StatefulWidget {
@@ -84,7 +85,15 @@ class _SearchPageState extends State<SearchPage> {
               ),
             if (results.isNotEmpty) const SizedBox(height: 20),
             if (results.isNotEmpty)
-              ComicCardGrid(
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: const ComicDisplayToggle(dense: true),
+                ),
+              ),
+            if (results.isNotEmpty)
+              ComicDisplay(
                 comics: results,
                 onTap: (comic) {
                   Navigator.of(context).push(

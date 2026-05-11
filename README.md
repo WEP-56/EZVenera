@@ -77,3 +77,16 @@ flutter test
 ## 感谢社区
 
 - [linux.do](https://linux.do/)
+
+## Star History
+
+<a href="https://www.star-history.com/?repos=WEP-56%2FEZVenera&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=WEP-56/EZVenera&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=WEP-56/EZVenera&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=WEP-56/EZVenera&type=date&legend=top-left" />
+ </picture>
+</a>
+
+## 交流Q群
+[![QQ群](https://img.shields.io/badge/QQ群-1085492350-12B7F5?logo=tencentqq&logoColor=white)](https://qm.qq.com/q/1085492350)

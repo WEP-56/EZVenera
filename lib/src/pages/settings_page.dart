@@ -1132,18 +1132,69 @@ class _AboutSettingsPageState extends State<_AboutSettingsPage> {
 
   Future<void> _launchInstaller(String path) async {
     if (Platform.isWindows) {
-      await Process.start(path, const <String>[], mode: ProcessStartMode.detached);
+      try {
+        // Use `cmd /c start` so Windows routes the launch through
+        // ShellExecute. This is required for the UAC elevation prompt to
+        // be displayed for the NSIS installer (Process.start uses
+        // CreateProcess which cannot silently elevate, so the installer
+        // stays invisible).
+        //
+        // Argument layout:
+        //   - `/c`      Run the command then terminate cmd.
+        //   - `start`   Cmd builtin that invokes ShellExecute.
+        //   - `""`      Empty title argument; required because `start` treats
+        //               the first quoted argument as a window title.
+        //   - `path`    The installer to run.
+        await Process.start(
+          'cmd.exe',
+          ['/c', 'start', '""', path],
+          mode: ProcessStartMode.detached,
+          runInShell: false,
+        );
+      } catch (_) {
+        final launched = await launchUrl(
+          Uri.file(path),
+          mode: LaunchMode.externalApplication,
+        );
+        if (!launched) {
+          throw StateError('Unable to launch Windows installer.');
+        }
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 800));
       exit(0);
     }
 
     if (Platform.isAndroid) {
-      final result = await OpenFilex.open(path);
-      if (result.type != ResultType.done) {
-        throw StateError(
-          result.message.isEmpty
-              ? 'Unable to launch installer.'
-              : result.message,
+      final result = await OpenFilex.open(
+        path,
+        type: 'application/vnd.android.package-archive',
+      );
+      if (result.type == ResultType.permissionDenied) {
+        if (!mounted) {
+          return;
+        }
+        final l10n = AppLocalizations.of(context);
+        _showSettingsMessage(
+          context,
+          l10n.settingsEnableInstallFromUnknownSources,
         );
+        await _requestUnknownSourcesSettings();
+        return;
+      }
+      if (result.type != ResultType.done) {
+        if (!mounted) {
+          throw StateError(
+            result.message.isEmpty
+                ? 'Unable to launch installer.'
+                : result.message,
+          );
+        }
+        final l10n = AppLocalizations.of(context);
+        _showSettingsMessage(
+          context,
+          l10n.settingsInstallFailed(path),
+        );
+        return;
       }
       await Future<void>.delayed(const Duration(milliseconds: 1200));
       SystemNavigator.pop();
@@ -1156,6 +1207,25 @@ class _AboutSettingsPageState extends State<_AboutSettingsPage> {
     );
     if (!launched) {
       throw StateError('Unable to launch installer.');
+    }
+  }
+
+  Future<void> _requestUnknownSourcesSettings() async {
+    if (!Platform.isAndroid) {
+      return;
+    }
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      // `package:<id>` opens the app-info screen on Android, where the user
+      // can grant the "install unknown apps" permission for this app. This
+      // is the most reliable cross-version entry point since dedicated intents
+      // like `MANAGE_UNKNOWN_APP_SOURCES` are not routable via launchUrl.
+      await launchUrl(
+        Uri.parse('package:${packageInfo.packageName}'),
+        mode: LaunchMode.externalApplication,
+      );
+    } catch (_) {
+      // Intentionally swallowed - the user already saw the guidance message.
     }
   }
 }
