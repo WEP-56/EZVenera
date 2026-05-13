@@ -38,6 +38,10 @@ class _CategoryComicsPageState extends State<CategoryComicsPage> {
   int currentPage = 1;
   int? maxPage;
   String? nextToken;
+  final ScrollController _scrollController = ScrollController();
+  bool _optionsVisible = true;
+  double _lastScrollOffset = 0;
+  static const _scrollThreshold = 40.0;
 
   bool get isRanking => widget.ranking != null;
   bool get isSearchBridge => widget.searchKeyword != null;
@@ -47,7 +51,29 @@ class _CategoryComicsPageState extends State<CategoryComicsPage> {
     super.initState();
     resolvedOptions = _filteredOptions(widget.source.categoryComics?.options);
     optionValues = _defaultOptions();
+    _scrollController.addListener(_onScroll);
     _initialize();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    final offset = _scrollController.offset;
+    final delta = offset - _lastScrollOffset;
+    if (delta > _scrollThreshold && _optionsVisible) {
+      setState(() => _optionsVisible = false);
+      _lastScrollOffset = offset;
+    } else if (delta < -_scrollThreshold && !_optionsVisible) {
+      setState(() => _optionsVisible = true);
+      _lastScrollOffset = offset;
+    } else if (delta.abs() > _scrollThreshold) {
+      _lastScrollOffset = offset;
+    }
   }
 
   @override
@@ -59,7 +85,20 @@ class _CategoryComicsPageState extends State<CategoryComicsPage> {
       ),
       body: Column(
         children: [
-          if (_options.isNotEmpty) _buildOptions(),
+          if (_options.isNotEmpty)
+            ClipRect(
+              child: AnimatedAlign(
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.easeOutCubic,
+                alignment: Alignment.topCenter,
+                heightFactor: _optionsVisible ? 1.0 : 0.0,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 200),
+                  opacity: _optionsVisible ? 1.0 : 0.0,
+                  child: _buildOptions(),
+                ),
+              ),
+            ),
           Expanded(child: _buildBody()),
         ],
       ),
@@ -148,6 +187,7 @@ class _CategoryComicsPageState extends State<CategoryComicsPage> {
     }
 
     return ListView(
+      controller: _scrollController,
       padding: const EdgeInsets.all(16),
       children: [
         if (comics.isNotEmpty)

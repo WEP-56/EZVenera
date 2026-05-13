@@ -67,6 +67,10 @@ class _ReaderPageState extends State<ReaderPage> {
   int currentPage = 1;
   PageController? pageController;
   ReaderPageMode? _pageControllerMode;
+  ScrollController? _scrollController;
+  bool _scrollControllerIsContinuous = false;
+  double _continuousItemExtent = 0;
+  bool _suppressScrollListener = false;
   final FocusNode focusNode = FocusNode();
   final GlobalKey<ScaffoldState> scaffoldKey = GlobalKey<ScaffoldState>();
   bool _attemptedContextLoad = false;
@@ -77,13 +81,18 @@ class _ReaderPageState extends State<ReaderPage> {
   final Map<int, GlobalKey<_ReaderImageState>> _imageKeys =
       <int, GlobalKey<_ReaderImageState>>{};
 
-  static const _doubleTapMaxDelay = Duration(milliseconds: 220);
+  static const _doubleTapMaxDelay = Duration(milliseconds: 150);
   static const _doubleTapMaxDistanceSquared = 24.0 * 24.0;
   static const _tapToTurnPagePercent = 0.33;
+  static const _longPressZoomScale = 2.5;
 
   bool _isFullscreen = false;
   Timer? _autoPageTimer;
   VolumeListener? _volumeListener;
+  bool _isLongPressZooming = false;
+  bool _longPressDragging = false;
+  Offset _longPressZoomOffset = Offset.zero;
+  Offset _longPressStartLocal = Offset.zero;
 
   bool get _isPureLocalReader =>
       widget.localComic != null || widget.localLibraryComic != null;
@@ -135,6 +144,7 @@ class _ReaderPageState extends State<ReaderPage> {
     }
     focusNode.dispose();
     pageController?.dispose();
+    _scrollController?.dispose();
     super.dispose();
   }
 
@@ -143,16 +153,76 @@ class _ReaderPageState extends State<ReaderPage> {
       return;
     }
     final newMode = SettingsController.instance.readerPageMode;
-    if (_pageControllerMode != null && _pageControllerMode != newMode) {
-      // PageView does not support changing scrollDirection in place; we must
-      // recreate the controller so the new axis/reverse is picked up cleanly.
+    final newHorizContinuous =
+        SettingsController.instance.readerHorizontalContinuous;
+    final needsContinuous = _isContinuousMode(newMode, newHorizContinuous);
+
+    if (_pageControllerMode != newMode ||
+        _scrollControllerIsContinuous != needsContinuous) {
       final previousPage = currentPage;
-      pageController?.dispose();
-      pageController = PageController(initialPage: previousPage - 1);
+      if (needsContinuous) {
+        pageController?.dispose();
+        pageController = null;
+        _scrollController?.dispose();
+        _scrollController = _buildScrollController();
+        _scrollControllerIsContinuous = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          if (_continuousItemExtent > 0) {
+            _suppressScrollListener = true;
+            _scrollController?.jumpTo(
+              (previousPage - 1) * _continuousItemExtent,
+            );
+            _suppressScrollListener = false;
+          }
+        });
+      } else {
+        _scrollController?.dispose();
+        _scrollController = null;
+        _scrollControllerIsContinuous = false;
+        pageController?.dispose();
+        pageController = PageController(initialPage: previousPage - 1);
+      }
       _pageControllerMode = newMode;
     }
     _updateVolumeListener();
-    setState(() {});
+    // Defer rebuild so this never fires inside a mouse-tracker or
+    // gesture-recognizer callback (avoids _debugDuringDeviceUpdate).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  bool _isContinuousMode(ReaderPageMode mode, bool horizContinuous) {
+    if (mode == ReaderPageMode.continuousTopToBottom) {
+      return true;
+    }
+    return horizContinuous;
+  }
+
+  ScrollController _buildScrollController() {
+    final sc = ScrollController();
+    sc.addListener(_onScrollChanged);
+    return sc;
+  }
+
+  void _onScrollChanged() {
+    if (_suppressScrollListener || _continuousItemExtent <= 0) {
+      return;
+    }
+    final offset = _scrollController?.offset ?? 0;
+    final estimated = (offset / _continuousItemExtent).floor() + 1;
+    final clamped = estimated.clamp(1, images.isEmpty ? 1 : images.length);
+    if (clamped != currentPage) {
+      currentPage = clamped;
+      _recordHistory();
+      _prefetchAround(currentPage);
+      // Defer setState so it never fires inside a mouse-tracker or
+      // scroll-notification callback (avoids _debugDuringDeviceUpdate).
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() {});
+      });
+    }
   }
 
   /// Attaches or detaches the Android volume-key listener to match the
@@ -211,56 +281,42 @@ class _ReaderPageState extends State<ReaderPage> {
             SettingsController.instance.readerAutoPageIntervalSeconds,
         pageMode: SettingsController.instance.readerPageMode,
         volumeKeys: SettingsController.instance.readerEnableVolumeKeys,
+        horizontalContinuous:
+            SettingsController.instance.readerHorizontalContinuous,
         onPageModeChanged: (value) async {
           await SettingsController.instance.setReaderPageMode(value);
-          if (mounted) {
-            setState(() {});
-          }
+          if (mounted) setState(() {});
         },
         onVolumeKeysChanged: (value) async {
           await SettingsController.instance.setReaderEnableVolumeKeys(value);
-          if (mounted) {
-            setState(() {});
-          }
+          if (mounted) setState(() {});
+        },
+        onHorizontalContinuousChanged: (value) async {
+          await SettingsController.instance.setReaderHorizontalContinuous(
+            value,
+          );
+          if (mounted) setState(() {});
         },
         onTapToTurnChanged: (value) async {
-          await SettingsController.instance.setReaderEnableTapToTurnPages(
-            value,
-          );
-          if (mounted) {
-            setState(() {});
-          }
+          await SettingsController.instance.setReaderEnableTapToTurnPages(value);
+          if (mounted) setState(() {});
         },
         onReverseTapToTurnChanged: (value) async {
-          await SettingsController.instance.setReaderReverseTapToTurnPages(
-            value,
-          );
-          if (mounted) {
-            setState(() {});
-          }
+          await SettingsController.instance.setReaderReverseTapToTurnPages(value);
+          if (mounted) setState(() {});
         },
         onDoubleTapZoomChanged: (value) async {
           await SettingsController.instance.setReaderEnableDoubleTapZoom(value);
-          if (mounted) {
-            setState(() {});
-          }
+          if (mounted) setState(() {});
         },
         onPageAnimationChanged: (value) async {
           await SettingsController.instance.setReaderEnablePageAnimation(value);
-          if (mounted) {
-            setState(() {});
-          }
+          if (mounted) setState(() {});
         },
         onAutoPageIntervalChanged: (value) async {
-          await SettingsController.instance.setReaderAutoPageIntervalSeconds(
-            value,
-          );
-          if (_autoPageTimer != null) {
-            _startAutoPage(showMessage: false);
-          }
-          if (mounted) {
-            setState(() {});
-          }
+          await SettingsController.instance.setReaderAutoPageIntervalSeconds(value);
+          if (_autoPageTimer != null) _startAutoPage(showMessage: false);
+          if (mounted) setState(() {});
         },
       ),
       body: Focus(
@@ -289,7 +345,7 @@ class _ReaderPageState extends State<ReaderPage> {
       );
     }
 
-    if (images.isEmpty || pageController == null) {
+    if (images.isEmpty || (pageController == null && _scrollController == null)) {
       return _ReaderError(
         message: 'No images returned for this chapter.',
         onRetry: () => _loadChapter(initialPage: currentPage),
@@ -298,10 +354,7 @@ class _ReaderPageState extends State<ReaderPage> {
 
     return Listener(
       onPointerSignal: (signal) {
-        if (signal is! PointerScrollEvent) {
-          return;
-        }
-        if (_isCurrentImageZoomed) {
+        if (signal is! PointerScrollEvent || _isCurrentImageZoomed) {
           return;
         }
         if (signal.scrollDelta.dy > 0) {
@@ -313,55 +366,55 @@ class _ReaderPageState extends State<ReaderPage> {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final pageMode = SettingsController.instance.readerPageMode;
-          final isVertical =
-              pageMode == ReaderPageMode.continuousTopToBottom;
+          final isContinuous = _scrollControllerIsContinuous;
           final isRtl = pageMode == ReaderPageMode.galleryRightToLeft;
+          final isVertical = pageMode == ReaderPageMode.continuousTopToBottom;
+
+          // Item extent for continuous mode: full viewport dimension in the
+          // scroll axis plus the 2 px separator.
+          final itemExtent = isVertical
+              ? constraints.maxHeight + 2
+              : constraints.maxWidth + 2;
+
+          final scrollContent = isContinuous
+              ? _buildContinuousView(
+                  constraints: constraints,
+                  isVertical: isVertical,
+                  isRtl: isRtl,
+                  itemExtent: itemExtent,
+                )
+              : _buildPagedView(pageMode: pageMode, isRtl: isRtl);
+
           return GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTapUp: (details) => _handleTapUp(details, constraints.biggest),
+            onLongPressStart: _handleLongPressStart,
+            onLongPressMoveUpdate: _handleLongPressMoveUpdate,
+            onLongPressEnd: _handleLongPressEnd,
             child: Stack(
               children: [
-                PageView.builder(
-                  key: ValueKey<ReaderPageMode>(pageMode),
-                  controller: pageController,
-                  itemCount: images.length,
-                  scrollDirection:
-                      isVertical ? Axis.vertical : Axis.horizontal,
-                  reverse: isRtl,
-                  physics: _isCurrentImageZoomed
-                      ? const NeverScrollableScrollPhysics()
-                      : null,
-                  onPageChanged: (index) {
-                    currentPage = index + 1;
-                    _isCurrentImageZoomed = false;
-                    _recordHistory();
-                    _prefetchAround(currentPage);
-                    setState(() {});
-                  },
-                  itemBuilder: (context, index) {
-                    return _ReaderImage(
-                      key: _imageKeyFor(index),
-                      isLocal:
-                          widget.localComic != null ||
-                          widget.localLibraryComic != null,
-                      sourceKey: widget.sourceKey,
-                      comicId: widget.comicId,
-                      chapterId: currentChapterId ?? '0',
-                      imageUrl: images[index],
-                      index: index + 1,
-                      isActive: index + 1 == currentPage,
-                      onZoomChanged: (zoomed) {
-                        if (!mounted || currentPage != index + 1) {
-                          return;
-                        }
-                        if (_isCurrentImageZoomed != zoomed) {
-                          setState(() {
-                            _isCurrentImageZoomed = zoomed;
-                          });
-                        }
-                      },
-                    );
-                  },
+                AnimatedContainer(
+                  duration: _longPressDragging
+                      ? Duration.zero
+                      : const Duration(milliseconds: 180),
+                  curve: Curves.easeOut,
+                  transform: _isLongPressZooming
+                      ? (Matrix4.identity()
+                        ..translateByDouble(
+                          _longPressZoomOffset.dx,
+                          _longPressZoomOffset.dy,
+                          0,
+                          1,
+                        )
+                        ..scaleByDouble(
+                          _longPressZoomScale,
+                          _longPressZoomScale,
+                          1,
+                          1,
+                        ))
+                      : Matrix4.identity(),
+                  transformAlignment: Alignment.center,
+                  child: scrollContent,
                 ),
                 if (SettingsController.instance.readerShowTapGuide &&
                     !_controlsVisible &&
@@ -419,6 +472,130 @@ class _ReaderPageState extends State<ReaderPage> {
           );
         },
       ),
+    );
+  }
+
+  Widget _buildContinuousView({
+    required BoxConstraints constraints,
+    required bool isVertical,
+    required bool isRtl,
+    required double itemExtent,
+  }) {
+    _continuousItemExtent = itemExtent;
+
+    return ListView.builder(
+      key: ValueKey<String>(
+        'continuous_${isVertical ? 'v' : isRtl ? 'rtl' : 'ltr'}',
+      ),
+      controller: _scrollController,
+      scrollDirection: isVertical ? Axis.vertical : Axis.horizontal,
+      reverse: isRtl,
+      physics: _isCurrentImageZoomed
+          ? const NeverScrollableScrollPhysics()
+          : const ClampingScrollPhysics(),
+      itemCount: images.length,
+      itemBuilder: (context, index) {
+        final image = _ReaderImage(
+          key: _imageKeyFor(index),
+          isLocal:
+              widget.localComic != null || widget.localLibraryComic != null,
+          sourceKey: widget.sourceKey,
+          comicId: widget.comicId,
+          chapterId: currentChapterId ?? '0',
+          imageUrl: images[index],
+          index: index + 1,
+          isActive: index + 1 == currentPage,
+          onZoomChanged: (zoomed) {
+            if (!mounted) return;
+            if (_isCurrentImageZoomed != zoomed) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) setState(() => _isCurrentImageZoomed = zoomed);
+              });
+            }
+          },
+        );
+
+        final hasSeparator = index < images.length - 1;
+
+        if (isVertical) {
+          return SizedBox(
+            width: constraints.maxWidth,
+            height: constraints.maxHeight + (hasSeparator ? 2 : 0),
+            child: Column(
+              children: [
+                SizedBox(
+                  width: constraints.maxWidth,
+                  height: constraints.maxHeight,
+                  child: image,
+                ),
+                if (hasSeparator)
+                  const SizedBox(height: 2, child: ColoredBox(color: Colors.black)),
+              ],
+            ),
+          );
+        }
+
+        return SizedBox(
+          width: constraints.maxWidth + (hasSeparator ? 2 : 0),
+          height: constraints.maxHeight,
+          child: Row(
+            children: [
+              SizedBox(
+                width: constraints.maxWidth,
+                height: constraints.maxHeight,
+                child: image,
+              ),
+              if (hasSeparator)
+                const SizedBox(width: 2, child: ColoredBox(color: Colors.black)),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildPagedView({
+    required ReaderPageMode pageMode,
+    required bool isRtl,
+  }) {
+    return PageView.builder(
+      key: ValueKey<ReaderPageMode>(pageMode),
+      controller: pageController,
+      itemCount: images.length,
+      scrollDirection: Axis.horizontal,
+      reverse: isRtl,
+      physics: _isCurrentImageZoomed
+          ? const NeverScrollableScrollPhysics()
+          : null,
+      onPageChanged: (index) {
+        currentPage = index + 1;
+        _isCurrentImageZoomed = false;
+        _recordHistory();
+        _prefetchAround(currentPage);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) setState(() {});
+        });
+      },
+      itemBuilder: (context, index) {
+        return _ReaderImage(
+          key: _imageKeyFor(index),
+          isLocal: widget.localComic != null || widget.localLibraryComic != null,
+          sourceKey: widget.sourceKey,
+          comicId: widget.comicId,
+          chapterId: currentChapterId ?? '0',
+          imageUrl: images[index],
+          index: index + 1,
+          isActive: index + 1 == currentPage,
+          onZoomChanged: (zoomed) {
+            if (!mounted || currentPage != index + 1) return;
+            if (_isCurrentImageZoomed != zoomed) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) setState(() => _isCurrentImageZoomed = zoomed);
+              });
+            }
+          },
+        );
+      },
     );
   }
 
@@ -527,8 +704,30 @@ class _ReaderPageState extends State<ReaderPage> {
       }
 
       pageController?.dispose();
-      pageController = PageController(initialPage: currentPage - 1);
-      _pageControllerMode = SettingsController.instance.readerPageMode;
+      _scrollController?.dispose();
+      _scrollController = null;
+      _scrollControllerIsContinuous = false;
+
+      final mode = SettingsController.instance.readerPageMode;
+      final horizContinuous =
+          SettingsController.instance.readerHorizontalContinuous;
+      if (_isContinuousMode(mode, horizContinuous)) {
+        _scrollController = _buildScrollController();
+        _scrollControllerIsContinuous = true;
+        pageController = null;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _continuousItemExtent > 0) {
+            _suppressScrollListener = true;
+            _scrollController?.jumpTo(
+              (currentPage - 1) * _continuousItemExtent,
+            );
+            _suppressScrollListener = false;
+          }
+        });
+      } else {
+        pageController = PageController(initialPage: currentPage - 1);
+      }
+      _pageControllerMode = mode;
       _isCurrentImageZoomed = false;
       _prefetchAround(currentPage);
       await _recordHistory();
@@ -736,6 +935,12 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   Future<void> _goToPreviousPage() async {
+    if (_scrollControllerIsContinuous) {
+      if (currentPage > 1) {
+        await _moveToPage(currentPage - 2);
+      }
+      return;
+    }
     if (currentPage > 1) {
       await _moveToPage(currentPage - 2);
       return;
@@ -744,6 +949,12 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   Future<void> _goToNextPage() async {
+    if (_scrollControllerIsContinuous) {
+      if (currentPage < images.length) {
+        await _moveToPage(currentPage);
+      }
+      return;
+    }
     if (currentPage < images.length) {
       await _moveToPage(currentPage);
       return;
@@ -761,6 +972,23 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   Future<void> _moveToPage(int pageIndex) {
+    if (_scrollControllerIsContinuous) {
+      final sc = _scrollController;
+      if (sc == null || !sc.hasClients || _continuousItemExtent <= 0) {
+        return Future<void>.value();
+      }
+      final target = pageIndex * _continuousItemExtent;
+      if (SettingsController.instance.readerEnablePageAnimation) {
+        return sc.animateTo(
+          target,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+      } else {
+        sc.jumpTo(target);
+        return Future<void>.value();
+      }
+    }
     final controller = pageController;
     if (controller == null) {
       return Future<void>.value();
@@ -784,6 +1012,18 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   void _handleTapUp(TapUpDetails details, Size viewportSize) {
+    final doubleTapEnabled =
+        SettingsController.instance.readerEnableDoubleTapZoom;
+
+    if (!doubleTapEnabled) {
+      // No double-tap detection needed — respond to every tap immediately.
+      _pendingTapTimer?.cancel();
+      _pendingTapTimer = null;
+      _pendingTapDetails = null;
+      _handleSingleTap(details, viewportSize);
+      return;
+    }
+
     final previous = _pendingTapDetails;
     final previousPosition = previous?.globalPosition;
     if (previousPosition != null &&
@@ -821,9 +1061,7 @@ class _ReaderPageState extends State<ReaderPage> {
     }
     final settings = SettingsController.instance;
     if (_isCurrentImageZoomed) {
-      setState(() {
-        _controlsVisible = !_controlsVisible;
-      });
+      setState(() => _controlsVisible = !_controlsVisible);
       return;
     }
     if (settings.readerEnableTapToTurnPages) {
@@ -842,9 +1080,6 @@ class _ReaderPageState extends State<ReaderPage> {
 
       if (isVertical) {
         final localDy = details.localPosition.dy;
-        // Vertical reader uses top/bottom tap zones; reverse here is
-        // intentionally ignored because scrolling direction itself is fixed
-        // top-to-bottom in webtoon layout.
         final verticalPrev = settings.readerReverseTapToTurnPages
             ? _goToNextPage
             : _goToPreviousPage;
@@ -871,9 +1106,7 @@ class _ReaderPageState extends State<ReaderPage> {
         }
       }
     }
-    setState(() {
-      _controlsVisible = !_controlsVisible;
-    });
+    setState(() => _controlsVisible = !_controlsVisible);
   }
 
   void _handleDoubleTap(TapUpDetails details) {
@@ -883,6 +1116,29 @@ class _ReaderPageState extends State<ReaderPage> {
     _imageKeyFor(
       currentPage - 1,
     ).currentState?.toggleDoubleTapZoom(details.globalPosition);
+  }
+
+  void _handleLongPressStart(LongPressStartDetails details) {
+    _longPressStartLocal = details.localPosition;
+    _longPressZoomOffset = Offset.zero;
+    _longPressDragging = false;
+    _isLongPressZooming = true;
+    setState(() {});
+  }
+
+  void _handleLongPressMoveUpdate(LongPressMoveUpdateDetails details) {
+    if (!_isLongPressZooming) return;
+    _longPressDragging = true;
+    final delta = details.localPosition - _longPressStartLocal;
+    _longPressZoomOffset = delta;
+    setState(() {});
+  }
+
+  void _handleLongPressEnd(LongPressEndDetails details) {
+    _isLongPressZooming = false;
+    _longPressDragging = false;
+    _longPressZoomOffset = Offset.zero;
+    setState(() {});
   }
 
   KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
@@ -1275,7 +1531,7 @@ class _ReaderImageState extends State<_ReaderImage>
                   ),
                 ),
                 const SizedBox(height: 8),
-                Text(snapshot.error.toString()),
+                Text(snapshot.error?.toString() ?? 'Unknown error'),
                 const SizedBox(height: 12),
                 OutlinedButton.icon(
                   onPressed: _retry,
@@ -1377,11 +1633,13 @@ class _ReaderImageState extends State<_ReaderImage>
     if (nextScale == _scale && nextOffset == _offset) {
       return;
     }
-    setState(() {
-      _scale = nextScale;
-      _offset = nextOffset;
-    });
+    _scale = nextScale;
+    _offset = nextOffset;
     _notifyZoomChanged();
+    // Defer rebuild to avoid setState inside gesture/mouse-tracker callback.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   void _animateTo(double targetScale, Offset targetOffset) {
@@ -1406,9 +1664,12 @@ class _ReaderImageState extends State<_ReaderImage>
       if (!mounted) {
         return;
       }
+      final sa = _scaleAnimation;
+      final oa = _offsetAnimation;
+      if (sa == null || oa == null) return;
       setState(() {
-        _scale = _scaleAnimation!.value;
-        _offset = _offsetAnimation!.value;
+        _scale = sa.value;
+        _offset = oa.value;
       });
       _notifyZoomChanged();
     });
@@ -1793,6 +2054,7 @@ class _ReaderSettingsDrawer extends StatelessWidget {
     required this.autoPageIntervalSeconds,
     required this.pageMode,
     required this.volumeKeys,
+    required this.horizontalContinuous,
     required this.onTapToTurnChanged,
     required this.onReverseTapToTurnChanged,
     required this.onDoubleTapZoomChanged,
@@ -1800,6 +2062,7 @@ class _ReaderSettingsDrawer extends StatelessWidget {
     required this.onAutoPageIntervalChanged,
     required this.onPageModeChanged,
     required this.onVolumeKeysChanged,
+    required this.onHorizontalContinuousChanged,
   });
 
   final VoidCallback onClose;
@@ -1810,6 +2073,7 @@ class _ReaderSettingsDrawer extends StatelessWidget {
   final double autoPageIntervalSeconds;
   final ReaderPageMode pageMode;
   final bool volumeKeys;
+  final bool horizontalContinuous;
   final ValueChanged<bool> onTapToTurnChanged;
   final ValueChanged<bool> onReverseTapToTurnChanged;
   final ValueChanged<bool> onDoubleTapZoomChanged;
@@ -1817,6 +2081,7 @@ class _ReaderSettingsDrawer extends StatelessWidget {
   final ValueChanged<double> onAutoPageIntervalChanged;
   final ValueChanged<ReaderPageMode> onPageModeChanged;
   final ValueChanged<bool> onVolumeKeysChanged;
+  final ValueChanged<bool> onHorizontalContinuousChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -1879,6 +2144,13 @@ class _ReaderSettingsDrawer extends StatelessWidget {
                     ),
                   ),
                   const Divider(height: 24),
+                  if (pageMode != ReaderPageMode.continuousTopToBottom)
+                    SwitchListTile(
+                      title: Text(l10n.readerHorizontalContinuous),
+                      subtitle: Text(l10n.readerHorizontalContinuousSubtitle),
+                      value: horizontalContinuous,
+                      onChanged: onHorizontalContinuousChanged,
+                    ),
                   SwitchListTile(
                     title: Text(l10n.readerTapToTurn),
                     value: tapToTurn,

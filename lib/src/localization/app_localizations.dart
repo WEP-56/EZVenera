@@ -112,6 +112,9 @@ class AppLocalizations {
       'reader.volumeKeys': 'Volume-key page turning',
       'reader.volumeKeysSubtitle':
           'Use the device volume buttons to flip pages while reading.',
+      'reader.horizontalContinuous': 'Continuous scroll for horizontal modes',
+      'reader.horizontalContinuousSubtitle':
+          'Swipe instead of flip for left-to-right and right-to-left.',
       'sources.addTitle': 'Add comic source',
       'sources.addSubtitle':
           'Install a source by raw URL or from repository index',
@@ -470,6 +473,12 @@ class AppLocalizations {
   String get readerVolumeKeysSubtitle => isChinese
       ? '使用手机音量上下键翻页（仅 Android）。'
       : _value('reader.volumeKeysSubtitle');
+  String get readerHorizontalContinuous => isChinese
+      ? '横向模式使用连续滚动'
+      : _value('reader.horizontalContinuous');
+  String get readerHorizontalContinuousSubtitle => isChinese
+      ? '左到右 / 右到左模式改为平滑滑动，而非整页翻动。'
+      : _value('reader.horizontalContinuousSubtitle');
   String get sourcesAddTitle =>
       isChinese ? '添加图源' : _value('sources.addTitle');
   String get sourcesAddSubtitle => isChinese

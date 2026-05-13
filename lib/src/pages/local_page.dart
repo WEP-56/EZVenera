@@ -17,7 +17,9 @@ import '../localization/app_localizations.dart';
 import '../plugin_runtime/models.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
 import '../plugin_runtime/services/plugin_image_loader.dart';
+import '../settings/settings_controller.dart';
 import '../state/app_state_controller.dart';
+import '../widgets/comic_display_toggle.dart';
 import 'comic_details_page.dart';
 import 'network_resume_page.dart';
 import 'reader_page.dart';
@@ -247,25 +249,25 @@ class _LocalPageState extends State<LocalPage> {
   List<Widget> _buildHeaderActions(BuildContext context) {
     final folder = _selectedFolder;
     final l10n = AppLocalizations.of(context);
-    if (folder == null) {
-      return const <Widget>[];
-    }
     return [
-      IconButton(
-        onPressed: () => _refreshFolderEntry(folder),
-        icon: const Icon(Icons.refresh),
-        tooltip: l10n.localRefreshFolder,
-      ),
-      IconButton(
-        onPressed: () => _openFolderEntry(folder),
-        icon: const Icon(Icons.folder_open_outlined),
-        tooltip: l10n.settingsOpenFolder,
-      ),
-      IconButton(
-        onPressed: () => _removeFolderEntry(folder),
-        icon: const Icon(Icons.delete_outline),
-        tooltip: l10n.delete,
-      ),
+      const ComicDisplayToggle(dense: true),
+      if (folder != null) ...[
+        IconButton(
+          onPressed: () => _refreshFolderEntry(folder),
+          icon: const Icon(Icons.refresh),
+          tooltip: l10n.localRefreshFolder,
+        ),
+        IconButton(
+          onPressed: () => _openFolderEntry(folder),
+          icon: const Icon(Icons.folder_open_outlined),
+          tooltip: l10n.settingsOpenFolder,
+        ),
+        IconButton(
+          onPressed: () => _removeFolderEntry(folder),
+          icon: const Icon(Icons.delete_outline),
+          tooltip: l10n.delete,
+        ),
+      ],
     ];
   }
 
@@ -1350,20 +1352,37 @@ class _LocalComicGrid<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final columns = _columnCountForWidth(constraints.maxWidth);
-        return GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: items.length,
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: columns,
-            crossAxisSpacing: 16,
-            mainAxisSpacing: 16,
-            childAspectRatio: columns == 2 ? 0.68 : 0.72,
-          ),
-          itemBuilder: (context, index) => itemBuilder(context, items[index]),
+    return AnimatedBuilder(
+      animation: SettingsController.instance,
+      builder: (context, _) {
+        final mode = SettingsController.instance.comicDisplayMode;
+        if (mode == ComicDisplayMode.list) {
+          return ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: items.length,
+            separatorBuilder: (_, _) => const SizedBox(height: 10),
+            itemBuilder: (context, index) =>
+                itemBuilder(context, items[index]),
+          );
+        }
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final columns = _columnCountForWidth(constraints.maxWidth);
+            return GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: items.length,
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: columns,
+                crossAxisSpacing: 16,
+                mainAxisSpacing: 16,
+                childAspectRatio: columns == 2 ? 0.68 : 0.72,
+              ),
+              itemBuilder: (context, index) =>
+                  itemBuilder(context, items[index]),
+            );
+          },
         );
       },
     );
@@ -1408,6 +1427,113 @@ class _LocalComicCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final mode = SettingsController.instance.comicDisplayMode;
+    if (mode == ComicDisplayMode.list) {
+      return _buildListTile(context);
+    }
+    return _buildGridCard(context);
+  }
+
+  Widget _buildListTile(BuildContext context) {
+    final theme = Theme.of(context);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onTap,
+        child: Ink(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: theme.colorScheme.outlineVariant),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 72,
+                height: 100,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: _LocalComicCover(
+                    sourceKey: sourceKey,
+                    coverPath: coverPath,
+                    coverUrl: coverUrl,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        height: 1.25,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.secondaryContainer
+                                .withValues(alpha: 0.72),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            accent,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: theme.colorScheme.onSecondaryContainer,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            meta,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                        if (topRight != null) topRight!,
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGridCard(BuildContext context) {
     final theme = Theme.of(context);
 
     return Material(
