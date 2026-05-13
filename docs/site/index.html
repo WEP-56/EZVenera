@@ -1,333 +1,468 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>EZVenera 文档站</title>
-  <style>
-    :root {
-      --bg: #f4f7f5;
-      --surface: rgba(255, 255, 255, 0.9);
-      --surface-strong: #ffffff;
-      --text: #17312c;
-      --muted: #556c65;
-      --line: rgba(23, 49, 44, 0.12);
-      --accent: #1c8f73;
-      --accent-strong: #136b56;
-      --accent-soft: rgba(28, 143, 115, 0.1);
-      --shadow: 0 18px 48px rgba(20, 49, 42, 0.08);
-      --max: 1180px;
-    }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EZVenera 文档站</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0e0c0a;
+  --bg2:#141210;
+  --bg3:#1c1916;
+  --border:#ffffff0e;
+  --border-hover:#c8922a28;
+  --text:#ede8df;
+  --muted:#7a7060;
+  --accent:#c8922a;
+  --accent2:#e8b86d;
+  --accent-dim:#c8922a18;
+  --green:#b5a060;
+  --green-dim:#b5a06018;
+  --red:#f87171;
+}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:'Noto Sans SC',sans-serif;
+  font-size:15px;
+  line-height:1.7;
+  min-height:100vh;
+  overflow-x:hidden;
+}
 
-    * {
-      box-sizing: border-box;
-    }
+/* noise texture overlay */
+body::before{
+  content:'';
+  position:fixed;
+  inset:0;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events:none;
+  z-index:0;
+  opacity:.5;
+}
 
-    body {
-      margin: 0;
-      color: var(--text);
-      background:
-        radial-gradient(circle at top left, rgba(28, 143, 115, 0.12), transparent 28%),
-        radial-gradient(circle at bottom right, rgba(19, 107, 86, 0.09), transparent 32%),
-        linear-gradient(180deg, #eef4f1 0%, var(--bg) 100%);
-      font: 16px/1.7 "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-    }
+/* grid bg */
+body::after{
+  content:'';
+  position:fixed;
+  inset:0;
+  background-image:
+    linear-gradient(var(--border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-size:48px 48px;
+  pointer-events:none;
+  z-index:0;
+  mask-image:radial-gradient(ellipse 80% 60% at 50% 0%, black 0%, transparent 70%);
+}
 
-    a {
-      color: inherit;
-      text-decoration: none;
-    }
+/* NAV */
+nav{
+  position:fixed;
+  top:0;left:0;right:0;
+  z-index:100;
+  height:56px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:0 32px;
+  background:rgba(14,12,10,.85);
+  backdrop-filter:blur(20px);
+  -webkit-backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--border);
+}
+.nav-logo{
+  font-family:'Syne',sans-serif;
+  font-weight:800;
+  font-size:15px;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  color:var(--text);
+  text-decoration:none;
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+.nav-logo-dot{
+  width:8px;height:8px;
+  border-radius:50%;
+  background:var(--accent);
+  box-shadow:0 0 14px #c8922a55;
+  animation:pulse 2.5s ease-in-out infinite;
+}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(.85)}}
+.nav-links{display:flex;gap:4px;align-items:center}
+.nav-links a{
+  color:var(--muted);
+  text-decoration:none;
+  font-size:13px;
+  font-weight:500;
+  padding:6px 14px;
+  border-radius:6px;
+  transition:all .2s;
+  letter-spacing:.02em;
+}
+.nav-links a:hover{color:var(--text);background:var(--border)}
 
-    .shell {
-      width: min(calc(100% - 32px), var(--max));
-      margin: 0 auto;
-      padding: 24px 0 64px;
-    }
+/* MAIN */
+main{
+  position:relative;
+  z-index:1;
+  max-width:960px;
+  margin:0 auto;
+  padding:0 24px 80px;
+}
 
-    .topbar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      padding: 14px 18px;
-      border: 1px solid var(--line);
-      border-radius: 16px;
-      background: var(--surface);
-      backdrop-filter: blur(12px);
-      box-shadow: var(--shadow);
-    }
+/* HERO */
+.hero{
+  padding:140px 0 80px;
+}
+.hero-badge{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  background:var(--accent-dim);
+  border:1px solid #c8922a30;
+  border-radius:999px;
+  padding:5px 14px 5px 10px;
+  margin-bottom:28px;
+  font-size:12px;
+  color:var(--accent);
+  font-family:'DM Mono',monospace;
+  letter-spacing:.04em;
+}
+.hero-badge-dot{
+  width:6px;height:6px;
+  border-radius:50%;
+  background:var(--accent);
+  animation:pulse 2s ease-in-out infinite;
+}
+.hero h1{
+  font-family:'Syne',sans-serif;
+  font-size:clamp(42px,7vw,72px);
+  font-weight:800;
+  line-height:1.05;
+  letter-spacing:-.02em;
+  margin-bottom:20px;
+}
+.hero h1 .line1{display:block;color:var(--text)}
+.hero h1 .line2{
+  display:block;
+  background:linear-gradient(135deg,#c8922a,#e8b86d);
+  -webkit-background-clip:text;
+  -webkit-text-fill-color:transparent;
+  background-clip:text;
+}
+.hero-desc{
+  font-size:16px;
+  color:var(--muted);
+  max-width:520px;
+  margin-bottom:36px;
+  line-height:1.75;
+}
+.hero-actions{display:flex;gap:12px;flex-wrap:wrap}
+.btn-primary{
+  display:inline-flex;align-items:center;gap:8px;
+  background:var(--accent);
+  color:#0e0c0a;
+  font-weight:700;
+  font-size:14px;
+  padding:11px 24px;
+  border-radius:8px;
+  text-decoration:none;
+  transition:all .2s;
+  letter-spacing:.01em;
+}
+.btn-primary:hover{
+  background:#d8b4fe;
+  transform:translateY(-1px);
+  box-shadow:0 8px 24px #c8922a30;
+}
+.btn-secondary{
+  display:inline-flex;align-items:center;gap:8px;
+  background:transparent;
+  color:var(--text);
+  font-weight:500;
+  font-size:14px;
+  padding:10px 22px;
+  border-radius:8px;
+  border:1px solid var(--border-hover);
+  text-decoration:none;
+  transition:all .2s;
+}
+.btn-secondary:hover{background:var(--bg3);border-color:#ffffff35}
 
-    .brand {
-      font-size: 14px;
-      font-weight: 800;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      color: var(--muted);
-    }
+/* SECTION LABEL */
+.section-label{
+  font-family:'DM Mono',monospace;
+  font-size:11px;
+  color:var(--muted);
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  margin-bottom:20px;
+  padding-bottom:12px;
+  border-bottom:1px solid var(--border);
+}
 
-    .topnav {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
+/* DOC CARDS */
+.doc-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+  gap:16px;
+  margin-bottom:60px;
+}
+.doc-card{
+  background:var(--bg2);
+  border:1px solid var(--border);
+  border-radius:14px;
+  padding:28px;
+  text-decoration:none;
+  color:inherit;
+  transition:all .25s;
+  position:relative;
+  overflow:hidden;
+  display:block;
+}
+.doc-card::before{
+  content:'';
+  position:absolute;
+  top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--accent),transparent);
+  opacity:0;
+  transition:opacity .3s;
+}
+.doc-card:hover{
+  border-color:var(--border-hover);
+  background:var(--bg3);
+  transform:translateY(-2px);
+  box-shadow:0 12px 40px rgba(0,0,0,.4);
+}
+.doc-card:hover::before{opacity:1}
+.doc-card-tag{
+  font-family:'DM Mono',monospace;
+  font-size:11px;
+  color:var(--accent);
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  margin-bottom:12px;
+  display:flex;align-items:center;gap:6px;
+}
+.doc-card-tag::before{
+  content:'';
+  width:16px;height:1px;
+  background:var(--accent);
+  display:inline-block;
+}
+.doc-card h3{
+  font-family:'Syne',sans-serif;
+  font-size:20px;
+  font-weight:700;
+  color:var(--text);
+  margin-bottom:10px;
+  letter-spacing:-.01em;
+}
+.doc-card p{
+  font-size:13px;
+  color:var(--muted);
+  line-height:1.65;
+}
+.doc-card-arrow{
+  position:absolute;
+  top:28px;right:28px;
+  font-size:18px;
+  color:var(--border-hover);
+  transition:all .25s;
+}
+.doc-card:hover .doc-card-arrow{
+  color:var(--accent);
+  transform:translate(2px,-2px);
+}
 
-    .topnav a {
-      display: inline-flex;
-      align-items: center;
-      min-height: 40px;
-      padding: 0 14px;
-      border-radius: 999px;
-      border: 1px solid var(--line);
-      background: rgba(255, 255, 255, 0.74);
-      font-size: 14px;
-      font-weight: 600;
-      color: var(--text);
-    }
+/* LINK GRID */
+.link-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
+  gap:12px;
+  margin-bottom:60px;
+}
+.link-card{
+  background:var(--bg2);
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:20px;
+  text-decoration:none;
+  color:inherit;
+  transition:all .2s;
+  display:block;
+}
+.link-card:hover{
+  border-color:var(--border-hover);
+  background:var(--bg3);
+}
+.link-card h4{
+  font-weight:700;
+  font-size:14px;
+  color:var(--text);
+  margin-bottom:6px;
+  display:flex;align-items:center;gap:6px;
+}
+.link-card h4::after{
+  content:'↗';
+  font-size:12px;
+  color:var(--muted);
+  transition:color .2s;
+}
+.link-card:hover h4::after{color:var(--accent)}
+.link-card p{
+  font-size:12px;
+  color:var(--muted);
+  line-height:1.55;
+}
 
-    .topnav a:hover {
-      color: var(--accent);
-      border-color: rgba(28, 143, 115, 0.3);
-      background: rgba(28, 143, 115, 0.08);
-    }
+/* STATUS BAR */
+.status-bar{
+  background:var(--bg2);
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:16px 20px;
+  display:flex;
+  align-items:center;
+  gap:16px;
+  margin-bottom:60px;
+  font-size:13px;
+  color:var(--muted);
+  flex-wrap:wrap;
+}
+.status-dot{
+  width:7px;height:7px;
+  border-radius:50%;
+  background:var(--green);
+  box-shadow:0 0 8px #b5a06088;
+  flex-shrink:0;
+}
+.status-bar strong{color:var(--text)}
 
-    .hero {
-      margin-top: 20px;
-      padding: 48px 44px 40px;
-      border-radius: 22px;
-      background:
-        linear-gradient(135deg, rgba(28, 143, 115, 0.18), rgba(18, 54, 47, 0.04)),
-        var(--surface-strong);
-      border: 1px solid var(--line);
-      box-shadow: var(--shadow);
-    }
+/* FOOTER */
+footer{
+  position:relative;z-index:1;
+  border-top:1px solid var(--border);
+  padding:24px 32px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  flex-wrap:wrap;
+  gap:12px;
+}
+footer span{font-size:12px;color:var(--muted)}
+footer a{color:var(--muted);text-decoration:none;font-size:12px;transition:color .2s}
+footer a:hover{color:var(--accent)}
 
-    .eyebrow {
-      display: inline-flex;
-      align-items: center;
-      min-height: 32px;
-      padding: 0 12px;
-      border-radius: 999px;
-      background: var(--accent-soft);
-      color: var(--accent-strong);
-      font-size: 13px;
-      font-weight: 700;
-    }
+/* ANIMATIONS */
+.fade-up{
+  opacity:0;
+  transform:translateY(20px);
+  animation:fadeUp .6s ease forwards;
+}
+@keyframes fadeUp{to{opacity:1;transform:translateY(0)}}
+.delay-1{animation-delay:.1s}
+.delay-2{animation-delay:.2s}
+.delay-3{animation-delay:.3s}
+.delay-4{animation-delay:.4s}
 
-    h1 {
-      margin: 16px 0 14px;
-      max-width: 760px;
-      font-size: 42px;
-      line-height: 1.08;
-      font-weight: 800;
-    }
-
-    .hero p {
-      max-width: 820px;
-      margin: 0;
-      color: var(--muted);
-      font-size: 18px;
-    }
-
-    .hero-actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-      margin-top: 22px;
-    }
-
-    .hero-actions a {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 46px;
-      padding: 0 18px;
-      border-radius: 999px;
-      font-weight: 700;
-    }
-
-    .hero-actions .primary {
-      background: var(--accent);
-      color: #fff;
-      box-shadow: 0 12px 26px rgba(28, 143, 115, 0.22);
-    }
-
-    .hero-actions .secondary {
-      border: 1px solid var(--line);
-      background: rgba(255, 255, 255, 0.74);
-      color: var(--text);
-    }
-
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 18px;
-      margin-top: 22px;
-    }
-
-    .card {
-      display: block;
-      padding: 22px 22px 20px;
-      border-radius: 16px;
-      border: 1px solid var(--line);
-      background: var(--surface);
-      backdrop-filter: blur(12px);
-      box-shadow: var(--shadow);
-      transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
-    }
-
-    .card:hover {
-      transform: translateY(-2px);
-      border-color: rgba(28, 143, 115, 0.24);
-      background: rgba(255, 255, 255, 0.96);
-    }
-
-    .card .label {
-      color: var(--muted);
-      font-size: 13px;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
-
-    .card h2 {
-      margin: 10px 0 10px;
-      font-size: 25px;
-      line-height: 1.15;
-    }
-
-    .card p {
-      margin: 0;
-      color: var(--muted);
-      font-size: 15px;
-    }
-
-    .links {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 18px;
-      margin-top: 18px;
-    }
-
-    .link-card {
-      display: block;
-      padding: 20px;
-      border-radius: 16px;
-      border: 1px solid var(--line);
-      background: rgba(255, 255, 255, 0.78);
-      box-shadow: var(--shadow);
-    }
-
-    .link-card strong {
-      display: block;
-      margin-bottom: 8px;
-      font-size: 18px;
-    }
-
-    .link-card span {
-      color: var(--muted);
-      font-size: 14px;
-    }
-
-    .footer {
-      margin-top: 22px;
-      padding: 18px 2px 0;
-      border-top: 1px solid var(--line);
-      color: var(--muted);
-      font-size: 14px;
-    }
-
-    @media (max-width: 980px) {
-      .grid,
-      .links {
-        grid-template-columns: 1fr;
-      }
-    }
-
-    @media (max-width: 720px) {
-      .shell {
-        width: min(calc(100% - 20px), var(--max));
-        padding-top: 12px;
-      }
-
-      .topbar {
-        padding: 12px 14px;
-      }
-
-      .topnav a {
-        min-height: 38px;
-        padding: 0 12px;
-      }
-
-      .hero {
-        padding: 32px 22px 28px;
-        border-radius: 18px;
-      }
-
-      h1 {
-        font-size: 32px;
-      }
-
-      .hero p {
-        font-size: 16px;
-      }
-    }
-  </style>
+@media(max-width:600px){
+  nav{padding:0 16px}
+  main{padding:0 16px 60px}
+  .hero{padding:110px 0 60px}
+}
+</style>
 </head>
 <body>
-  <div class="shell">
-    <div class="topbar">
-      <div class="brand">EZVenera Docs</div>
-      <nav class="topnav" aria-label="站点导航">
-        <a href="./index.html">主页</a>
-        <a href="./plugin-guide.html">制作插件</a>
-        <a href="./project-structure.html">项目结构</a>
-      </nav>
-    </div>
 
-    <section class="hero">
-      <div class="eyebrow">Windows / Android</div>
-      <h1>EZVenera 文档与入口</h1>
-      <p>这是可直接部署到 GitHub Pages 的静态文档站。主页负责导向项目本体、发布页、插件仓库，以及当前的两份文档页面。</p>
-      <div class="hero-actions">
-        <a class="primary" href="https://github.com/WEP-56/EZVenera/releases" target="_blank" rel="noreferrer">立即下载</a>
-        <a class="secondary" href="https://github.com/WEP-56/EZVenera" target="_blank" rel="noreferrer">GitHub 主页</a>
-      </div>
-    </section>
-
-    <div class="grid">
-      <a class="card" href="./plugin-guide.html">
-        <div class="label">文档</div>
-        <h2>制作插件</h2>
-        <p>中文详细版插件制作说明，覆盖能力边界、字段结构、图片链路、登录方式、设置项、完整代码示例和调试建议。</p>
-      </a>
-
-      <a class="card" href="./project-structure.html">
-        <div class="label">文档</div>
-        <h2>项目结构</h2>
-        <p>项目结构页目前先保留入口与占位，后续可以继续扩成完整的开发接手文档。</p>
-      </a>
-    </div>
-
-    <div class="links">
-      <a class="link-card" href="https://github.com/WEP-56/EZVenera" target="_blank" rel="noreferrer">
-        <strong>GitHub 主页</strong>
-        <span>查看源码、提交记录、问题追踪和仓库说明。</span>
-      </a>
-
-      <a class="link-card" href="https://github.com/WEP-56/EZVenera/releases" target="_blank" rel="noreferrer">
-        <strong>Releases</strong>
-        <span>下载最新发布版本。这里作为站点里的“立即下载”入口。</span>
-      </a>
-
-      <a class="link-card" href="https://github.com/WEP-56/EZvenera-config" target="_blank" rel="noreferrer">
-        <strong>主插件仓库</strong>
-        <span>查看真实源样本、模板文件和现有插件实现。</span>
-      </a>
-    </div>
-
-    <div class="footer">
-      所有页面都使用相对链接，可以直接部署到 GitHub Pages，也可以直接本地打开查看。
-    </div>
+<nav>
+  <a href="index.html" class="nav-logo">
+    <span class="nav-logo-dot"></span>
+    EZVenera
+  </a>
+  <div class="nav-links">
+    <a href="index.html">主页</a>
+    <a href="plugin-guide.html">制作插件</a>
+    <a href="project-structure.html">项目结构</a>
   </div>
+</nav>
+
+<main>
+  <section class="hero">
+    <div class="hero-badge fade-up">
+      <span class="hero-badge-dot"></span>
+      Windows &amp; Android · 开源漫画阅读器
+    </div>
+    <h1 class="fade-up delay-1">
+      <span class="line1">EZVenera</span>
+      <span class="line2">文档与入口</span>
+    </h1>
+    <p class="hero-desc fade-up delay-2">
+      Venera 的重写简化分支，持续维护。本站汇集项目下载、插件制作指南与开发参考，面向用户和插件作者。
+    </p>
+    <div class="hero-actions fade-up delay-3">
+      <a href="https://github.com/WEP-56/EZVenera/releases" class="btn-primary">
+        ↓ 立即下载
+      </a>
+      <a href="https://github.com/WEP-56/EZVenera" class="btn-secondary">
+        GitHub 主页 ↗
+      </a>
+    </div>
+  </section>
+
+  <div class="section-label fade-up delay-4">文档</div>
+  <div class="doc-grid fade-up delay-4">
+    <a href="plugin-guide.html" class="doc-card">
+      <div class="doc-card-tag">插件</div>
+      <span class="doc-card-arrow">→</span>
+      <h3>制作插件</h3>
+      <p>中文详细版插件制作说明，覆盖能力边界、字段结构、图片链路、登录方式、设置项、完整代码示例和调试建议。</p>
+    </a>
+    <a href="project-structure.html" class="doc-card">
+      <div class="doc-card-tag">开发</div>
+      <span class="doc-card-arrow">→</span>
+      <h3>项目结构</h3>
+      <p>项目结构页目前先保留入口与占位，后续可以继续扩成完整的开发接手文档。</p>
+    </a>
+  </div>
+
+  <div class="section-label">外部链接</div>
+  <div class="link-grid">
+    <a href="https://github.com/WEP-56/EZVenera" class="link-card">
+      <h4>GitHub 主页</h4>
+      <p>查看源码、提交记录、问题追踪和仓库说明。</p>
+    </a>
+    <a href="https://github.com/WEP-56/EZVenera/releases" class="link-card">
+      <h4>Releases</h4>
+      <p>下载最新发布版本的 Windows / Android 包体。</p>
+    </a>
+    <a href="https://github.com/WEP-56/EZvenera-config" class="link-card">
+      <h4>主插件仓库</h4>
+      <p>查看真实源样本、模板文件和现有插件实现。</p>
+    </a>
+  </div>
+
+  <div class="status-bar">
+    <span class="status-dot"></span>
+    所有页面使用相对链接，可直接部署到 GitHub Pages，也可本地打开查看。
+    <strong>flutter pub get &amp;&amp; flutter run</strong> 本地启动开发环境。
+  </div>
+</main>
+
+<footer>
+  <span>EZVenera · Venera 重写简化分支</span>
+  <div style="display:flex;gap:20px">
+    <a href="https://github.com/WEP-56/EZVenera">GitHub</a>
+    <a href="https://github.com/WEP-56/EZVenera/issues">Issues</a>
+    <a href="plugin-guide.html">插件文档</a>
+  </div>
+</footer>
+
 </body>
 </html>

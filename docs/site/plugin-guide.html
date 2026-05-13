@@ -1,469 +1,424 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>EZVenera 插件制作文档</title>
-  <style>
-    :root {
-      --bg: #f4f7f5;
-      --surface: rgba(255, 255, 255, 0.9);
-      --surface-strong: #ffffff;
-      --text: #17312c;
-      --muted: #526761;
-      --line: rgba(23, 49, 44, 0.12);
-      --accent: #1c8f73;
-      --accent-soft: rgba(28, 143, 115, 0.12);
-      --code-bg: #10211d;
-      --code-text: #e9fff8;
-      --warn-bg: #fff7e8;
-      --warn-text: #7a5712;
-      --shadow: 0 18px 48px rgba(20, 49, 42, 0.08);
-      --max: 1180px;
-    }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EZVenera 插件制作文档</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0e0c0a;
+  --bg2:#141210;
+  --bg3:#1c1916;
+  --bg-code:#0b0a08;
+  --border:#ffffff0e;
+  --border-hover:#c8922a28;
+  --text:#ede8df;
+  --muted:#7a7060;
+  --accent:#c8922a;
+  --accent2:#e8b86d;
+  --accent-dim:#c8922a15;
+  --green:#b5a060;
+  --amber:#fbbf24;
+  --red:#f87171;
+  --nav-h:56px;
+  --sidebar-w:240px;
+}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:'Noto Sans SC',sans-serif;
+  font-size:15px;
+  line-height:1.75;
+  min-height:100vh;
+  overflow-x:hidden;
+}
+body::after{
+  content:'';
+  position:fixed;
+  inset:0;
+  background-image:
+    linear-gradient(var(--border) 1px,transparent 1px),
+    linear-gradient(90deg,var(--border) 1px,transparent 1px);
+  background-size:48px 48px;
+  pointer-events:none;
+  z-index:0;
+  mask-image:radial-gradient(ellipse 60% 40% at 50% 0%,black 0%,transparent 60%);
+}
 
-    * {
-      box-sizing: border-box;
-    }
+/* NAV */
+nav{
+  position:fixed;top:0;left:0;right:0;z-index:200;
+  height:var(--nav-h);
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 24px;
+  background:rgba(14,12,10,.9);
+  backdrop-filter:blur(20px);
+  -webkit-backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--border);
+}
+.nav-logo{
+  font-family:'Syne',sans-serif;font-weight:800;font-size:14px;
+  letter-spacing:.12em;text-transform:uppercase;
+  color:var(--text);text-decoration:none;
+  display:flex;align-items:center;gap:10px;
+}
+.nav-logo-dot{
+  width:7px;height:7px;border-radius:50%;
+  background:var(--accent);box-shadow:0 0 12px #c8922a55;
+  animation:pulse 2.5s ease-in-out infinite;
+}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.8)}}
+.nav-links{display:flex;gap:4px}
+.nav-links a{
+  color:var(--muted);text-decoration:none;font-size:13px;font-weight:500;
+  padding:6px 12px;border-radius:6px;transition:all .2s;
+}
+.nav-links a:hover{color:var(--text);background:var(--border)}
+.nav-links a.active{color:var(--accent)}
 
-    html {
-      scroll-behavior: smooth;
-    }
+/* LAYOUT */
+.layout{
+  display:flex;
+  padding-top:var(--nav-h);
+  min-height:100vh;
+  position:relative;z-index:1;
+}
 
-    body {
-      margin: 0;
-      color: var(--text);
-      background:
-        radial-gradient(circle at top right, rgba(28, 143, 115, 0.12), transparent 32%),
-        linear-gradient(180deg, #eef4f1 0%, var(--bg) 100%);
-      font: 16px/1.7 "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-    }
+/* SIDEBAR */
+.sidebar{
+  position:fixed;
+  top:var(--nav-h);
+  left:0;
+  width:var(--sidebar-w);
+  height:calc(100vh - var(--nav-h));
+  overflow-y:auto;
+  padding:32px 16px 32px 24px;
+  border-right:1px solid var(--border);
+  background:rgba(14,12,10,.6);
+  backdrop-filter:blur(10px);
+  scrollbar-width:thin;
+  scrollbar-color:var(--border) transparent;
+}
+.sidebar::-webkit-scrollbar{width:4px}
+.sidebar::-webkit-scrollbar-track{background:transparent}
+.sidebar::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+.sidebar-label{
+  font-family:'DM Mono',monospace;font-size:10px;
+  color:var(--muted);letter-spacing:.12em;text-transform:uppercase;
+  margin-bottom:12px;
+}
+.sidebar nav a{
+  display:block;color:var(--muted);text-decoration:none;
+  font-size:13px;padding:5px 10px;border-radius:6px;
+  margin-bottom:2px;transition:all .15s;
+  border-left:2px solid transparent;
+  line-height:1.4;
+}
+.sidebar nav a:hover{color:var(--text);background:var(--border)}
+.sidebar nav a.active{
+  color:var(--accent);
+  border-left-color:var(--accent);
+  background:var(--accent-dim);
+}
 
-    a {
-      color: var(--accent);
-      text-decoration: none;
-    }
+/* CONTENT */
+.content{
+  margin-left:var(--sidebar-w);
+  flex:1;
+  max-width:760px;
+  padding:48px 40px 120px;
+}
 
-    a:hover {
-      text-decoration: underline;
-    }
+/* ARTICLE HEAD */
+.article-head{
+  margin-bottom:48px;
+  padding-bottom:32px;
+  border-bottom:1px solid var(--border);
+}
+.article-tag{
+  font-family:'DM Mono',monospace;font-size:11px;
+  color:var(--accent);letter-spacing:.08em;text-transform:uppercase;
+  margin-bottom:14px;display:flex;align-items:center;gap:8px;
+}
+.article-tag::before{content:'';width:20px;height:1px;background:var(--accent);display:inline-block}
+.article-head h1{
+  font-family:'Syne',sans-serif;font-size:36px;font-weight:800;
+  letter-spacing:-.02em;line-height:1.1;color:var(--text);margin-bottom:14px;
+}
+.article-head p{font-size:15px;color:var(--muted);max-width:560px;line-height:1.7}
 
-    .shell {
-      width: min(calc(100% - 32px), var(--max));
-      margin: 0 auto;
-      padding: 24px 0 64px;
-    }
+/* SECTIONS */
+.doc-section{
+  margin-bottom:56px;
+  scroll-margin-top:80px;
+}
+.doc-section h2{
+  font-family:'Syne',sans-serif;font-size:22px;font-weight:700;
+  color:var(--text);margin-bottom:16px;
+  display:flex;align-items:center;gap:10px;
+  letter-spacing:-.01em;
+}
+.section-num{
+  font-family:'DM Mono',monospace;font-size:11px;
+  color:var(--accent);background:var(--accent-dim);
+  border:1px solid #c8922a20;padding:2px 8px;border-radius:4px;
+  flex-shrink:0;
+}
+.doc-section h3{
+  font-size:15px;font-weight:700;color:var(--text);
+  margin:24px 0 12px;
+  display:flex;align-items:center;gap:8px;
+}
+.doc-section h3::before{
+  content:'';width:3px;height:14px;background:var(--accent);
+  border-radius:2px;display:inline-block;flex-shrink:0;
+}
+.doc-section p{color:var(--muted);margin-bottom:14px;font-size:14px;line-height:1.75}
+.doc-section ul{padding-left:0;list-style:none;margin-bottom:14px}
+.doc-section ul li{
+  color:var(--muted);font-size:14px;padding:4px 0 4px 20px;position:relative;
+}
+.doc-section ul li::before{
+  content:'—';position:absolute;left:0;color:var(--accent);font-size:12px;top:5px;
+}
 
-    .hero {
-      padding: 44px 40px 28px;
-      border-bottom: 1px solid var(--line);
-      background:
-        linear-gradient(135deg, rgba(28, 143, 115, 0.16), rgba(18, 54, 47, 0.04)),
-        var(--surface-strong);
-      border-radius: 18px 18px 0 0;
-    }
+/* TABLE */
+.table-wrap{overflow-x:auto;margin:20px 0;border-radius:10px;border:1px solid var(--border)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead{background:var(--bg3)}
+th{
+  padding:10px 16px;text-align:left;
+  font-family:'DM Mono',monospace;font-size:11px;
+  color:var(--muted);letter-spacing:.06em;text-transform:uppercase;
+  border-bottom:1px solid var(--border);font-weight:500;
+}
+td{
+  padding:10px 16px;color:var(--muted);
+  border-bottom:1px solid var(--border);vertical-align:top;
+  font-size:13px;line-height:1.6;
+}
+tr:last-child td{border-bottom:none}
+td:first-child{color:var(--text);font-weight:500}
+.tag-yes{color:var(--green);font-family:'DM Mono',monospace;font-size:12px}
+.tag-no{color:var(--red);font-family:'DM Mono',monospace;font-size:12px}
 
-    .hero h1 {
-      margin: 0 0 12px;
-      font-size: 34px;
-      line-height: 1.15;
-      font-weight: 800;
-    }
+/* CODE BLOCKS */
+.code-wrap{
+  position:relative;margin:16px 0;
+  border-radius:10px;overflow:hidden;
+  border:1px solid var(--border);
+}
+.code-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:8px 14px;background:var(--bg3);
+  border-bottom:1px solid var(--border);
+}
+.code-lang{
+  font-family:'DM Mono',monospace;font-size:11px;
+  color:var(--accent);letter-spacing:.06em;text-transform:uppercase;
+}
+.copy-btn{
+  font-family:'DM Mono',monospace;font-size:11px;
+  color:var(--muted);background:transparent;border:1px solid var(--border);
+  border-radius:4px;padding:3px 10px;cursor:pointer;
+  transition:all .2s;letter-spacing:.04em;
+}
+.copy-btn:hover{color:var(--text);border-color:var(--border-hover)}
+.copy-btn.copied{color:var(--green);border-color:var(--green)}
+pre{
+  background:var(--bg-code);
+  padding:20px;overflow-x:auto;margin:0;
+  font-family:'DM Mono',monospace;font-size:13px;
+  line-height:1.7;color:#c4b9e8;
+  scrollbar-width:thin;scrollbar-color:var(--border) transparent;
+}
+pre::-webkit-scrollbar{height:4px}
+pre::-webkit-scrollbar-track{background:transparent}
+pre::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+code{
+  font-family:'DM Mono',monospace;font-size:12.5px;
+  background:#c8922a12;border:1px solid #c8922a20;
+  color:var(--accent);border-radius:4px;padding:1px 6px;
+}
+pre code{background:none;border:none;padding:0;color:inherit;font-size:inherit}
 
-    .hero p {
-      max-width: 820px;
-      margin: 0;
-      color: var(--muted);
-      font-size: 17px;
-    }
+/* CALLOUT */
+.callout{
+  background:var(--bg3);border:1px solid var(--border);
+  border-left:3px solid var(--accent);
+  border-radius:0 8px 8px 0;
+  padding:14px 18px;margin:16px 0;font-size:13px;color:var(--muted);
+}
+.callout strong{color:var(--text)}
+.callout.warn{border-left-color:var(--amber)}
+.callout.danger{border-left-color:var(--red)}
 
-    .layout {
-      display: grid;
-      grid-template-columns: 280px minmax(0, 1fr);
-      gap: 22px;
-      align-items: start;
-      padding-top: 22px;
-    }
+/* PITFALL LIST */
+.pitfall-list{list-style:none;padding:0;margin:12px 0}
+.pitfall-list li{
+  display:flex;gap:12px;align-items:flex-start;
+  padding:12px 0;border-bottom:1px solid var(--border);
+  font-size:14px;color:var(--muted);
+}
+.pitfall-list li:last-child{border-bottom:none}
+.pitfall-num{
+  font-family:'DM Mono',monospace;font-size:11px;
+  color:var(--accent);background:var(--accent-dim);
+  border:1px solid #c8922a20;border-radius:4px;
+  padding:1px 8px;flex-shrink:0;margin-top:2px;
+}
 
-    .topbar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      padding: 14px 18px;
-      border: 1px solid var(--line);
-      border-radius: 16px;
-      background: var(--surface);
-      backdrop-filter: blur(12px);
-      box-shadow: var(--shadow);
-    }
+/* DEBUG STEPS */
+.debug-steps{counter-reset:step;list-style:none;padding:0;margin:12px 0}
+.debug-steps li{
+  counter-increment:step;position:relative;
+  padding:12px 16px 12px 52px;margin-bottom:8px;
+  background:var(--bg2);border:1px solid var(--border);
+  border-radius:8px;font-size:14px;color:var(--muted);
+}
+.debug-steps li::before{
+  content:counter(step);
+  position:absolute;left:16px;top:50%;transform:translateY(-50%);
+  font-family:'DM Mono',monospace;font-size:12px;font-weight:700;
+  color:var(--accent);background:var(--accent-dim);
+  width:24px;height:24px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+}
 
-    .brand {
-      font-size: 14px;
-      font-weight: 800;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      color: var(--muted);
-    }
+/* FOOTER */
+footer{
+  position:relative;z-index:1;
+  border-top:1px solid var(--border);
+  padding:20px 24px;
+  display:flex;align-items:center;justify-content:space-between;
+  flex-wrap:wrap;gap:12px;
+  margin-left:var(--sidebar-w);
+}
+footer span{font-size:12px;color:var(--muted)}
+footer a{color:var(--muted);text-decoration:none;font-size:12px;transition:color .2s}
+footer a:hover{color:var(--accent)}
 
-    .topnav {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
-
-    .topnav a {
-      display: inline-flex;
-      align-items: center;
-      min-height: 40px;
-      padding: 0 14px;
-      border-radius: 999px;
-      border: 1px solid var(--line);
-      color: var(--text);
-      background: rgba(255, 255, 255, 0.74);
-      text-decoration: none;
-      font-size: 14px;
-      font-weight: 600;
-    }
-
-    .topnav a:hover {
-      color: var(--accent);
-      border-color: rgba(28, 143, 115, 0.3);
-      background: rgba(28, 143, 115, 0.08);
-    }
-
-    .toc,
-    .content {
-      background: var(--surface);
-      backdrop-filter: blur(12px);
-      border: 1px solid var(--line);
-      box-shadow: var(--shadow);
-    }
-
-    .toc {
-      position: sticky;
-      top: 18px;
-      border-radius: 16px;
-      padding: 20px 18px;
-    }
-
-    .toc h2 {
-      margin: 0 0 14px;
-      font-size: 14px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: var(--muted);
-    }
-
-    .toc a {
-      display: block;
-      padding: 7px 0;
-      color: var(--text);
-      font-size: 14px;
-    }
-
-    .toc a:hover {
-      color: var(--accent);
-    }
-
-    .content {
-      border-radius: 18px;
-      padding: 32px 36px 44px;
-    }
-
-    .content h2 {
-      margin: 36px 0 14px;
-      font-size: 28px;
-      line-height: 1.2;
-    }
-
-    .content h2:first-of-type {
-      margin-top: 0;
-    }
-
-    .content h3 {
-      margin: 28px 0 10px;
-      font-size: 20px;
-      line-height: 1.25;
-    }
-
-    .content h4 {
-      margin: 22px 0 8px;
-      font-size: 17px;
-    }
-
-    .content p,
-    .content li {
-      color: var(--text);
-    }
-
-    .content ul,
-    .content ol {
-      padding-left: 22px;
-      margin: 10px 0 16px;
-    }
-
-    .content code {
-      padding: 0.14em 0.42em;
-      border-radius: 6px;
-      background: rgba(16, 33, 29, 0.08);
-      font-family: Consolas, "SFMono-Regular", monospace;
-      font-size: 0.95em;
-    }
-
-    .content pre {
-      margin: 16px 0 22px;
-      padding: 18px 18px 20px;
-      overflow: auto;
-      border-radius: 14px;
-      background: var(--code-bg);
-      color: var(--code-text);
-      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
-    }
-
-    .content pre code {
-      padding: 0;
-      background: transparent;
-      color: inherit;
-      font-size: 13px;
-      line-height: 1.6;
-    }
-
-    .callout {
-      margin: 18px 0 22px;
-      padding: 14px 16px;
-      border-radius: 12px;
-      background: var(--warn-bg);
-      color: var(--warn-text);
-      border: 1px solid rgba(122, 87, 18, 0.14);
-    }
-
-    .mini {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 14px;
-      margin: 16px 0 24px;
-    }
-
-    .mini article {
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      padding: 14px 15px;
-      background: rgba(255, 255, 255, 0.76);
-    }
-
-    .mini h4 {
-      margin: 0 0 8px;
-      font-size: 15px;
-    }
-
-    .mini p {
-      margin: 0;
-      color: var(--muted);
-      font-size: 14px;
-      line-height: 1.6;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: 16px 0 24px;
-      overflow: hidden;
-      border-radius: 12px;
-      border: 1px solid var(--line);
-      background: rgba(255, 255, 255, 0.7);
-    }
-
-    th,
-    td {
-      text-align: left;
-      vertical-align: top;
-      padding: 12px 14px;
-      border-bottom: 1px solid var(--line);
-      font-size: 14px;
-    }
-
-    th {
-      background: rgba(28, 143, 115, 0.08);
-      font-weight: 700;
-    }
-
-    .footer {
-      margin-top: 28px;
-      padding-top: 20px;
-      border-top: 1px solid var(--line);
-      color: var(--muted);
-      font-size: 14px;
-    }
-
-    @media (max-width: 980px) {
-      .layout {
-        grid-template-columns: 1fr;
-      }
-
-      .toc {
-        position: static;
-      }
-
-      .mini {
-        grid-template-columns: 1fr;
-      }
-    }
-
-    @media (max-width: 720px) {
-      .shell {
-        width: min(calc(100% - 20px), var(--max));
-        padding-top: 12px;
-      }
-
-      .hero {
-        padding: 28px 22px 22px;
-        border-radius: 14px 14px 0 0;
-      }
-
-      .topbar {
-        padding: 12px 14px;
-      }
-
-      .topnav a {
-        min-height: 38px;
-        padding: 0 12px;
-      }
-
-      .hero h1 {
-        font-size: 28px;
-      }
-
-      .content {
-        padding: 24px 20px 32px;
-        border-radius: 14px;
-      }
-
-      .content h2 {
-        font-size: 24px;
-      }
-
-      .content h3 {
-        font-size: 18px;
-      }
-    }
-  </style>
+/* MOBILE */
+@media(max-width:768px){
+  .sidebar{display:none}
+  .content{margin-left:0;padding:32px 20px 80px}
+  footer{margin-left:0}
+}
+</style>
 </head>
 <body>
-  <div class="shell">
-    <div class="topbar">
-      <div class="brand">EZVenera Docs</div>
-      <nav class="topnav" aria-label="站点导航">
-        <a href="./index.html">主页</a>
-        <a href="./plugin-guide.html">制作插件</a>
-        <a href="./project-structure.html">项目结构</a>
-        <a href="https://github.com/WEP-56/EZVenera" target="_blank" rel="noreferrer">GitHub</a>
-      </nav>
+
+<nav>
+  <a href="index.html" class="nav-logo">
+    <span class="nav-logo-dot"></span>EZVenera
+  </a>
+  <div class="nav-links">
+    <a href="index.html">主页</a>
+    <a href="plugin-guide.html" class="active">制作插件</a>
+    <a href="project-structure.html">项目结构</a>
+    <a href="https://github.com/WEP-56/EZVenera" style="color:var(--muted)">GitHub</a>
+  </div>
+</nav>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-label">目录</div>
+    <nav>
+      <a href="#intro">1. 插件是什么</a>
+      <a href="#install">2. 安装与存储</a>
+      <a href="#surface">3. 能力边界</a>
+      <a href="#minimal">4. 最小结构</a>
+      <a href="#metadata">5. 元数据</a>
+      <a href="#apis">6. JS API</a>
+      <a href="#search">7. 搜索</a>
+      <a href="#category">8. 分类</a>
+      <a href="#details">9. 详情与章节</a>
+      <a href="#images">10. 图片链路</a>
+      <a href="#account">11. 登录与 cookie</a>
+      <a href="#settings">12. 设置项</a>
+      <a href="#extras">13. 其他字段</a>
+      <a href="#sample">14. 完整示例</a>
+      <a href="#pitfalls">15. 常见坑</a>
+      <a href="#debug">16. 调试建议</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <div class="article-head">
+      <div class="article-tag">插件制作文档</div>
+      <h1>EZVenera 插件制作</h1>
+      <p>面向插件作者的当前实现说明。重点解释 EZVenera 现在真实支持什么、该怎么写、哪些地方容易踩坑，以及哪些 API 看起来存在但当前宿主并没有真正接通。</p>
     </div>
 
-    <header class="hero">
-      <h1>EZVenera 插件制作文档</h1>
-      <p>面向插件作者的当前实现说明。重点解释 EZVenera 现在真实支持什么、该怎么写、哪些地方容易踩坑，以及哪些 API 看起来存在但当前宿主并没有真正接通。</p>
-    </header>
+    <section class="doc-section" id="intro">
+      <h2><span class="section-num">01</span>插件是什么</h2>
+      <p>EZVenera 的插件就是一个 JavaScript 文件，宿主会去找 <code>class YourSource extends ComicSource</code>，实例化后读取它的能力对象。EZVenera 尽量兼容原版 <code>venera-configs</code>，但只保留了简化版产品真正要用到的能力。</p>
+      <div class="callout">插件能安装，不等于插件里的所有字段都会在 EZVenera 里生效。当前宿主采取的是「支持的解析，不支持的忽略」的策略。</div>
+    </section>
 
-    <div class="layout">
-      <nav class="toc">
-        <h2>目录</h2>
-        <a href="#intro">1. 插件是什么</a>
-        <a href="#install">2. 安装与存储</a>
-        <a href="#surface">3. 能力边界</a>
-        <a href="#minimal">4. 最小结构</a>
-        <a href="#metadata">5. 元数据</a>
-        <a href="#apis">6. JS API</a>
-        <a href="#search">7. 搜索</a>
-        <a href="#category">8. 分类</a>
-        <a href="#details">9. 详情与章节</a>
-        <a href="#images">10. 图片链路</a>
-        <a href="#account">11. 登录与 cookie</a>
-        <a href="#settings">12. 设置项</a>
-        <a href="#extras">13. 其他字段</a>
-        <a href="#sample">14. 完整示例</a>
-        <a href="#pitfalls">15. 常见坑</a>
-        <a href="#debug">16. 调试建议</a>
-      </nav>
+    <section class="doc-section" id="install">
+      <h2><span class="section-num">02</span>安装与存储</h2>
+      <p>安装后的源文件会落到应用支持目录下：</p>
+      <ul>
+        <li>插件文件：<code>plugin_runtime/sources/*.js</code></li>
+        <li>插件数据：<code>plugin_runtime/data/*.json</code></li>
+        <li>Cookie：<code>plugin_runtime/cookies.db</code></li>
+      </ul>
+      <p>当前源管理页支持直接输入原始地址安装，也支持从源索引列表里选择安装。</p>
+      <div class="callout"><strong>对应实现：</strong>plugin_runtime.dart、plugin_source_repository.dart、sources_page.dart</div>
+    </section>
 
-      <main class="content">
-        <section id="intro">
-          <h2>1. 插件是什么</h2>
-          <p>EZVenera 的插件就是一个 JavaScript 文件，宿主会去找 <code>class YourSource extends ComicSource</code>，实例化后读取它的能力对象。EZVenera 尽量兼容原版 <code>venera-configs</code>，但只保留了简化版产品真正要用到的能力。</p>
-          <div class="callout">插件能安装，不等于插件里的所有字段都会在 EZVenera 里生效。当前宿主采取的是“支持的解析，不支持的忽略”的策略。</div>
-        </section>
+    <section class="doc-section" id="surface">
+      <h2><span class="section-num">03</span>能力边界</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>已支持</th><th>当前不要依赖</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>
+                <span class="tag-yes">✓</span> account.login<br>
+                <span class="tag-yes">✓</span> account.loginWithWebview<br>
+                <span class="tag-yes">✓</span> account.loginWithCookies<br>
+                <span class="tag-yes">✓</span> search.load / loadNext<br>
+                <span class="tag-yes">✓</span> category<br>
+                <span class="tag-yes">✓</span> categoryComics.load<br>
+                <span class="tag-yes">✓</span> categoryComics.optionList / optionLoader<br>
+                <span class="tag-yes">✓</span> categoryComics.ranking.*<br>
+                <span class="tag-yes">✓</span> comic.loadInfo / loadEp<br>
+                <span class="tag-yes">✓</span> comic.onImageLoad / onThumbnailLoad<br>
+                <span class="tag-yes">✓</span> comic.idMatch / link<br>
+                <span class="tag-yes">✓</span> settings (select / switch / input)<br>
+                <span class="tag-yes">✓</span> translation
+              </td>
+              <td>
+                <span class="tag-no">✗</span> explore<br>
+                <span class="tag-no">✗</span> favorites<br>
+                <span class="tag-no">✗</span> comment 系列<br>
+                <span class="tag-no">✗</span> comic.starRating<br>
+                <span class="tag-no">✗</span> comic.archive<br>
+                <span class="tag-no">✗</span> comic.onClickTag<br>
+                <span class="tag-no">✗</span> comic.enableTagsTranslate<br>
+                <span class="tag-no">✗</span> comic.loadThumbnails<br>
+                <span class="tag-no">✗</span> settings.callback<br>
+                <span class="tag-no">✗</span> UI.* 作为主流程依赖
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout warn"><code>minAppVersion</code> 现在会被读取，也能通过 <code>APP.version</code> 获取真实宿主版本，但安装阶段还没有做严格拦截，写插件时还是要自己控制兼容面。</div>
+    </section>
 
-        <section id="install">
-          <h2>2. 安装与存储</h2>
-          <p>安装后的源文件会落到应用支持目录下的 <code>plugin_runtime/sources/*.js</code>，插件自己的数据放在 <code>plugin_runtime/data/*.json</code>，cookie 放在 <code>plugin_runtime/cookies.db</code>。</p>
-          <div class="mini">
-            <article>
-              <h4>宿主入口</h4>
-              <p>当前源管理页支持直接输入原始地址安装，也支持从源索引列表里选择安装。</p>
-            </article>
-            <article>
-              <h4>对应实现</h4>
-              <p><code>plugin_runtime.dart</code>、<code>plugin_source_repository.dart</code>、<code>sources_page.dart</code></p>
-            </article>
-          </div>
-        </section>
-
-        <section id="surface">
-          <h2>3. 能力边界</h2>
-          <table>
-            <thead>
-              <tr>
-                <th>已支持</th>
-                <th>当前不要依赖</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>
-                  <code>account.login</code><br>
-                  <code>account.loginWithWebview</code><br>
-                  <code>account.loginWithCookies</code><br>
-                  <code>search.load</code><br>
-                  <code>search.loadNext</code><br>
-                  <code>category</code><br>
-                  <code>categoryComics.load</code><br>
-                  <code>categoryComics.optionList</code><br>
-                  <code>categoryComics.optionLoader</code><br>
-                  <code>categoryComics.ranking.load</code><br>
-                  <code>categoryComics.ranking.loadNext</code><br>
-                  <code>categoryComics.ranking.loadWithNext</code><br>
-                  <code>comic.loadInfo</code><br>
-                  <code>comic.loadEp</code><br>
-                  <code>comic.onImageLoad</code><br>
-                  <code>comic.onThumbnailLoad</code><br>
-                  <code>comic.idMatch</code><br>
-                  <code>comic.link</code><br>
-                  <code>settings(select/switch/input)</code><br>
-                  <code>translation</code>
-                </td>
-                <td>
-                  <code>explore</code><br>
-                  <code>favorites</code><br>
-                  <code>comment</code> 系列<br>
-                  <code>comic.starRating</code><br>
-                  <code>comic.archive</code><br>
-                  <code>comic.onClickTag</code><br>
-                  <code>comic.enableTagsTranslate</code><br>
-                  <code>comic.loadThumbnails</code><br>
-                  <code>settings.callback</code><br>
-                  <code>UI.*</code> 作为主流程依赖
-                </td>
-              </tr>
-            </tbody>
-          </table>
-          <p><code>minAppVersion</code> 现在会被读取，也能通过 <code>APP.version</code> 获取真实宿主版本，但安装阶段还没有做严格拦截，所以写插件时还是要自己控制兼容面。</p>
-        </section>
-
-        <section id="minimal">
-          <h2>4. 最小结构</h2>
-          <p>最小可用插件至少要有合法的元数据、一个入口、<code>comic.loadInfo</code> 和 <code>comic.loadEp</code>。</p>
-<pre><code class="language-js">/** @type {import('./_venera_.js')} */
+    <section class="doc-section" id="minimal">
+      <h2><span class="section-num">04</span>最小结构</h2>
+      <p>最小可用插件至少要有合法的元数据、一个入口、<code>comic.loadInfo</code> 和 <code>comic.loadEp</code>。</p>
+      <div class="code-wrap">
+        <div class="code-header"><span class="code-lang">JavaScript</span><button class="copy-btn" onclick="copyCode(this)">复制</button></div>
+        <pre><code>/** @type {import('./_venera_.js')} */
 
 class DemoSource extends ComicSource {
     name = "示例漫画源"
@@ -504,24 +459,30 @@ class DemoSource extends ComicSource {
         })
     }
 }</code></pre>
-        </section>
+      </div>
+    </section>
 
-        <section id="metadata">
-          <h2>5. 元数据</h2>
-          <p><code>name</code> 用于显示，<code>key</code> 是唯一标识，要求只包含字母、数字和下划线。<code>version</code> 是插件自己的版本，<code>url</code> 是更新地址，<code>minAppVersion</code> 请照实填写。</p>
-<pre><code class="language-js">name = "JM 漫画"
+    <section class="doc-section" id="metadata">
+      <h2><span class="section-num">05</span>元数据</h2>
+      <p><code>name</code> 用于显示，<code>key</code> 是唯一标识（只含字母、数字、下划线），<code>url</code> 是更新地址，<code>minAppVersion</code> 请照实填写。</p>
+      <div class="code-wrap">
+        <div class="code-header"><span class="code-lang">JavaScript</span><button class="copy-btn" onclick="copyCode(this)">复制</button></div>
+        <pre><code>name = "JM 漫画"
 key = "jm"
 version = "1.0.3"
 minAppVersion = "1.2.2"
 url = "https://example.com/raw/jm.js"</code></pre>
-        </section>
+      </div>
+    </section>
 
-        <section id="apis">
-          <h2>6. JS API</h2>
-          <p>最值得依赖的是 <code>Network</code>、<code>fetch</code>、<code>Convert</code>、<code>HtmlDocument</code>、<code>Comic</code>、<code>ComicDetails</code>、<code>ImageLoadingConfig</code>、<code>Image</code>、<code>APP</code>。</p>
+    <section class="doc-section" id="apis">
+      <h2><span class="section-num">06</span>JS API</h2>
+      <p>最值得依赖的是 <code>Network</code>、<code>fetch</code>、<code>Convert</code>、<code>HtmlDocument</code>、<code>Comic</code>、<code>ComicDetails</code>、<code>ImageLoadingConfig</code>、<code>Image</code>、<code>APP</code>。</p>
 
-          <h3>6.1 Network / fetch</h3>
-<pre><code class="language-js">let res = await Network.get("https://example.com/api/list", {
+      <h3>Network / fetch</h3>
+      <div class="code-wrap">
+        <div class="code-header"><span class="code-lang">JavaScript</span><button class="copy-btn" onclick="copyCode(this)">复制</button></div>
+        <pre><code>let res = await Network.get("https://example.com/api/list", {
     "user-agent": "Mozilla/5.0",
     "referer": "https://example.com/"
 })
@@ -531,30 +492,41 @@ if (res.status !== 200) {
 }
 
 let json = JSON.parse(res.body)</code></pre>
+      </div>
 
-          <h3>6.2 Convert</h3>
-<pre><code class="language-js">let raw = Convert.encodeUtf8("comic-123")
+      <h3>Convert</h3>
+      <div class="code-wrap">
+        <div class="code-header"><span class="code-lang">JavaScript</span><button class="copy-btn" onclick="copyCode(this)">复制</button></div>
+        <pre><code>let raw = Convert.encodeUtf8("comic-123")
 let hash = Convert.md5(raw)
 let hashText = Convert.hexEncode(hash)</code></pre>
+      </div>
 
-          <h3>6.3 HtmlDocument</h3>
-<pre><code class="language-js">let res = await Network.get("https://example.com/comic/123")
+      <h3>HtmlDocument</h3>
+      <div class="code-wrap">
+        <div class="code-header"><span class="code-lang">JavaScript</span><button class="copy-btn" onclick="copyCode(this)">复制</button></div>
+        <pre><code>let res = await Network.get("https://example.com/comic/123")
 let doc = new HtmlDocument(res.body)
 let title = doc.querySelector("h1")?.text ?? "未知标题"</code></pre>
+      </div>
 
-          <h3>6.4 APP</h3>
-<pre><code class="language-js">if (APP.platform === "windows") {
+      <h3>APP</h3>
+      <div class="code-wrap">
+        <div class="code-header"><span class="code-lang">JavaScript</span><button class="copy-btn" onclick="copyCode(this)">复制</button></div>
+        <pre><code>if (APP.platform === "windows") {
     // 按平台切换站点或请求头
 }</code></pre>
+      </div>
 
-          <h3>6.5 UI</h3>
-          <p><code>init.js</code> 里声明了 <code>UI.showMessage</code>、<code>UI.showDialog</code> 等接口，但当前 EZVenera 宿主没有真正接通这套 bridge。你可以看到 API，但不要把它当成当前版本的可靠能力。</p>
-        </section>
+      <div class="callout warn"><strong>UI.*</strong> 在 init.js 里声明了 showMessage、showDialog 等接口，但当前 EZVenera 宿主没有真正接通这套 bridge。不要把它当成当前版本的可靠能力。</div>
+    </section>
 
-        <section id="search">
-          <h2>7. 搜索</h2>
-          <p>搜索支持两种模型：<code>search.load(keyword, options, page)</code> 和 <code>search.loadNext(keyword, options, nextToken)</code>。如果两者同时存在，宿主优先用 <code>load</code>。</p>
-<pre><code class="language-js">search = {
+    <section class="doc-section" id="search">
+      <h2><span class="section-num">07</span>搜索</h2>
+      <p>支持两种模型：<code>search.load(keyword, options, page)</code> 和 <code>search.loadNext(keyword, options, nextToken)</code>。两者同时存在时，宿主优先用 <code>load</code>。</p>
+      <div class="code-wrap">
+        <div class="code-header"><span class="code-lang">JavaScript</span><button class="copy-btn" onclick="copyCode(this)">复制</button></div>
+        <pre><code>search = {
     optionList: [
         {
             label: "排序",
@@ -584,14 +556,17 @@ let title = doc.querySelector("h1")?.text ?? "未知标题"</code></pre>
         }
     }
 }</code></pre>
-        </section>
+      </div>
+    </section>
 
-        <section id="category">
-          <h2>8. 分类</h2>
-          <p>分类页由 <code>category</code> 定义入口，由 <code>categoryComics</code> 定义实际列表加载。EZVenera 当前已经支持静态筛选项、动态筛选项和两种排行分页模型。</p>
+    <section class="doc-section" id="category">
+      <h2><span class="section-num">08</span>分类</h2>
+      <p>分类页由 <code>category</code> 定义入口，由 <code>categoryComics</code> 定义实际列表加载。当前已支持静态筛选项、动态筛选项和两种排行分页模型。</p>
 
-          <h3>8.1 category</h3>
-<pre><code class="language-js">category = {
+      <h3>category</h3>
+      <div class="code-wrap">
+        <div class="code-header"><span class="code-lang">JavaScript</span><button class="copy-btn" onclick="copyCode(this)">复制</button></div>
+        <pre><code>category = {
     title: "分类",
     enableRankingPage: true,
     parts: [
@@ -603,56 +578,38 @@ let title = doc.querySelector("h1")?.text ?? "未知标题"</code></pre>
                     label: "热血",
                     target: {
                         page: "category",
-                        attributes: {
-                            category: "hot_blood",
-                            param: null
-                        }
+                        attributes: { category: "hot_blood", param: null }
                     }
                 }
             ]
         }
     ]
 }</code></pre>
+      </div>
 
-          <h3>8.2 optionList / optionLoader</h3>
-<pre><code class="language-js">categoryComics = {
+      <h3>optionList / optionLoader</h3>
+      <div class="code-wrap">
+        <div class="code-header"><span class="code-lang">JavaScript</span><button class="copy-btn" onclick="copyCode(this)">复制</button></div>
+        <pre><code>categoryComics = {
     optionLoader: async (category, param) => {
         if (category === "rank") {
-            return [
-                {
-                    label: "时间",
-                    options: [
-                        "day-日榜",
-                        "week-周榜",
-                        "month-月榜"
-                    ]
-                }
-            ]
+            return [{ label: "时间", options: ["day-日榜", "week-周榜", "month-月榜"] }]
         }
-
-        return [
-            {
-                label: "排序",
-                options: [
-                    "latest-最新",
-                    "popular-热门"
-                ]
-            }
-        ]
+        return [{ label: "排序", options: ["latest-最新", "popular-热门"] }]
     },
 
     load: async (category, param, options, page) => {
         // ...
     }
 }</code></pre>
+      </div>
 
-          <h3>8.3 ranking.load / ranking.loadNext / ranking.loadWithNext</h3>
-<pre><code class="language-js">categoryComics = {
+      <h3>ranking.loadNext</h3>
+      <div class="code-wrap">
+        <div class="code-header"><span class="code-lang">JavaScript</span><button class="copy-btn" onclick="copyCode(this)">复制</button></div>
+        <pre><code>categoryComics = {
     ranking: {
-        options: [
-            "day-日榜",
-            "week-周榜"
-        ],
+        options: ["day-日榜", "week-周榜"],
         loadNext: async (option, next) => {
             let url = next
                 ? `https://example.com/api/ranking/next?token=${encodeURIComponent(next)}`
@@ -672,12 +629,15 @@ let title = doc.querySelector("h1")?.text ?? "未知标题"</code></pre>
         }
     }
 }</code></pre>
-        </section>
+      </div>
+    </section>
 
-        <section id="details">
-          <h2>9. 详情与章节</h2>
-          <p><code>comic.loadInfo</code> 返回 <code>ComicDetails</code>，最关键的是标题、封面、标签和章节。章节可以是平铺结构，也可以是分组结构。</p>
-<pre><code class="language-js">comic = {
+    <section class="doc-section" id="details">
+      <h2><span class="section-num">09</span>详情与章节</h2>
+      <p><code>comic.loadInfo</code> 返回 <code>ComicDetails</code>，章节可以是平铺结构，也可以是分组结构。</p>
+      <div class="code-wrap">
+        <div class="code-header"><span class="code-lang">JavaScript</span><button class="copy-btn" onclick="copyCode(this)">复制</button></div>
+        <pre><code>comic = {
     loadInfo: async (id) => {
         let res = await Network.get(`https://example.com/api/comic/${id}`)
         let data = JSON.parse(res.body)
@@ -702,88 +662,76 @@ let title = doc.querySelector("h1")?.text ?? "未知标题"</code></pre>
             `https://example.com/api/comic/${comicId}/episode/${epId}`
         )
         let json = JSON.parse(res.body)
-        return {
-            images: json.images.map(item => item.url)
-        }
+        return { images: json.images.map(item => item.url) }
     }
 }</code></pre>
-        </section>
+      </div>
+    </section>
 
-        <section id="images">
-          <h2>10. 图片链路</h2>
-          <p>只有当图片请求不是“直接 GET 一张公开 URL”时，才需要写 <code>onImageLoad</code>。常见用途是补 headers、Referer、cookie、响应转换、解扰、失败重签名。</p>
+    <section class="doc-section" id="images">
+      <h2><span class="section-num">10</span>图片链路</h2>
+      <p>只有当图片请求不是「直接 GET 一张公开 URL」时，才需要写 <code>onImageLoad</code>。常见用途是补 headers、Referer、cookie、响应转换、解扰、失败重签名。</p>
 
-          <h3>10.1 普通 headers</h3>
-<pre><code class="language-js">comic = {
-    onImageLoad: async (url, comicId, epId) => {
-        return {
-            url,
-            headers: {
-                "referer": "https://example.com/",
-                "user-agent": "Mozilla/5.0"
+      <h3>普通 headers</h3>
+      <div class="code-wrap">
+        <div class="code-header"><span class="code-lang">JavaScript</span><button class="copy-btn" onclick="copyCode(this)">复制</button></div>
+        <pre><code>comic = {
+    onImageLoad: async (url, comicId, epId) => ({
+        url,
+        headers: {
+            "referer": "https://example.com/",
+            "user-agent": "Mozilla/5.0"
+        }
+    })
+}</code></pre>
+      </div>
+
+      <h3>modifyImage — 图片解扰</h3>
+      <div class="code-wrap">
+        <div class="code-header"><span class="code-lang">JavaScript</span><button class="copy-btn" onclick="copyCode(this)">复制</button></div>
+        <pre><code>comic = {
+    onImageLoad: async (url, comicId, epId) => ({
+        url,
+        modifyImage: `
+            let modifyImage = (image) => {
+                let topHalf = image.copyRange(0, 0, image.width, Math.floor(image.height / 2))
+                let bottomHalf = image.copyRange(
+                    0, Math.floor(image.height / 2),
+                    image.width, image.height - Math.floor(image.height / 2)
+                )
+                let result = Image.empty(image.width, image.height)
+                result.fillImageAt(0, 0, bottomHalf)
+                result.fillImageAt(0, bottomHalf.height, topHalf)
+                return result
             }
-        }
-    }
+        `
+    })
 }</code></pre>
+      </div>
 
-          <h3>10.2 onThumbnailLoad</h3>
-<pre><code class="language-js">comic = {
-    onThumbnailLoad: (url) => {
-        return {
-            url,
-            headers: {
-                "referer": "https://example.com/"
-            }
+      <h3>onLoadFailed — 失败重签名</h3>
+      <div class="code-wrap">
+        <div class="code-header"><span class="code-lang">JavaScript</span><button class="copy-btn" onclick="copyCode(this)">复制</button></div>
+        <pre><code>comic = {
+    onImageLoad: async (url, comicId, epId) => ({
+        url,
+        onLoadFailed: async () => {
+            let retryUrl = await this.getSignedImageUrl(comicId, epId)
+            return { url: retryUrl }
         }
-    }
+    })
 }</code></pre>
+      </div>
 
-          <h3>10.3 modifyImage</h3>
-<pre><code class="language-js">comic = {
-    onImageLoad: async (url, comicId, epId) => {
-        return {
-            url,
-            modifyImage: `
-                let modifyImage = (image) => {
-                    let topHalf = image.copyRange(0, 0, image.width, Math.floor(image.height / 2))
-                    let bottomHalf = image.copyRange(
-                        0,
-                        Math.floor(image.height / 2),
-                        image.width,
-                        image.height - Math.floor(image.height / 2)
-                    )
-                    let result = Image.empty(image.width, image.height)
-                    result.fillImageAt(0, 0, bottomHalf)
-                    result.fillImageAt(0, bottomHalf.height, topHalf)
-                    return result
-                }
-            `
-        }
-    }
-}</code></pre>
+      <div class="callout">远程封面也会走缩略图链路。需要特殊 Referer 或 cookie 的源，不要只实现 <code>onImageLoad</code>，最好同时实现 <code>onThumbnailLoad</code>。</div>
+    </section>
 
-          <h3>10.4 onLoadFailed</h3>
-<pre><code class="language-js">comic = {
-    onImageLoad: async (url, comicId, epId) => {
-        return {
-            url,
-            onLoadFailed: async () => {
-                let retryUrl = await this.getSignedImageUrl(comicId, epId)
-                return {
-                    url: retryUrl
-                }
-            }
-        }
-    }
-}</code></pre>
-
-          <div class="callout">远程封面现在也会走缩略图链路。需要特殊 Referer 或 cookie 的源，不要只实现 <code>onImageLoad</code>，最好同时实现 <code>onThumbnailLoad</code>。</div>
-        </section>
-
-        <section id="account">
-          <h2>11. 登录与 cookie</h2>
-          <p>EZVenera 支持账号密码登录、WebView 登录和手工 cookie 登录。账号密码成功后，宿主会自动保存传入的账号和密码；你自己的 token、session 还是要自己 <code>saveData</code>。</p>
-<pre><code class="language-js">account = {
+    <section class="doc-section" id="account">
+      <h2><span class="section-num">11</span>登录与 cookie</h2>
+      <p>支持账号密码登录、WebView 登录和手工 cookie 登录。账号密码成功后，宿主会自动保存账号和密码；token、session 需要自己 <code>saveData</code>。</p>
+      <div class="code-wrap">
+        <div class="code-header"><span class="code-lang">JavaScript</span><button class="copy-btn" onclick="copyCode(this)">复制</button></div>
+        <pre><code>account = {
     login: async (account, pwd) => {
         let res = await Network.post(
             "https://example.com/api/login",
@@ -792,9 +740,7 @@ let title = doc.querySelector("h1")?.text ?? "未知标题"</code></pre>
         )
 
         let json = JSON.parse(res.body)
-        if (json.code !== 200) {
-            throw json.message ?? "登录失败"
-        }
+        if (json.code !== 200) throw json.message ?? "登录失败"
 
         this.saveData("token", json.token)
         return "ok"
@@ -805,12 +751,15 @@ let title = doc.querySelector("h1")?.text ?? "未知标题"</code></pre>
         Network.deleteCookies("https://example.com")
     }
 }</code></pre>
-        </section>
+      </div>
+    </section>
 
-        <section id="settings">
-          <h2>12. 设置项</h2>
-          <p>当前只支持 <code>select</code>、<code>switch</code>、<code>input</code>。<code>callback</code> 在 EZVenera 中会被忽略。</p>
-<pre><code class="language-js">settings = {
+    <section class="doc-section" id="settings">
+      <h2><span class="section-num">12</span>设置项</h2>
+      <p>当前只支持 <code>select</code>、<code>switch</code>、<code>input</code>。<code>callback</code> 在 EZVenera 中会被忽略。</p>
+      <div class="code-wrap">
+        <div class="code-header"><span class="code-lang">JavaScript</span><button class="copy-btn" onclick="copyCode(this)">复制</button></div>
+        <pre><code>settings = {
     domain: {
         title: "站点域名",
         type: "select",
@@ -820,13 +769,11 @@ let title = doc.querySelector("h1")?.text ?? "未知标题"</code></pre>
         ],
         default: "https://a.example.com"
     },
-
     useMobileApi: {
         title: "使用移动接口",
         type: "switch",
         default: true
     },
-
     customToken: {
         title: "自定义令牌",
         type: "input",
@@ -836,16 +783,16 @@ let title = doc.querySelector("h1")?.text ?? "未知标题"</code></pre>
 
 let domain = this.loadSetting("domain")
 let useMobileApi = this.loadSetting("useMobileApi")</code></pre>
-        </section>
+      </div>
+    </section>
 
-        <section id="extras">
-          <h2>13. 其他字段</h2>
-          <p><code>translation</code> 用于翻译源自己的字符串；<code>comic.idMatch</code> 用于识别用户输入；<code>comic.link</code> 用于把外部链接转换成漫画 ID。</p>
-<pre><code class="language-js">translation = {
-    "zh_CN": {
-        "Latest": "最新",
-        "Popular": "热门"
-    }
+    <section class="doc-section" id="extras">
+      <h2><span class="section-num">13</span>其他字段</h2>
+      <p><code>translation</code> 用于翻译源自己的字符串；<code>comic.idMatch</code> 用于识别用户输入；<code>comic.link</code> 把外部链接转换成漫画 ID。</p>
+      <div class="code-wrap">
+        <div class="code-header"><span class="code-lang">JavaScript</span><button class="copy-btn" onclick="copyCode(this)">复制</button></div>
+        <pre><code>translation = {
+    "zh_CN": { "Latest": "最新", "Popular": "热门" }
 }
 
 comic = {
@@ -858,11 +805,14 @@ comic = {
         }
     }
 }</code></pre>
-        </section>
+      </div>
+    </section>
 
-        <section id="sample">
-          <h2>14. 更完整的示例插件</h2>
-<pre><code class="language-js">/** @type {import('./_venera_.js')} */
+    <section class="doc-section" id="sample">
+      <h2><span class="section-num">14</span>完整示例</h2>
+      <div class="code-wrap">
+        <div class="code-header"><span class="code-lang">JavaScript</span><button class="copy-btn" onclick="copyCode(this)">复制</button></div>
+        <pre><code>/** @type {import('./_venera_.js')} */
 
 class SampleSource extends ComicSource {
     name = "Sample Source"
@@ -911,10 +861,7 @@ class SampleSource extends ComicSource {
                         label: "动作",
                         target: {
                             page: "category",
-                            attributes: {
-                                category: "action",
-                                param: null
-                            }
+                            attributes: { category: "action", param: null }
                         }
                     }
                 ]
@@ -924,13 +871,7 @@ class SampleSource extends ComicSource {
 
     categoryComics = {
         optionList: [
-            {
-                label: "排序",
-                options: [
-                    "latest-最新",
-                    "popular-热门"
-                ]
-            }
+            { label: "排序", options: ["latest-最新", "popular-热门"] }
         ],
         load: async (category, param, options, page) => {
             let res = await Network.get(
@@ -953,10 +894,7 @@ class SampleSource extends ComicSource {
                 subTitle: data.author,
                 cover: data.cover,
                 description: data.description,
-                tags: {
-                    author: [data.author],
-                    genre: data.tags ?? []
-                },
+                tags: { author: [data.author], genre: data.tags ?? [] },
                 chapters: Object.fromEntries(
                     data.chapters.map(ch => [ch.id.toString(), ch.title])
                 ),
@@ -989,36 +927,68 @@ class SampleSource extends ComicSource {
         })
     }
 }</code></pre>
-        </section>
+      </div>
+    </section>
 
-        <section id="pitfalls">
-          <h2>15. 常见坑</h2>
-          <ul>
-            <li><code>loadInfo</code> 和 <code>loadEp</code> 往往不是独立的，章节 ID、签名 URL、Referer 经常依赖详情页数据。</li>
-            <li><code>onImageLoad</code> 返回值最好就是普通对象，不要返回宿主不认识的复杂实例。</li>
-            <li><code>modifyImage</code> 是脚本文本，不是直接传函数对象。</li>
-            <li>需要特殊 headers 的封面，不要只写 <code>onImageLoad</code>。</li>
-            <li>cookie 登录一定要同时实现 <code>logout</code>。</li>
-            <li><code>UI.*</code> 现在不要当成关键业务能力。</li>
-          </ul>
-        </section>
+    <section class="doc-section" id="pitfalls">
+      <h2><span class="section-num">15</span>常见坑</h2>
+      <ul class="pitfall-list">
+        <li><span class="pitfall-num">01</span><code>loadInfo</code> 和 <code>loadEp</code> 往往不独立，章节 ID、签名 URL、Referer 经常依赖详情页数据。</li>
+        <li><span class="pitfall-num">02</span><code>onImageLoad</code> 返回值最好是普通对象，不要返回宿主不认识的复杂实例。</li>
+        <li><span class="pitfall-num">03</span><code>modifyImage</code> 是脚本文本，不是直接传函数对象。</li>
+        <li><span class="pitfall-num">04</span>需要特殊 headers 的封面，不要只写 <code>onImageLoad</code>，同时实现 <code>onThumbnailLoad</code>。</li>
+        <li><span class="pitfall-num">05</span>cookie 登录一定要同时实现 <code>logout</code>。</li>
+        <li><span class="pitfall-num">06</span><code>UI.*</code> 现在不要当成关键业务能力。</li>
+      </ul>
+    </section>
 
-        <section id="debug">
-          <h2>16. 调试建议</h2>
-          <p>最稳的顺序是：先把 <code>search</code> 或 <code>category</code> 打通，再做 <code>loadInfo</code>，再做 <code>loadEp</code>，最后才处理 headers、cookie、解扰。这样定位问题最快。</p>
-          <ol>
-            <li>先确认接口返回的 JSON 是对的。</li>
-            <li>再确认 <code>Comic</code> / <code>ComicDetails</code> 字段结构正确。</li>
-            <li>阅读链路出问题时，先去掉 <code>modifyImage</code>，确认是不是“请求错误”还是“解扰错误”。</li>
-            <li>详情页调不通时，先返回最小的 <code>ComicDetails</code>，再一项项补字段。</li>
-          </ol>
-        </section>
+    <section class="doc-section" id="debug">
+      <h2><span class="section-num">16</span>调试建议</h2>
+      <p>最稳的顺序：先打通 search 或 category，再做 loadInfo，再做 loadEp，最后处理 headers、cookie、解扰。</p>
+      <ol class="debug-steps">
+        <li>先确认接口返回的 JSON 是对的。</li>
+        <li>再确认 <code>Comic</code> / <code>ComicDetails</code> 字段结构正确。</li>
+        <li>阅读链路出问题时，先去掉 <code>modifyImage</code>，确认是请求错误还是解扰错误。</li>
+        <li>详情页调不通时，先返回最小的 <code>ComicDetails</code>，再一项项补字段。</li>
+      </ol>
+      <div class="callout" style="margin-top:20px">
+        对照源码时，优先看 <code>plugin_runtime.dart</code>、<code>plugin_source_parser.dart</code>、<code>plugin_js_engine.dart</code>、<code>plugin_image_loader.dart</code>，再配合 <code>assets/init.js</code>、<code>_template_.js</code> 和真实源样本一起读。
+      </div>
+    </section>
+  </main>
+</div>
 
-        <div class="footer">
-          对照源码时，优先看 <code>plugin_runtime.dart</code>、<code>plugin_source_parser.dart</code>、<code>plugin_js_engine.dart</code>、<code>plugin_image_loader.dart</code>、<code>plugin_image_modifier.dart</code>，再配合 <code>assets/init.js</code>、<code>_template_.js</code> 和真实源样本一起读。也可以返回 <a href="./index.html">主页</a> 或查看 <a href="./project-structure.html">项目结构页</a>。
-        </div>
-      </main>
-    </div>
+<footer>
+  <span>EZVenera 插件制作文档</span>
+  <div style="display:flex;gap:20px">
+    <a href="index.html">返回主页</a>
+    <a href="https://github.com/WEP-56/EZVenera">GitHub</a>
+    <a href="project-structure.html">项目结构</a>
   </div>
+</footer>
+
+<script>
+function copyCode(btn) {
+  const pre = btn.closest('.code-wrap').querySelector('pre');
+  navigator.clipboard.writeText(pre.innerText).then(() => {
+    btn.textContent = '已复制';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = '复制'; btn.classList.remove('copied'); }, 1500);
+  });
+}
+
+const sections = document.querySelectorAll('.doc-section');
+const navLinks = document.querySelectorAll('.sidebar nav a');
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      navLinks.forEach(a => a.classList.remove('active'));
+      const active = document.querySelector(`.sidebar nav a[href="#${entry.target.id}"]`);
+      if (active) active.classList.add('active');
+    }
+  });
+}, { rootMargin: '-20% 0px -70% 0px' });
+sections.forEach(s => observer.observe(s));
+</script>
 </body>
 </html>
