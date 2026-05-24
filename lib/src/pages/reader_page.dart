@@ -16,6 +16,7 @@ import '../localization/app_localizations.dart';
 import '../plugin_runtime/models.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
 import '../plugin_runtime/result.dart';
+import '../reader/chapter_order.dart';
 import '../reader/reader_image_cache.dart';
 import '../settings/settings_controller.dart';
 import '../utils/natural_sort.dart';
@@ -168,6 +169,10 @@ class _ReaderPageState extends State<ReaderPage> {
         _scrollControllerIsContinuous = true;
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
+          if (_isVerticalContinuousMode) {
+            _moveToPage(previousPage - 1);
+            return;
+          }
           if (_continuousItemExtent > 0) {
             _suppressScrollListener = true;
             _scrollController?.jumpTo(
@@ -200,6 +205,11 @@ class _ReaderPageState extends State<ReaderPage> {
     return horizContinuous;
   }
 
+  bool get _isVerticalContinuousMode =>
+      _scrollControllerIsContinuous &&
+      SettingsController.instance.readerPageMode ==
+          ReaderPageMode.continuousTopToBottom;
+
   ScrollController _buildScrollController() {
     final sc = ScrollController();
     sc.addListener(_onScrollChanged);
@@ -207,12 +217,57 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   void _onScrollChanged() {
-    if (_suppressScrollListener || _continuousItemExtent <= 0) {
+    if (_suppressScrollListener) {
       return;
     }
+    if (_isVerticalContinuousMode) {
+      _updateCurrentPageFromVisibleItems();
+      return;
+    }
+    if (_continuousItemExtent <= 0) return;
+
     final offset = _scrollController?.offset ?? 0;
     final estimated = (offset / _continuousItemExtent).floor() + 1;
     final clamped = estimated.clamp(1, images.isEmpty ? 1 : images.length);
+    _setCurrentPageFromScroll(clamped);
+  }
+
+  void _updateCurrentPageFromVisibleItems() {
+    if (images.isEmpty) {
+      return;
+    }
+
+    final viewportCenter = MediaQuery.sizeOf(context).height / 2;
+    var bestPage = currentPage;
+    var bestDistance = double.infinity;
+
+    for (var index = 0; index < images.length; index++) {
+      final itemContext = _imageKeyFor(index).currentContext;
+      final renderObject = itemContext?.findRenderObject();
+      if (renderObject is! RenderBox || !renderObject.hasSize) {
+        continue;
+      }
+      final top = renderObject.localToGlobal(Offset.zero).dy;
+      final bottom = top + renderObject.size.height;
+      if (top <= viewportCenter && bottom >= viewportCenter) {
+        bestPage = index + 1;
+        bestDistance = 0;
+        break;
+      }
+      final distance = top > viewportCenter
+          ? top - viewportCenter
+          : viewportCenter - bottom;
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestPage = index + 1;
+      }
+    }
+
+    _setCurrentPageFromScroll(bestPage);
+  }
+
+  void _setCurrentPageFromScroll(int page) {
+    final clamped = page.clamp(1, images.isEmpty ? 1 : images.length);
     if (clamped != currentPage) {
       currentPage = clamped;
       _recordHistory();
@@ -298,11 +353,15 @@ class _ReaderPageState extends State<ReaderPage> {
           if (mounted) setState(() {});
         },
         onTapToTurnChanged: (value) async {
-          await SettingsController.instance.setReaderEnableTapToTurnPages(value);
+          await SettingsController.instance.setReaderEnableTapToTurnPages(
+            value,
+          );
           if (mounted) setState(() {});
         },
         onReverseTapToTurnChanged: (value) async {
-          await SettingsController.instance.setReaderReverseTapToTurnPages(value);
+          await SettingsController.instance.setReaderReverseTapToTurnPages(
+            value,
+          );
           if (mounted) setState(() {});
         },
         onDoubleTapZoomChanged: (value) async {
@@ -314,7 +373,9 @@ class _ReaderPageState extends State<ReaderPage> {
           if (mounted) setState(() {});
         },
         onAutoPageIntervalChanged: (value) async {
-          await SettingsController.instance.setReaderAutoPageIntervalSeconds(value);
+          await SettingsController.instance.setReaderAutoPageIntervalSeconds(
+            value,
+          );
           if (_autoPageTimer != null) _startAutoPage(showMessage: false);
           if (mounted) setState(() {});
         },
@@ -345,7 +406,8 @@ class _ReaderPageState extends State<ReaderPage> {
       );
     }
 
-    if (images.isEmpty || (pageController == null && _scrollController == null)) {
+    if (images.isEmpty ||
+        (pageController == null && _scrollController == null)) {
       return _ReaderError(
         message: 'No images returned for this chapter.',
         onRetry: () => _loadChapter(initialPage: currentPage),
@@ -370,11 +432,9 @@ class _ReaderPageState extends State<ReaderPage> {
           final isRtl = pageMode == ReaderPageMode.galleryRightToLeft;
           final isVertical = pageMode == ReaderPageMode.continuousTopToBottom;
 
-          // Item extent for continuous mode: full viewport dimension in the
-          // scroll axis plus the 2 px separator.
-          final itemExtent = isVertical
-              ? constraints.maxHeight + 2
-              : constraints.maxWidth + 2;
+          // Horizontal continuous still pages by viewport width. Vertical
+          // continuous stitches images at their natural scaled height.
+          final itemExtent = isVertical ? 0.0 : constraints.maxWidth + 2;
 
           final scrollContent = isContinuous
               ? _buildContinuousView(
@@ -400,18 +460,18 @@ class _ReaderPageState extends State<ReaderPage> {
                   curve: Curves.easeOut,
                   transform: _isLongPressZooming
                       ? (Matrix4.identity()
-                        ..translateByDouble(
-                          _longPressZoomOffset.dx,
-                          _longPressZoomOffset.dy,
-                          0,
-                          1,
-                        )
-                        ..scaleByDouble(
-                          _longPressZoomScale,
-                          _longPressZoomScale,
-                          1,
-                          1,
-                        ))
+                          ..translateByDouble(
+                            _longPressZoomOffset.dx,
+                            _longPressZoomOffset.dy,
+                            0,
+                            1,
+                          )
+                          ..scaleByDouble(
+                            _longPressZoomScale,
+                            _longPressZoomScale,
+                            1,
+                            1,
+                          ))
                       : Matrix4.identity(),
                   transformAlignment: Alignment.center,
                   child: scrollContent,
@@ -485,7 +545,11 @@ class _ReaderPageState extends State<ReaderPage> {
 
     return ListView.builder(
       key: ValueKey<String>(
-        'continuous_${isVertical ? 'v' : isRtl ? 'rtl' : 'ltr'}',
+        'continuous_${isVertical
+            ? 'v'
+            : isRtl
+            ? 'rtl'
+            : 'ltr'}',
       ),
       controller: _scrollController,
       scrollDirection: isVertical ? Axis.vertical : Axis.horizontal,
@@ -505,6 +569,7 @@ class _ReaderPageState extends State<ReaderPage> {
           imageUrl: images[index],
           index: index + 1,
           isActive: index + 1 == currentPage,
+          fitWidth: isVertical,
           onZoomChanged: (zoomed) {
             if (!mounted) return;
             if (_isCurrentImageZoomed != zoomed) {
@@ -515,26 +580,11 @@ class _ReaderPageState extends State<ReaderPage> {
           },
         );
 
-        final hasSeparator = index < images.length - 1;
-
         if (isVertical) {
-          return SizedBox(
-            width: constraints.maxWidth,
-            height: constraints.maxHeight + (hasSeparator ? 2 : 0),
-            child: Column(
-              children: [
-                SizedBox(
-                  width: constraints.maxWidth,
-                  height: constraints.maxHeight,
-                  child: image,
-                ),
-                if (hasSeparator)
-                  const SizedBox(height: 2, child: ColoredBox(color: Colors.black)),
-              ],
-            ),
-          );
+          return image;
         }
 
+        final hasSeparator = index < images.length - 1;
         return SizedBox(
           width: constraints.maxWidth + (hasSeparator ? 2 : 0),
           height: constraints.maxHeight,
@@ -546,7 +596,10 @@ class _ReaderPageState extends State<ReaderPage> {
                 child: image,
               ),
               if (hasSeparator)
-                const SizedBox(width: 2, child: ColoredBox(color: Colors.black)),
+                const SizedBox(
+                  width: 2,
+                  child: ColoredBox(color: Colors.black),
+                ),
             ],
           ),
         );
@@ -579,7 +632,8 @@ class _ReaderPageState extends State<ReaderPage> {
       itemBuilder: (context, index) {
         return _ReaderImage(
           key: _imageKeyFor(index),
-          isLocal: widget.localComic != null || widget.localLibraryComic != null,
+          isLocal:
+              widget.localComic != null || widget.localLibraryComic != null,
           sourceKey: widget.sourceKey,
           comicId: widget.comicId,
           chapterId: currentChapterId ?? '0',
@@ -600,16 +654,23 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   List<_ChapterItem> get _chapterItems {
+    final reversed = _chaptersReversed;
     final localComic = widget.localComic;
     if (localComic != null) {
-      return localComic.chapters
+      final chapters = reversed
+          ? localComic.chapters.reversed
+          : localComic.chapters;
+      return chapters
           .map((chapter) => _ChapterItem(id: chapter.id, title: chapter.title))
           .toList();
     }
 
     final localLibraryComic = widget.localLibraryComic;
     if (localLibraryComic != null) {
-      return localLibraryComic.chapters
+      final chapters = reversed
+          ? localLibraryComic.chapters.reversed
+          : localLibraryComic.chapters;
+      return chapters
           .map((chapter) => _ChapterItem(id: chapter.id, title: chapter.title))
           .toList();
     }
@@ -621,8 +682,11 @@ class _ReaderPageState extends State<ReaderPage> {
 
     final items = <_ChapterItem>[];
     if (chapters.isGrouped) {
-      for (final group in chapters.groupedChapters!.entries) {
-        for (final chapter in group.value.entries) {
+      for (final group in orderedChapterGroups(
+        chapters.groupedChapters!,
+        reversed,
+      )) {
+        for (final chapter in orderedChapterEntries(group.value, reversed)) {
           items.add(
             _ChapterItem(
               id: chapter.key,
@@ -633,12 +697,18 @@ class _ReaderPageState extends State<ReaderPage> {
         }
       }
     } else {
-      for (final chapter in chapters.chapters!.entries) {
+      for (final chapter in orderedChapterEntries(
+        chapters.chapters!,
+        reversed,
+      )) {
         items.add(_ChapterItem(id: chapter.key, title: chapter.value));
       }
     }
     return items;
   }
+
+  bool get _chaptersReversed =>
+      isChapterOrderReversedFor(widget.sourceKey, widget.comicId);
 
   Future<void> _loadChapter({
     required int initialPage,
@@ -716,7 +786,14 @@ class _ReaderPageState extends State<ReaderPage> {
         _scrollControllerIsContinuous = true;
         pageController = null;
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && _continuousItemExtent > 0) {
+          if (!mounted) return;
+          if (_isVerticalContinuousMode) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _moveToPage(currentPage - 1);
+            });
+            return;
+          }
+          if (_continuousItemExtent > 0) {
             _suppressScrollListener = true;
             _scrollController?.jumpTo(
               (currentPage - 1) * _continuousItemExtent,
@@ -851,7 +928,8 @@ class _ReaderPageState extends State<ReaderPage> {
             .whereType<File>()
             .where(
               (file) =>
-                  p.basenameWithoutExtension(file.path).toLowerCase() != 'cover',
+                  p.basenameWithoutExtension(file.path).toLowerCase() !=
+                  'cover',
             )
             .toList()
           ..sort((a, b) => naturalComparePaths(a.path, b.path));
@@ -874,22 +952,70 @@ class _ReaderPageState extends State<ReaderPage> {
       context: context,
       isScrollControlled: true,
       builder: (context) {
-        return SafeArea(
-          child: ListView.builder(
-            shrinkWrap: true,
-            itemCount: _chapterItems.length,
-            itemBuilder: (context, index) {
-              final chapter = _chapterItems[index];
-              return ListTile(
-                title: Text(chapter.title),
-                subtitle: chapter.groupTitle == null
-                    ? null
-                    : Text(chapter.groupTitle!),
-                selected: chapter.id == currentChapterId,
-                onTap: () => Navigator.of(context).pop(chapter),
-              );
-            },
-          ),
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            final theme = Theme.of(context);
+            final reversed = _chaptersReversed;
+            final chapterItems = _chapterItems;
+            return SafeArea(
+              child: SizedBox(
+                height: MediaQuery.sizeOf(context).height * 0.78,
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Chapters',
+                              style: theme.textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          TextButton.icon(
+                            onPressed: () async {
+                              await _setChapterOrderReversed(!reversed);
+                              if (!context.mounted) {
+                                return;
+                              }
+                              if (mounted) {
+                                setState(() {});
+                              }
+                              setSheetState(() {});
+                            },
+                            icon: const Icon(Icons.swap_vert, size: 18),
+                            label: Text(reversed ? 'Original' : 'Reverse'),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    Expanded(
+                      child: ListView.builder(
+                        itemCount: chapterItems.length,
+                        itemBuilder: (context, index) {
+                          final chapter = chapterItems[index];
+                          return ListTile(
+                            title: Text(chapter.title),
+                            subtitle: chapter.groupTitle == null
+                                ? null
+                                : Text(chapter.groupTitle!),
+                            trailing: chapter.id == currentChapterId
+                                ? const Icon(Icons.check)
+                                : const Icon(Icons.chevron_right),
+                            selected: chapter.id == currentChapterId,
+                            onTap: () => Navigator.of(context).pop(chapter),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
         );
       },
     );
@@ -900,6 +1026,16 @@ class _ReaderPageState extends State<ReaderPage> {
     currentChapterId = selected.id;
     currentChapterTitle = selected.title;
     await _loadChapter(initialPage: 1);
+  }
+
+  Future<void> _setChapterOrderReversed(bool reversed) async {
+    await setChapterOrderReversedFor(
+      widget.sourceKey,
+      widget.comicId,
+      reversed,
+    );
+    _resolveCurrentChapter();
+    await _recordHistory();
   }
 
   Future<void> _previousChapter({bool toLastPage = false}) async {
@@ -973,11 +1109,29 @@ class _ReaderPageState extends State<ReaderPage> {
 
   Future<void> _moveToPage(int pageIndex) {
     if (_scrollControllerIsContinuous) {
+      final targetIndex = pageIndex.clamp(
+        0,
+        images.isEmpty ? 0 : images.length - 1,
+      );
+      if (_isVerticalContinuousMode) {
+        final itemContext = _imageKeyFor(targetIndex).currentContext;
+        if (itemContext == null) {
+          return Future<void>.value();
+        }
+        return Scrollable.ensureVisible(
+          itemContext,
+          alignment: 0,
+          duration: SettingsController.instance.readerEnablePageAnimation
+              ? const Duration(milliseconds: 200)
+              : Duration.zero,
+          curve: Curves.easeOut,
+        );
+      }
       final sc = _scrollController;
       if (sc == null || !sc.hasClients || _continuousItemExtent <= 0) {
         return Future<void>.value();
       }
-      final target = pageIndex * _continuousItemExtent;
+      final target = targetIndex * _continuousItemExtent;
       if (SettingsController.instance.readerEnablePageAnimation) {
         return sc.animateTo(
           target,
@@ -1066,15 +1220,13 @@ class _ReaderPageState extends State<ReaderPage> {
     }
     if (settings.readerEnableTapToTurnPages) {
       final pageMode = settings.readerPageMode;
-      final isVertical =
-          pageMode == ReaderPageMode.continuousTopToBottom;
+      final isVertical = pageMode == ReaderPageMode.continuousTopToBottom;
       final isRtl = pageMode == ReaderPageMode.galleryRightToLeft;
 
       // Right-to-left mode swaps which side is "previous". The user's
       // `readerReverseTapToTurnPages` toggle still applies on top of this
       // so people can further customize their preferred mapping.
-      final naturalReverse =
-          isRtl ^ settings.readerReverseTapToTurnPages;
+      final naturalReverse = isRtl ^ settings.readerReverseTapToTurnPages;
       final tapPrev = naturalReverse ? _goToNextPage : _goToPreviousPage;
       final tapNext = naturalReverse ? _goToPreviousPage : _goToNextPage;
 
@@ -1442,6 +1594,7 @@ class _ReaderImage extends StatefulWidget {
     required this.imageUrl,
     required this.index,
     required this.isActive,
+    this.fitWidth = false,
     this.onZoomChanged,
     super.key,
   });
@@ -1453,6 +1606,7 @@ class _ReaderImage extends StatefulWidget {
   final String imageUrl;
   final int index;
   final bool isActive;
+  final bool fitWidth;
   final ValueChanged<bool>? onZoomChanged;
 
   @override
@@ -1480,7 +1634,8 @@ class _ReaderImageState extends State<_ReaderImage>
         oldWidget.isLocal != widget.isLocal ||
         oldWidget.chapterId != widget.chapterId ||
         oldWidget.comicId != widget.comicId ||
-        oldWidget.sourceKey != widget.sourceKey) {
+        oldWidget.sourceKey != widget.sourceKey ||
+        oldWidget.fitWidth != widget.fitWidth) {
       _future = _loadBytes();
       _resetZoom(animated: false);
     }
@@ -1508,7 +1663,10 @@ class _ReaderImageState extends State<_ReaderImage>
       future: _future,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
-          return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+          return const SizedBox(
+            height: 160,
+            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+          );
         }
 
         if (snapshot.hasError || snapshot.data == null) {
@@ -1540,6 +1698,16 @@ class _ReaderImageState extends State<_ReaderImage>
                 ),
               ],
             ),
+          );
+        }
+
+        if (widget.fitWidth) {
+          return Image(
+            image: MemoryImage(snapshot.data!),
+            width: double.infinity,
+            fit: BoxFit.fitWidth,
+            gaplessPlayback: true,
+            filterQuality: FilterQuality.medium,
           );
         }
 
@@ -2138,9 +2306,7 @@ class _ReaderSettingsDrawer extends StatelessWidget {
                       selected: <ReaderPageMode>{pageMode},
                       onSelectionChanged: (set) => onPageModeChanged(set.first),
                       showSelectedIcon: false,
-                      style: ButtonStyle(
-                        visualDensity: VisualDensity.compact,
-                      ),
+                      style: ButtonStyle(visualDensity: VisualDensity.compact),
                     ),
                   ),
                   const Divider(height: 24),

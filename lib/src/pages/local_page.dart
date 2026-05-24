@@ -195,6 +195,12 @@ class _LocalPageState extends State<LocalPage> {
           Expanded(
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 180),
+              layoutBuilder: (currentChild, previousChildren) {
+                return Stack(
+                  alignment: Alignment.topLeft,
+                  children: [...previousChildren, ?currentChild],
+                );
+              },
               child: SingleChildScrollView(
                 key: ValueKey<String>(selectedShelfKey),
                 padding: const EdgeInsets.all(24),
@@ -293,8 +299,6 @@ class _LocalPageState extends State<LocalPage> {
           ...downloadController.jobs.map((job) => _DownloadJobCard(job: job)),
           const SizedBox(height: 20),
         ],
-        Text(l10n.localDownloadedComics, style: theme.textTheme.titleLarge),
-        const SizedBox(height: 12),
         if (downloadController.downloads.isEmpty)
           _LocalPlaceholder(
             title: l10n.localNoDownloads,
@@ -345,14 +349,11 @@ class _LocalPageState extends State<LocalPage> {
   }
 
   Widget _buildHistory(BuildContext context) {
-    final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(l10n.localHistory, style: theme.textTheme.titleLarge),
-        const SizedBox(height: 12),
         if (historyController.entries.isEmpty)
           _LocalPlaceholder(
             title: l10n.localNoHistory,
@@ -385,14 +386,11 @@ class _LocalPageState extends State<LocalPage> {
   }
 
   Widget _buildFavorites(BuildContext context) {
-    final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(l10n.localFavorites, style: theme.textTheme.titleLarge),
-        const SizedBox(height: 12),
         if (favoriteController.entries.isEmpty)
           _LocalPlaceholder(
             title: l10n.localNoFavorites,
@@ -1362,8 +1360,7 @@ class _LocalComicGrid<T> extends StatelessWidget {
             physics: const NeverScrollableScrollPhysics(),
             itemCount: items.length,
             separatorBuilder: (_, _) => const SizedBox(height: 10),
-            itemBuilder: (context, index) =>
-                itemBuilder(context, items[index]),
+            itemBuilder: (context, index) => itemBuilder(context, items[index]),
           );
         }
         return LayoutBuilder(

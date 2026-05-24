@@ -9,6 +9,7 @@ import '../library/favorite_models.dart';
 import '../plugin_runtime/models.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
 import '../plugin_runtime/services/plugin_image_loader.dart';
+import '../reader/chapter_order.dart';
 import 'reader_page.dart';
 
 class ComicDetailsPage extends StatefulWidget {
@@ -68,12 +69,20 @@ class _ComicDetailsPageState extends State<ComicDetailsPage> {
             );
           }
 
+          final chaptersReversed = isChapterOrderReversedFor(
+            widget.comic.sourceKey,
+            widget.comic.id,
+          );
+
           return _ComicDetailsBody(
             summary: widget.comic,
             details: details,
-            onRead: () => _openReader(_firstChapter(details), details),
+            chaptersReversed: chaptersReversed,
+            onRead: () =>
+                _openReader(_firstChapter(details, chaptersReversed), details),
             onDownload: () => _downloadComic(details),
             onFavorite: () => _toggleFavorite(details),
+            onToggleChapterOrder: () => _toggleChapterOrder(chaptersReversed),
             isFavorite: favoriteController.contains(
               widget.comic.sourceKey,
               widget.comic.id,
@@ -107,19 +116,31 @@ class _ComicDetailsPageState extends State<ComicDetailsPage> {
     });
   }
 
-  _ChapterSelection _firstChapter(PluginComicDetails details) {
+  _ChapterSelection _firstChapter(
+    PluginComicDetails details,
+    bool chaptersReversed,
+  ) {
     final chapters = details.chapters;
     if (chapters == null) {
       return const _ChapterSelection(id: null, title: 'Read');
     }
 
     if (chapters.isGrouped) {
-      final firstGroup = chapters.groupedChapters!.entries.first;
-      final firstChapter = firstGroup.value.entries.first;
+      final firstGroup = orderedChapterGroups(
+        chapters.groupedChapters!,
+        chaptersReversed,
+      ).first;
+      final firstChapter = orderedChapterEntries(
+        firstGroup.value,
+        chaptersReversed,
+      ).first;
       return _ChapterSelection(id: firstChapter.key, title: firstChapter.value);
     }
 
-    final firstChapter = chapters.chapters!.entries.first;
+    final firstChapter = orderedChapterEntries(
+      chapters.chapters!,
+      chaptersReversed,
+    ).first;
     return _ChapterSelection(id: firstChapter.key, title: firstChapter.value);
   }
 
@@ -183,6 +204,17 @@ class _ComicDetailsPageState extends State<ComicDetailsPage> {
       createdAt: DateTime.now(),
     );
     await favoriteController.toggle(entry);
+  }
+
+  Future<void> _toggleChapterOrder(bool currentlyReversed) async {
+    await setChapterOrderReversedFor(
+      widget.comic.sourceKey,
+      widget.comic.id,
+      !currentlyReversed,
+    );
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   void _onFavoriteChanged() {
@@ -249,18 +281,22 @@ class _ComicDetailsBody extends StatelessWidget {
   const _ComicDetailsBody({
     required this.summary,
     required this.details,
+    required this.chaptersReversed,
     required this.onRead,
     required this.onDownload,
     required this.onFavorite,
+    required this.onToggleChapterOrder,
     required this.isFavorite,
     required this.onChapterSelected,
   });
 
   final PluginComic summary;
   final PluginComicDetails details;
+  final bool chaptersReversed;
   final VoidCallback onRead;
   final VoidCallback onDownload;
   final VoidCallback onFavorite;
+  final VoidCallback onToggleChapterOrder;
   final bool isFavorite;
   final ValueChanged<_ChapterSelection> onChapterSelected;
 
@@ -280,11 +316,7 @@ class _ComicDetailsBody extends StatelessWidget {
           ),
           children: [
             const SizedBox(height: 8),
-            _HeaderRow(
-              summary: summary,
-              details: details,
-              isMobile: isMobile,
-            ),
+            _HeaderRow(summary: summary, details: details, isMobile: isMobile),
             const SizedBox(height: 16),
             _ActionStrip(
               isMobile: isMobile,
@@ -301,8 +333,9 @@ class _ComicDetailsBody extends StatelessWidget {
                   title: 'Description',
                   child: Text(
                     details.description ?? summary.description,
-                    style: Theme.of(context).textTheme.bodyLarge
-                        ?.copyWith(height: 1.6),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodyLarge?.copyWith(height: 1.6),
                   ),
                 ),
               ),
@@ -322,8 +355,14 @@ class _ComicDetailsBody extends StatelessWidget {
                 padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 0),
                 child: _SectionCard(
                   title: 'Chapters',
+                  trailing: TextButton.icon(
+                    onPressed: onToggleChapterOrder,
+                    icon: const Icon(Icons.swap_vert, size: 18),
+                    label: Text(chaptersReversed ? 'Original' : 'Reverse'),
+                  ),
                   child: _ChaptersView(
                     chapters: details.chapters!,
+                    reversed: chaptersReversed,
                     onChapterSelected: onChapterSelected,
                   ),
                 ),
@@ -701,10 +740,11 @@ class _CoverCardState extends State<_CoverCard> {
 }
 
 class _SectionCard extends StatelessWidget {
-  const _SectionCard({required this.title, required this.child});
+  const _SectionCard({required this.title, required this.child, this.trailing});
 
   final String title;
   final Widget child;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -720,11 +760,18 @@ class _SectionCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: theme.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              ?trailing,
+            ],
           ),
           const SizedBox(height: 16),
           child,
@@ -737,46 +784,50 @@ class _SectionCard extends StatelessWidget {
 class _ChaptersView extends StatelessWidget {
   const _ChaptersView({
     required this.chapters,
+    required this.reversed,
     required this.onChapterSelected,
   });
 
   final PluginComicChapters chapters;
+  final bool reversed;
   final ValueChanged<_ChapterSelection> onChapterSelected;
 
   @override
   Widget build(BuildContext context) {
     if (chapters.isGrouped) {
       return Column(
-        children: chapters.groupedChapters!.entries.map((entry) {
-          return ExpansionTile(
-            tilePadding: EdgeInsets.zero,
-            childrenPadding: const EdgeInsets.only(bottom: 8),
-            title: Text(entry.key),
-            children: entry.value.entries.map((chapter) {
-              return ListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                title: Text(chapter.value),
-                subtitle: Text(chapter.key),
-                onTap: () {
-                  onChapterSelected(
-                    _ChapterSelection(id: chapter.key, title: chapter.value),
-                  );
-                },
-              );
-            }).toList(),
-          );
-        }).toList(),
+        children: orderedChapterGroups(chapters.groupedChapters!, reversed).map(
+          (entry) {
+            return ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: const EdgeInsets.only(bottom: 8),
+              title: Text(entry.key),
+              children: orderedChapterEntries(entry.value, reversed).map((
+                chapter,
+              ) {
+                return _ChapterTile(
+                  id: chapter.key,
+                  title: chapter.value,
+                  onTap: () {
+                    onChapterSelected(
+                      _ChapterSelection(id: chapter.key, title: chapter.value),
+                    );
+                  },
+                );
+              }).toList(),
+            );
+          },
+        ).toList(),
       );
     }
 
     return Column(
-      children: chapters.chapters!.entries.map((entry) {
-        return ListTile(
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          title: Text(entry.value),
-          subtitle: Text(entry.key),
+      children: orderedChapterEntries(chapters.chapters!, reversed).map((
+        entry,
+      ) {
+        return _ChapterTile(
+          id: entry.key,
+          title: entry.value,
           onTap: () {
             onChapterSelected(
               _ChapterSelection(id: entry.key, title: entry.value),
@@ -784,6 +835,42 @@ class _ChaptersView extends StatelessWidget {
           },
         );
       }).toList(),
+    );
+  }
+}
+
+class _ChapterTile extends StatelessWidget {
+  const _ChapterTile({
+    required this.id,
+    required this.title,
+    required this.onTap,
+  });
+
+  final String id;
+  final String title;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(
+          alpha: 0.38,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        child: ListTile(
+          dense: true,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          title: Text(title),
+          subtitle: Text(id),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: onTap,
+        ),
+      ),
     );
   }
 }
