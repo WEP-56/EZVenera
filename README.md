@@ -93,3 +93,7 @@ flutter test
 
 ## issues与pr
 没有严格的格式限制，接受一切非“对插件运行时功能增加”的优化Issues、Pull request，如阅读器优化、界面布局优化、其他种类设备支持等，感谢！
+
+## License
+
+本项目基于 [GNU General Public License v3.0](LICENSE) 开源。
