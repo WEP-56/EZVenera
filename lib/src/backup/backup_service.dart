@@ -155,7 +155,17 @@ class BackupService {
       password: password,
     );
     final file = await client.downloadLatest();
-    return importFromPath(file.path);
+    return importEzVeneraFromPath(file.path);
+  }
+
+  Future<BackupImportReport> importEzVeneraFromPath(String path) async {
+    final bytes = await File(path).readAsBytes();
+    final archive = ZipDecoder().decodeBytes(bytes);
+    final manifest = _jsonMap(_readString(archive, 'manifest.json'));
+    if (manifest['format'] != 'ezvenera.backup') {
+      throw StateError('The selected WebDAV backup is not an EZVenera backup.');
+    }
+    return _importEzVeneraBackup(archive);
   }
 
   Future<BackupImportReport> _importEzVeneraBackup(Archive archive) async {
@@ -617,10 +627,16 @@ class _WebDavClient {
 
   Future<void> upload(File file) async {
     final uri = baseUri.resolve(p.basename(file.path));
-    final response = await dio.put<List<int>>(
+    final response = await dio.put<dynamic>(
       uri.toString(),
       data: await file.readAsBytes(),
-      options: Options(headers: _headers()),
+      options: Options(
+        responseType: ResponseType.plain,
+        headers: <String, String>{
+          ..._headers(),
+          'Content-Type': 'application/octet-stream',
+        },
+      ),
     );
     if (!_isSuccess(response.statusCode)) {
       throw StateError('WebDAV upload failed: HTTP ${response.statusCode}');
@@ -632,22 +648,22 @@ class _WebDavClient {
     if (files.isEmpty) {
       throw StateError('No .ezvenera backup found on WebDAV.');
     }
-    files.sort((a, b) => b.compareTo(a));
-    final name = files.first;
+    files.sort((a, b) => b.name.compareTo(a.name));
+    final backup = files.first;
     final response = await dio.get<List<int>>(
-      baseUri.resolve(name).toString(),
+      baseUri.resolve(backup.relativePath).toString(),
       options: Options(responseType: ResponseType.bytes, headers: _headers()),
     );
     if (!_isSuccess(response.statusCode) || response.data == null) {
       throw StateError('WebDAV download failed: HTTP ${response.statusCode}');
     }
     final directory = await getTemporaryDirectory();
-    final file = File(p.join(directory.path, name));
+    final file = File(p.join(directory.path, backup.name));
     await file.writeAsBytes(response.data!, flush: true);
     return file;
   }
 
-  Future<List<String>> listBackups() async {
+  Future<List<_WebDavBackupFile>> listBackups() async {
     final response = await dio.request<String>(
       baseUri.toString(),
       data: '''<?xml version="1.0" encoding="utf-8" ?>
@@ -669,19 +685,18 @@ class _WebDavClient {
       r'<(?:\w+:)?href>([^<]+)</(?:\w+:)?href>',
       caseSensitive: false,
     ).allMatches(response.data!).map((match) => _xmlDecode(match.group(1)!));
-    final result = <String>{};
+    final result = <String, _WebDavBackupFile>{};
     for (final href in hrefs) {
-      final uri = Uri.tryParse(href);
-      final segments = uri?.pathSegments ?? Uri(path: href).pathSegments;
-      if (segments.isEmpty) {
-        continue;
-      }
-      final name = Uri.decodeComponent(segments.last);
+      final relativePath = _relativePathFromHref(href);
+      final name = p.posix.basename(relativePath);
       if (name.endsWith('.ezvenera')) {
-        result.add(name);
+        result[name] = _WebDavBackupFile(
+          name: name,
+          relativePath: relativePath,
+        );
       }
     }
-    return result.toList();
+    return result.values.toList();
   }
 
   Map<String, String> _headers() {
@@ -710,6 +725,33 @@ class _WebDavClient {
     return uri;
   }
 
+  String _relativePathFromHref(String href) {
+    final hrefUri = Uri.tryParse(href);
+    final hrefSegments = hrefUri?.pathSegments ?? Uri(path: href).pathSegments;
+    final baseSegments = baseUri.pathSegments
+        .where((segment) => segment.isNotEmpty)
+        .toList();
+    var segments = hrefSegments
+        .where((segment) => segment.isNotEmpty)
+        .map(Uri.decodeComponent)
+        .toList();
+
+    if (segments.length >= baseSegments.length) {
+      var matchesBase = true;
+      for (var index = 0; index < baseSegments.length; index++) {
+        if (Uri.decodeComponent(baseSegments[index]) != segments[index]) {
+          matchesBase = false;
+          break;
+        }
+      }
+      if (matchesBase) {
+        segments = segments.sublist(baseSegments.length);
+      }
+    }
+
+    return segments.map(Uri.encodeComponent).join('/');
+  }
+
   String _xmlDecode(String value) {
     return value
         .replaceAll('&amp;', '&')
@@ -718,4 +760,11 @@ class _WebDavClient {
         .replaceAll('&quot;', '"')
         .replaceAll('&apos;', "'");
   }
+}
+
+class _WebDavBackupFile {
+  const _WebDavBackupFile({required this.name, required this.relativePath});
+
+  final String name;
+  final String relativePath;
 }
