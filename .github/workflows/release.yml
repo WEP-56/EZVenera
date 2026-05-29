@@ -53,8 +53,9 @@ jobs:
         run: |
           set -euo pipefail
           if [[ -z "${ANDROID_KEYSTORE_BASE64}" ]]; then
-            echo "ANDROID_KEYSTORE_BASE64 is not configured. Falling back to debug signing."
-            exit 0
+            echo "ANDROID_KEYSTORE_BASE64 is not configured."
+            echo "Release builds must use the same keystore as previously published APKs."
+            exit 1
           fi
           if [[ -z "${ANDROID_KEYSTORE_PASSWORD}" || -z "${ANDROID_KEY_ALIAS}" || -z "${ANDROID_KEY_PASSWORD}" ]]; then
             echo "Android signing secrets are incomplete."
