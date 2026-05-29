@@ -1,0 +1,194 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    name: Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Validate tag version
+        shell: bash
+        run: |
+          set -euo pipefail
+          pubspec_version="$(grep '^version:' pubspec.yaml | awk '{print $2}')"
+          version_name="${pubspec_version%%+*}"
+          tag_name="${GITHUB_REF_NAME#v}"
+          if [[ "$tag_name" != "$version_name" ]]; then
+            echo "Tag v${tag_name} does not match pubspec version ${version_name}."
+            exit 1
+          fi
+          echo "VERSION_NAME=${version_name}" >> "$GITHUB_ENV"
+          echo "VERSION_FULL=${pubspec_version}" >> "$GITHUB_ENV"
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Configure Android signing
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${ANDROID_KEYSTORE_BASE64}" ]]; then
+            echo "ANDROID_KEYSTORE_BASE64 is not configured. Falling back to debug signing."
+            exit 0
+          fi
+          if [[ -z "${ANDROID_KEYSTORE_PASSWORD}" || -z "${ANDROID_KEY_ALIAS}" || -z "${ANDROID_KEY_PASSWORD}" ]]; then
+            echo "Android signing secrets are incomplete."
+            echo "Required: ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD."
+            exit 1
+          fi
+          echo "${ANDROID_KEYSTORE_BASE64}" | base64 --decode > android/app/release-keystore.jks
+          cat > android/key.properties <<EOF
+storePassword=${ANDROID_KEYSTORE_PASSWORD}
+keyPassword=${ANDROID_KEY_PASSWORD}
+keyAlias=${ANDROID_KEY_ALIAS}
+storeFile=release-keystore.jks
+EOF
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build release APK
+        run: flutter build apk --release
+
+      - name: Collect APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p pack
+          cp build/app/outputs/flutter-apk/app-release.apk "pack/EZVenera-${VERSION_NAME}-android-release.apk"
+          sha256sum "pack/EZVenera-${VERSION_NAME}-android-release.apk" > "pack/EZVenera-${VERSION_NAME}-android-release.apk.sha256"
+
+      - name: Upload Android artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ezvenera-android
+          path: |
+            pack/*.apk
+            pack/*.sha256
+
+  windows:
+    name: Windows Setup
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Validate tag version
+        shell: powershell
+        run: |
+          $pubspecVersion = (Select-String -Path pubspec.yaml -Pattern '^version:\s*(.+)$').Matches[0].Groups[1].Value.Trim()
+          $versionName = $pubspecVersion.Split('+')[0]
+          $tagName = $env:GITHUB_REF_NAME.TrimStart('v')
+          if ($tagName -ne $versionName) {
+            throw "Tag v$tagName does not match pubspec version $versionName."
+          }
+          "VERSION_NAME=$versionName" >> $env:GITHUB_ENV
+          "VERSION_FULL=$pubspecVersion" >> $env:GITHUB_ENV
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install NSIS
+        shell: powershell
+        run: choco install nsis -y --no-progress
+
+      - name: Install dependencies
+        shell: powershell
+        run: flutter pub get
+
+      - name: Build Windows setup
+        shell: powershell
+        run: |
+          $projectRoot = (Get-Location).Path
+          $outputRoot = Join-Path $projectRoot 'pack'
+          .\scripts\build_release.ps1 `
+            -ProjectRoot $projectRoot `
+            -OutputRoot $outputRoot `
+            -NsisPath 'C:\Program Files (x86)\NSIS\makensis.exe' `
+            -SkipAndroid
+
+      - name: Hash Windows setup
+        shell: powershell
+        run: |
+          Get-ChildItem -Path pack -Filter '*.exe' | ForEach-Object {
+            $hash = Get-FileHash -Path $_.FullName -Algorithm SHA256
+            "$($hash.Hash)  $($_.Name)" | Set-Content -Path "$($_.FullName).sha256"
+          }
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ezvenera-windows
+          path: |
+            pack/*.exe
+            pack/*.sha256
+
+  publish:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs:
+      - android
+      - windows
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Validate tag version
+        shell: bash
+        run: |
+          set -euo pipefail
+          pubspec_version="$(grep '^version:' pubspec.yaml | awk '{print $2}')"
+          version_name="${pubspec_version%%+*}"
+          tag_name="${GITHUB_REF_NAME#v}"
+          if [[ "$tag_name" != "$version_name" ]]; then
+            echo "Tag v${tag_name} does not match pubspec version ${version_name}."
+            exit 1
+          fi
+          echo "VERSION_NAME=${version_name}" >> "$GITHUB_ENV"
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: release-assets
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: EZVenera ${{ env.VERSION_NAME }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            release-assets/**/*.apk
+            release-assets/**/*.exe
+            release-assets/**/*.sha256
