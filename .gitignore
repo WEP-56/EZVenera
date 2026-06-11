@@ -47,5 +47,11 @@ app.*.map.json
 /android/app/*.jks
 /android/app/*.keystore
 /ACTION_RELEASE.md
+/pack/
 
 handoff.md
+
+# Xcode local state and optional local-only signing overrides
+**/xcuserdata/
+*.xcuserstate
+/ios/Flutter/LocalSigning.xcconfig
