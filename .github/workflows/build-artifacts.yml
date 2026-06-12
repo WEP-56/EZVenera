@@ -123,3 +123,87 @@ jobs:
           path: |
             pack/*.exe
             pack/*.sha256
+
+  ios:
+    name: iOS Unsigned IPA
+    runs-on: macos-15
+    continue-on-error: true
+    env:
+      MIN_IOS_SDK: "26"
+      XCODE_VERSION: "26.3"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Select Xcode
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcode_path="/Applications/Xcode_${XCODE_VERSION}.app"
+          if [[ ! -d "${xcode_path}" ]]; then
+            echo "Requested Xcode was not found: ${xcode_path}"
+            echo "Installed Xcode applications:"
+            ls -1d /Applications/Xcode*.app || true
+            exit 1
+          fi
+          sudo xcode-select --switch "${xcode_path}"
+          xcode-select -p
+          xcodebuild -version
+
+      - name: Verify iOS SDK requirement
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_version="$(xcodebuild -version -sdk iphoneos SDKVersion)"
+          echo "iPhoneOS SDK: ${sdk_version}"
+          if [[ "${sdk_version%%.*}" -lt "${MIN_IOS_SDK}" ]]; then
+            echo "iOS builds must use the iOS ${MIN_IOS_SDK} SDK or newer."
+            exit 1
+          fi
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter pub get
+          cd ios
+          pod install
+
+      - name: Build iOS without code signing
+        run: flutter build ios --release --no-codesign
+
+      - name: Verify app bundle is unsigned
+        shell: bash
+        run: |
+          set -euo pipefail
+          if codesign --verify --deep --strict build/ios/iphoneos/Runner.app >/dev/null 2>&1; then
+            echo "Runner.app unexpectedly contains a valid code signature."
+            exit 1
+          fi
+          echo "Runner.app is not codesigned by this workflow."
+
+      - name: Package unsigned IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f1)"
+          staging="pack/unsigned-ipa"
+          mkdir -p "${staging}/Payload" pack
+          cp -R build/ios/iphoneos/Runner.app "${staging}/Payload/Runner.app"
+          (cd "${staging}" && ditto -c -k --sequesterRsrc --keepParent Payload "../EZVenera-${version}-ios-unsigned.ipa")
+          shasum -a 256 "pack/EZVenera-${version}-ios-unsigned.ipa" > "pack/EZVenera-${version}-ios-unsigned.ipa.sha256"
+
+      - name: Upload iOS artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ezvenera-ios-unsigned
+          path: |
+            pack/*.ipa
+            pack/*.sha256

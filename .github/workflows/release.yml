@@ -153,12 +153,109 @@ jobs:
             pack/*.exe
             pack/*.sha256
 
+  ios:
+    name: iOS Unsigned IPA
+    runs-on: macos-15
+    continue-on-error: true
+    env:
+      MIN_IOS_SDK: "26"
+      XCODE_VERSION: "26.3"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Validate tag version
+        shell: bash
+        run: |
+          set -euo pipefail
+          pubspec_version="$(grep '^version:' pubspec.yaml | awk '{print $2}')"
+          version_name="${pubspec_version%%+*}"
+          tag_name="${GITHUB_REF_NAME#v}"
+          if [[ "$tag_name" != "$version_name" ]]; then
+            echo "Tag v${tag_name} does not match pubspec version ${version_name}."
+            exit 1
+          fi
+          echo "VERSION_NAME=${version_name}" >> "$GITHUB_ENV"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Select Xcode
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcode_path="/Applications/Xcode_${XCODE_VERSION}.app"
+          if [[ ! -d "${xcode_path}" ]]; then
+            echo "Requested Xcode was not found: ${xcode_path}"
+            echo "Installed Xcode applications:"
+            ls -1d /Applications/Xcode*.app || true
+            exit 1
+          fi
+          sudo xcode-select --switch "${xcode_path}"
+          xcode-select -p
+          xcodebuild -version
+
+      - name: Verify iOS SDK requirement
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_version="$(xcodebuild -version -sdk iphoneos SDKVersion)"
+          echo "iPhoneOS SDK: ${sdk_version}"
+          if [[ "${sdk_version%%.*}" -lt "${MIN_IOS_SDK}" ]]; then
+            echo "iOS builds must use the iOS ${MIN_IOS_SDK} SDK or newer."
+            exit 1
+          fi
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter pub get
+          cd ios
+          pod install
+
+      - name: Build iOS without code signing
+        run: flutter build ios --release --no-codesign
+
+      - name: Verify app bundle is unsigned
+        shell: bash
+        run: |
+          set -euo pipefail
+          if codesign --verify --deep --strict build/ios/iphoneos/Runner.app >/dev/null 2>&1; then
+            echo "Runner.app unexpectedly contains a valid code signature."
+            exit 1
+          fi
+          echo "Runner.app is not codesigned by this workflow."
+
+      - name: Package unsigned IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          staging="pack/unsigned-ipa"
+          mkdir -p "${staging}/Payload" pack
+          cp -R build/ios/iphoneos/Runner.app "${staging}/Payload/Runner.app"
+          (cd "${staging}" && ditto -c -k --sequesterRsrc --keepParent Payload "../EZVenera-${VERSION_NAME}-ios-unsigned.ipa")
+          shasum -a 256 "pack/EZVenera-${VERSION_NAME}-ios-unsigned.ipa" > "pack/EZVenera-${VERSION_NAME}-ios-unsigned.ipa.sha256"
+
+      - name: Upload iOS artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ezvenera-ios-unsigned
+          path: |
+            pack/*.ipa
+            pack/*.sha256
+
   publish:
     name: Publish GitHub Release
     runs-on: ubuntu-latest
     needs:
       - android
       - windows
+      - ios
 
     steps:
       - name: Checkout
@@ -192,4 +289,5 @@ jobs:
           files: |
             release-assets/**/*.apk
             release-assets/**/*.exe
+            release-assets/**/*.ipa
             release-assets/**/*.sha256
