@@ -1,0 +1,3 @@
+// Copy this file to LocalSigning.xcconfig for local device debugging.
+// Do not commit LocalSigning.xcconfig.
+DEVELOPMENT_TEAM = YOUR_TEAM_ID
