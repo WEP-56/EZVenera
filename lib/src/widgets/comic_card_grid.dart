@@ -42,7 +42,7 @@ class ComicCardGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final columns = _columnCountForWidth(constraints.maxWidth);
+        final columns = comicGridColumnCount(constraints.maxWidth);
 
         return GridView.builder(
           shrinkWrap: true,
@@ -50,14 +50,11 @@ class ComicCardGrid extends StatelessWidget {
           itemCount: comics.length,
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: columns,
-            mainAxisSpacing: 16,
-            crossAxisSpacing: 16,
-            childAspectRatio: switch (columns) {
-              2 => 0.56,
-              3 => 0.60,
-              4 => 0.63,
-              _ => 0.66,
-            },
+            mainAxisSpacing: comicGridMainAxisSpacing,
+            crossAxisSpacing: comicGridCrossAxisSpacing,
+            // Cover-heavy card: short text footer with ellipsis, not a tall
+            // metadata panel that overflows on phone widths.
+            childAspectRatio: comicGridChildAspectRatio(columns),
           ),
           itemBuilder: (context, index) {
             final comic = comics[index];
@@ -67,22 +64,35 @@ class ComicCardGrid extends StatelessWidget {
       },
     );
   }
+}
 
-  int _columnCountForWidth(double width) {
-    if (width >= 1440) {
-      return 6;
-    }
-    if (width >= 1180) {
-      return 5;
-    }
-    if (width >= 920) {
-      return 4;
-    }
-    if (width >= 620) {
-      return 3;
-    }
-    return 2;
+/// Shared grid metrics so search/category and local library stay consistent.
+const comicGridMainAxisSpacing = 12.0;
+const comicGridCrossAxisSpacing = 12.0;
+
+int comicGridColumnCount(double width) {
+  if (width >= 1440) {
+    return 6;
   }
+  if (width >= 1180) {
+    return 5;
+  }
+  if (width >= 920) {
+    return 4;
+  }
+  if (width >= 620) {
+    return 3;
+  }
+  return 2;
+}
+
+double comicGridChildAspectRatio(int columns) {
+  return switch (columns) {
+    2 => 0.62,
+    3 => 0.64,
+    4 => 0.66,
+    _ => 0.68,
+  };
 }
 
 class ComicCardList extends StatelessWidget {
@@ -122,11 +132,7 @@ class _ComicCardState extends State<_ComicCard> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final subtitle = _subtitleText(widget.comic);
-    final trailingMeta = _trailingMeta(widget.comic);
-    final tags = widget.comic.tags
-        ?.where((tag) => tag.trim().isNotEmpty)
-        .toList();
+    final footer = _footerText(widget.comic);
 
     return MouseRegion(
       onEnter: (_) => setState(() => isHovering = true),
@@ -139,14 +145,14 @@ class _ComicCardState extends State<_ComicCard> {
           color: Colors.transparent,
           clipBehavior: Clip.antiAlias,
           child: InkWell(
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(18),
             onTap: widget.onTap,
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 180),
               curve: Curves.easeOutCubic,
               decoration: BoxDecoration(
                 color: theme.colorScheme.surface,
-                borderRadius: BorderRadius.circular(24),
+                borderRadius: BorderRadius.circular(18),
                 border: Border.all(
                   color: isHovering
                       ? theme.colorScheme.primary.withValues(alpha: 0.32)
@@ -162,84 +168,52 @@ class _ComicCardState extends State<_ComicCard> {
                 ],
               ),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Expanded(
-                    flex: 10,
                     child: _ComicCover(
                       sourceKey: widget.comic.sourceKey,
                       imageUrl: widget.comic.cover,
                     ),
                   ),
-                  Expanded(
-                    flex: 8,
-                    child: ClipRect(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              physics: const NeverScrollableScrollPhysics(),
-                              child: Row(
-                                children: [
-                                  _MetaPill(label: widget.comic.sourceKey),
-                                  if (widget.comic.language case final language?
-                                      when language.trim().isNotEmpty) ...[
-                                    const SizedBox(width: 6),
-                                    _MetaPill(label: language),
-                                  ],
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            Text(
-                              widget.comic.title,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              softWrap: true,
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.w700,
-                                height: 1.2,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              subtitle,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              softWrap: true,
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                                height: 1.35,
-                              ),
-                            ),
-                            const Spacer(),
-                            if (tags != null && tags.isNotEmpty)
-                              Text(
-                                tags.take(3).join('  ·  '),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                softWrap: false,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.primary,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              )
-                            else
-                              Text(
-                                trailingMeta,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                softWrap: false,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                          ],
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          widget.comic.sourceKey,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.colorScheme.primary,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ),
+                        const SizedBox(height: 4),
+                        Text(
+                          widget.comic.title.replaceAll('\n', ' '),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            height: 1.2,
+                          ),
+                        ),
+                        if (footer != null) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            footer,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                              height: 1.2,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                 ],
@@ -251,28 +225,23 @@ class _ComicCardState extends State<_ComicCard> {
     );
   }
 
-  String _subtitleText(PluginComic comic) {
+  /// One secondary line only — grid cards cannot fit multi-field metadata.
+  String? _footerText(PluginComic comic) {
     final subtitle = comic.subtitle?.trim();
     if (subtitle != null && subtitle.isNotEmpty) {
       return subtitle;
     }
-
-    final description = comic.description.trim();
-    if (description.isNotEmpty) {
-      return description;
-    }
-
-    return comic.id;
-  }
-
-  String _trailingMeta(PluginComic comic) {
     if (comic.stars case final stars?) {
       return '★ ${stars.toStringAsFixed(1)}';
     }
     if (comic.maxPage case final maxPage?) {
       return '$maxPage pages';
     }
-    return comic.id;
+    final description = comic.description.trim();
+    if (description.isNotEmpty) {
+      return description;
+    }
+    return null;
   }
 }
 
@@ -526,7 +495,7 @@ class _ComicCoverState extends State<_ComicCover> {
     }
 
     return ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
       child: child,
     );
   }

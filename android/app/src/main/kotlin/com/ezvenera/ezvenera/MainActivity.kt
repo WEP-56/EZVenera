@@ -183,10 +183,16 @@ class MainActivity : FlutterFragmentActivity() {
                 return
             }
             pendingStorageAccessResult = result
-            requestPermissions(
-                arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE),
-                STORAGE_PERMISSION_REQUEST_CODE,
-            )
+            // Android 9 and below need WRITE for exporting backups to shared storage.
+            val permissions = if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
+                arrayOf(
+                    Manifest.permission.READ_EXTERNAL_STORAGE,
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                )
+            } else {
+                arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+            }
+            requestPermissions(permissions, STORAGE_PERMISSION_REQUEST_CODE)
             return
         }
         result.success(true)
@@ -197,8 +203,16 @@ class MainActivity : FlutterFragmentActivity() {
             return Environment.isExternalStorageManager()
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            return checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) ==
+            val hasRead = checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) ==
                 PackageManager.PERMISSION_GRANTED
+            if (!hasRead) {
+                return false
+            }
+            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
+                return checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) ==
+                    PackageManager.PERMISSION_GRANTED
+            }
+            return true
         }
         return true
     }
@@ -249,13 +263,55 @@ class MainActivity : FlutterFragmentActivity() {
             return null
         }
         val treeDocumentId = DocumentsContract.getTreeDocumentId(uri)
-        val parts = treeDocumentId.split(":", limit = 2)
-        if (parts.isEmpty() || parts[0] != "primary") {
+        return documentIdToPath(treeDocumentId)
+    }
+
+    /**
+     * Convert a SAF tree/document id into a real filesystem path when possible.
+     *
+     * Handles:
+     * - primary:Download/foo  -> /storage/emulated/0/Download/foo
+     * - raw:/storage/emulated/0/Download/foo (Downloads provider)
+     * - absolute paths returned as document ids
+     * - secondary volumes as UUID:relative under /storage
+     */
+    private fun documentIdToPath(documentId: String): String? {
+        val decoded = Uri.decode(documentId)
+        if (decoded.startsWith("/")) {
+            return decoded
+        }
+
+        val separator = decoded.indexOf(':')
+        if (separator < 0) {
             return null
         }
-        val relative = parts.getOrNull(1).orEmpty()
-        val root = android.os.Environment.getExternalStorageDirectory().absolutePath
-        return if (relative.isEmpty()) root else "$root/$relative"
+
+        val volume = decoded.substring(0, separator)
+        val remainder = decoded.substring(separator + 1)
+        val root = Environment.getExternalStorageDirectory().absolutePath
+
+        return when (volume) {
+            "primary", "home" -> {
+                if (remainder.isEmpty()) root else "$root/$remainder"
+            }
+            "raw" -> {
+                when {
+                    remainder.startsWith("/") -> remainder
+                    remainder.startsWith("storage/") -> "/$remainder"
+                    remainder.isEmpty() -> null
+                    else -> "/$remainder"
+                }
+            }
+            else -> {
+                // e.g. XXXX-XXXX:Documents from a secondary SD card.
+                val candidate = if (remainder.isEmpty()) {
+                    java.io.File("/storage/$volume")
+                } else {
+                    java.io.File("/storage/$volume/$remainder")
+                }
+                if (candidate.exists()) candidate.absolutePath else null
+            }
+        }
     }
 
     companion object {

@@ -39,10 +39,12 @@ class BackupService {
 
   Future<File> exportToTemporaryFile() async {
     final directory = await getTemporaryDirectory();
-    final file = File(p.join(directory.path, _backupFileName()));
+    final file = File(p.join(directory.path, defaultBackupFileName()));
     await exportToPath(file.path);
     return file;
   }
+
+  String defaultBackupFileName() => _backupFileName();
 
   Future<void> exportToPath(String path) async {
     await PluginRuntime.instance.ensureInitialized();

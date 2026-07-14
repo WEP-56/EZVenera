@@ -1052,34 +1052,40 @@ class _BackupSettingsPageState extends State<_BackupSettingsPage> {
 
   Future<void> _exportBackup() async {
     final l10n = AppLocalizations.of(context);
-    final location = await getSaveLocation(
-      acceptedTypeGroups: const <XTypeGroup>[
-        XTypeGroup(label: 'EZVenera Backup', extensions: <String>['ezvenera']),
-      ],
-      suggestedName: 'EZVenera.ezvenera',
-    );
-    if (location == null) {
-      return;
-    }
-    if (!mounted) {
-      return;
-    }
-    final navigator = Navigator.of(context, rootNavigator: true);
     try {
+      final path = await PlatformDirectory.pickSavePath(
+        suggestedName: BackupService.instance.defaultBackupFileName(),
+        acceptedTypeGroups: const <XTypeGroup>[
+          XTypeGroup(
+            label: 'EZVenera Backup',
+            extensions: <String>['ezvenera'],
+          ),
+        ],
+      );
+      if (path == null || path.trim().isEmpty) {
+        return;
+      }
+      if (!mounted) {
+        return;
+      }
+      final navigator = Navigator.of(context, rootNavigator: true);
       await _runBusyDialog(navigator, () {
-        return BackupService.instance.exportToPath(location.path);
+        return BackupService.instance.exportToPath(path);
       });
       if (!mounted) {
         return;
       }
-      _showSettingsMessage(context, _text(l10n, '备份已导出。', 'Backup exported.'));
+      _showSettingsMessage(
+        context,
+        _text(l10n, '备份已导出到：$path', 'Backup exported to: $path'),
+      );
     } catch (error) {
       if (!mounted) {
         return;
       }
       _showSettingsMessage(
         context,
-        _text(l10n, '导出失败：$error', 'Export failed: $error'),
+        _exportErrorMessage(l10n, error),
       );
     }
   }
@@ -1705,21 +1711,24 @@ class _LogSettingsPageState extends State<_LogSettingsPage> {
 
   Future<void> _exportLog() async {
     final l10n = AppLocalizations.of(context);
-    final location = await getSaveLocation(
+    final path = await PlatformDirectory.pickSavePath(
+      suggestedName: 'EZVenera.log',
       acceptedTypeGroups: const <XTypeGroup>[
         XTypeGroup(label: 'Log File', extensions: <String>['log']),
       ],
-      suggestedName: 'EZVenera.log',
     );
-    if (location == null) {
+    if (path == null || path.trim().isEmpty) {
       return;
     }
     try {
-      await AppLogger.instance.exportToPath(location.path);
+      await AppLogger.instance.exportToPath(path);
       if (!mounted) {
         return;
       }
-      _showSettingsMessage(context, _text(l10n, '日志已导出。', 'Log exported.'));
+      _showSettingsMessage(
+        context,
+        _text(l10n, '日志已导出到：$path', 'Log exported to: $path'),
+      );
     } catch (error) {
       if (!mounted) {
         return;
@@ -2081,6 +2090,26 @@ void _showSettingsMessage(BuildContext context, String message) {
 
 String _text(AppLocalizations l10n, String zh, String en) {
   return l10n.isChinese ? zh : en;
+}
+
+String _exportErrorMessage(AppLocalizations l10n, Object error) {
+  if (error is PlatformException) {
+    switch (error.code) {
+      case 'storage_permission_required':
+        return _text(
+          l10n,
+          '请先授予存储权限，再重新导出。',
+          'Grant storage permission, then try exporting again.',
+        );
+      case 'unsupported_directory':
+        return _text(
+          l10n,
+          '请选择内部共享存储中的文件夹（例如 Download）。',
+          'Please choose a folder under internal shared storage (for example Download).',
+        );
+    }
+  }
+  return _text(l10n, '导出失败：$error', 'Export failed: $error');
 }
 
 String _reportMessage(AppLocalizations l10n, BackupImportReport report) {

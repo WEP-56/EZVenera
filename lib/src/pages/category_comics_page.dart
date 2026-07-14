@@ -114,22 +114,26 @@ class _CategoryComicsPageState extends State<CategoryComicsPage> {
   }
 
   Widget _buildOptions() {
-    final maxHeight = MediaQuery.sizeOf(context).height * 0.5;
+    // Cap the whole filter block so long option lists cannot push the
+    // comic grid off-screen. Individual option groups size themselves to
+    // content (or paginate) instead of reserving a fixed multi-row height.
+    final maxHeight = MediaQuery.sizeOf(context).height * 0.42;
     return ConstrainedBox(
       constraints: BoxConstraints(maxHeight: maxHeight),
       child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: _options.indexed.map((entry) {
             final index = entry.$1;
             final option = entry.$2;
             return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.only(bottom: 10),
               child: _PagedCategoryOption(
                 option: option,
                 selectedValue: optionValues[index],
-                pageHeightLimit: maxHeight - 52,
+                pageHeightLimit: maxHeight * 0.55,
                 onSelected: (value) {
                   if (optionValues[index] == value) {
                     return;
@@ -441,20 +445,21 @@ class _PagedCategoryOption extends StatefulWidget {
 }
 
 class _PagedCategoryOptionState extends State<_PagedCategoryOption> {
-  late final PageController _pageController;
   int _page = 0;
 
-  @override
-  void initState() {
-    super.initState();
-    _pageController = PageController();
-  }
-
-  @override
-  void dispose() {
-    _pageController.dispose();
-    super.dispose();
-  }
+  static const _chipSpacing = 8.0;
+  static const _runSpacing = 8.0;
+  // Material 3 FilterChip is taller than the old 32px M2 chip; keep headroom
+  // so reserved/estimate heights never clip the bottom of a selected chip.
+  static const _chipHeight = 40.0;
+  static const _pagerReserve = 44.0;
+  static const _headerHeight = 28.0;
+  // label padding + selected check icon + chip padding.
+  static const _chipHorizontalChrome = 48.0;
+  static const _minChipWidth = 56.0;
+  // Prefer showing multiple rows of chips per page when tags overflow.
+  static const _preferredPageRows = 3;
+  static const _maxPageRows = 5;
 
   @override
   Widget build(BuildContext context) {
@@ -466,73 +471,80 @@ class _PagedCategoryOptionState extends State<_PagedCategoryOption> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final columns = _columnsForWidth(constraints.maxWidth);
-        final headerHeight = widget.option.label.isEmpty ? 0.0 : 30.0;
-        final pagerHeight = 40.0;
-        final rowHeight = 42.0;
-        final rowsWithoutPager =
-            ((widget.pageHeightLimit - headerHeight) / rowHeight).floor().clamp(
-              1,
-              12,
-            );
-        final neededRows = (entries.length / columns).ceil().clamp(1, 12);
-        final needsPager = neededRows > rowsWithoutPager;
-        final availableRows = needsPager
-            ? ((widget.pageHeightLimit - headerHeight - pagerHeight) /
-                      rowHeight)
-                  .floor()
-                  .clamp(1, 12)
-            : rowsWithoutPager;
-        final rows = needsPager ? availableRows : neededRows;
-        final perPage = (columns * rows).clamp(1, entries.length);
+        final maxWidth = constraints.maxWidth;
+        final headerHeight =
+            widget.option.label.isEmpty ? 0.0 : _headerHeight;
+        final textScaler = MediaQuery.textScalerOf(context);
+        final textStyle =
+            theme.textTheme.labelLarge ?? const TextStyle(fontSize: 14);
+
+        final naturalRows = _estimateWrapRows(
+          entries.map((e) => e.value),
+          maxWidth: maxWidth,
+          textStyle: textStyle,
+          textScaler: textScaler,
+        );
+        final heightBudget = (widget.pageHeightLimit - headerHeight).clamp(
+          _chipHeight,
+          widget.pageHeightLimit,
+        );
+        final maxRowsWithoutPager = _rowsForHeight(heightBudget);
+        final needsPager = naturalRows > maxRowsWithoutPager;
+
+        // Few tags: size to content — no fixed height, no blank rows.
+        if (!needsPager) {
+          return _optionColumn(
+            theme: theme,
+            children: [
+              Wrap(
+                spacing: _chipSpacing,
+                runSpacing: _runSpacing,
+                children: [
+                  for (final item in entries)
+                    _chip(item.key, item.value),
+                ],
+              ),
+            ],
+          );
+        }
+
+        // Many tags: paginate by chip count, but render each page as a
+        // content-sized Wrap (no PageView with a guessed fixed height).
+        final rowsPerPage = _rowsForHeight(
+          heightBudget - _pagerReserve,
+        ).clamp(1, _maxPageRows);
+        // Aim for a few rows so long labels don't become 1-chip-per-page.
+        final targetRows = rowsPerPage.clamp(1, _preferredPageRows);
+        final perPage = _chipsPerPage(
+          entries.map((e) => e.value),
+          maxWidth: maxWidth,
+          maxRows: targetRows < rowsPerPage ? rowsPerPage : targetRows,
+          textStyle: textStyle,
+          textScaler: textScaler,
+        ).clamp(1, entries.length);
         final pages = (entries.length / perPage).ceil();
         final currentPage = _page.clamp(0, pages - 1);
         if (currentPage != _page) {
-          _page = currentPage;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && _page != currentPage) {
+              setState(() => _page = currentPage);
+            }
+          });
         }
-        final pageHeight = rows * rowHeight;
+        final start = currentPage * perPage;
+        final end = (start + perPage).clamp(0, entries.length);
+        final pageEntries = entries.sublist(start, end);
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        return _optionColumn(
+          theme: theme,
           children: [
-            if (widget.option.label.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text(
-                  widget.option.label,
-                  style: theme.textTheme.titleSmall,
-                ),
-              ),
-            SizedBox(
-              height: pageHeight,
-              child: PageView.builder(
-                controller: _pageController,
-                itemCount: pages,
-                onPageChanged: (value) {
-                  setState(() {
-                    _page = value;
-                  });
-                },
-                itemBuilder: (context, pageIndex) {
-                  final start = pageIndex * perPage;
-                  final end = (start + perPage).clamp(0, entries.length);
-                  return Align(
-                    alignment: Alignment.topLeft,
-                    child: Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (final item in entries.sublist(start, end))
-                          FilterChip(
-                            selected: widget.selectedValue == item.key,
-                            label: Text(item.value),
-                            onSelected: (_) => widget.onSelected(item.key),
-                          ),
-                      ],
-                    ),
-                  );
-                },
-              ),
+            Wrap(
+              spacing: _chipSpacing,
+              runSpacing: _runSpacing,
+              children: [
+                for (final item in pageEntries)
+                  _chip(item.key, item.value),
+              ],
             ),
             if (pages > 1)
               Padding(
@@ -551,7 +563,7 @@ class _PagedCategoryOptionState extends State<_PagedCategoryOption> {
                       visualDensity: VisualDensity.compact,
                       onPressed: currentPage <= 0
                           ? null
-                          : () => _animateToPage(currentPage - 1),
+                          : () => setState(() => _page = currentPage - 1),
                       icon: const Icon(Icons.chevron_left),
                       tooltip: 'Previous',
                     ),
@@ -560,7 +572,7 @@ class _PagedCategoryOptionState extends State<_PagedCategoryOption> {
                       visualDensity: VisualDensity.compact,
                       onPressed: currentPage >= pages - 1
                           ? null
-                          : () => _animateToPage(currentPage + 1),
+                          : () => setState(() => _page = currentPage + 1),
                       icon: const Icon(Icons.chevron_right),
                       tooltip: 'Next',
                     ),
@@ -573,27 +585,137 @@ class _PagedCategoryOptionState extends State<_PagedCategoryOption> {
     );
   }
 
-  int _columnsForWidth(double width) {
-    if (width >= 980) {
-      return 5;
-    }
-    if (width >= 760) {
-      return 4;
-    }
-    if (width >= 560) {
-      return 3;
-    }
-    if (width >= 420) {
-      return 2;
-    }
-    return 1;
+  Widget _optionColumn({
+    required ThemeData theme,
+    required List<Widget> children,
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (widget.option.label.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text(
+              widget.option.label,
+              style: theme.textTheme.titleSmall,
+            ),
+          ),
+        ...children,
+      ],
+    );
   }
 
-  void _animateToPage(int page) {
-    _pageController.animateToPage(
-      page,
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
+  Widget _chip(String key, String label) {
+    return FilterChip(
+      selected: widget.selectedValue == key,
+      label: Text(label),
+      onSelected: (_) => widget.onSelected(key),
+    );
+  }
+
+  int _rowsForHeight(double height) {
+    if (height < _chipHeight) {
+      return 1;
+    }
+    // rows * chipHeight + (rows - 1) * runSpacing <= height
+    return ((height + _runSpacing) / (_chipHeight + _runSpacing))
+        .floor()
+        .clamp(1, _maxPageRows);
+  }
+
+  /// Pack as many chips as fit into [maxRows] of a Wrap at [maxWidth].
+  int _chipsPerPage(
+    Iterable<String> labels, {
+    required double maxWidth,
+    required int maxRows,
+    required TextStyle textStyle,
+    required TextScaler textScaler,
+  }) {
+    if (maxWidth <= 0) {
+      return 1;
+    }
+    var count = 0;
+    var rows = 1;
+    var x = 0.0;
+    for (final label in labels) {
+      final chipWidth = _chipWidthFor(
+        label,
+        textStyle: textStyle,
+        textScaler: textScaler,
+        maxWidth: maxWidth,
+      );
+      if (count == 0) {
+        count = 1;
+        x = chipWidth;
+        continue;
+      }
+      if (x + _chipSpacing + chipWidth <= maxWidth) {
+        x += _chipSpacing + chipWidth;
+        count++;
+        continue;
+      }
+      if (rows >= maxRows) {
+        break;
+      }
+      rows++;
+      x = chipWidth;
+      count++;
+    }
+    return count.clamp(1, 1 << 20);
+  }
+
+  int _estimateWrapRows(
+    Iterable<String> labels, {
+    required double maxWidth,
+    required TextStyle textStyle,
+    required TextScaler textScaler,
+  }) {
+    if (maxWidth <= 0) {
+      return 1;
+    }
+    var rows = 1;
+    var x = 0.0;
+    var first = true;
+    for (final label in labels) {
+      final chipWidth = _chipWidthFor(
+        label,
+        textStyle: textStyle,
+        textScaler: textScaler,
+        maxWidth: maxWidth,
+      );
+      if (first) {
+        x = chipWidth;
+        first = false;
+        continue;
+      }
+      if (x + _chipSpacing + chipWidth <= maxWidth) {
+        x += _chipSpacing + chipWidth;
+      } else {
+        rows++;
+        x = chipWidth;
+      }
+    }
+    return rows;
+  }
+
+  double _chipWidthFor(
+    String label, {
+    required TextStyle textStyle,
+    required TextScaler textScaler,
+    required double maxWidth,
+  }) {
+    final painter = TextPainter(
+      text: TextSpan(text: label, style: textStyle),
+      textDirection: TextDirection.ltr,
+      textScaler: textScaler,
+      maxLines: 1,
+      ellipsis: '…',
+    )..layout(maxWidth: maxWidth);
+    // Cap at full row width so a single long label still counts as one chip.
+    return (painter.width + _chipHorizontalChrome).clamp(
+      _minChipWidth,
+      maxWidth,
     );
   }
 }
