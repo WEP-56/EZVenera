@@ -1,0 +1,124 @@
+name: 发现 Bug
+description: 报告可复现的功能异常。许愿/泛泛吐槽请勿用此模板。
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提交前请先：
+        1. 搜索 [已有 Issues](https://github.com/WEP-56/EZVenera/issues) 是否重复
+        2. 确认使用的是最新发布版
+        3. 尽量提供复现步骤与日志（设置 → 日志）
+
+  - type: dropdown
+    id: issue_type
+    attributes:
+      label: 类型
+      description: 请确认这是 Bug，而不是功能许愿
+      options:
+        - "[发现 Bug]"
+      default: 0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: client
+    attributes:
+      label: 客户端
+      options:
+        - Android
+        - Windows
+        - 两者都有
+      default: 0
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: 版本号
+      description: 设置页或关于页中的版本，例如 1.7.15+14
+      placeholder: "1.7.15+14"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: not_duplicate
+    attributes:
+      label: 确认不是重复 Issue
+      description: 我已搜索过现有 Issues，确认即将提交的内容不是重复的
+      options:
+        - "yes — 我确认不是重复"
+        - "not — 可能重复（请先搜索，勿提交）"
+      default: 0
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug 描述
+      description: 发生了什么？你期望怎样？
+      placeholder: 我发现一个 bug……
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 请写到别人按步骤能复现的程度
+      placeholder: |
+        1. 打开……
+        2. 点击……
+        3. 观察到……
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为
+      placeholder: 本应……
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为
+      placeholder: 实际却……
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志 / 截图（可选但强烈建议）
+      description: 设置 → 日志中导出或复制相关错误；可附截图链接
+      placeholder: 粘贴关键 ERROR 行，或说明「无报错」
+
+  - type: dropdown
+    id: will_pr
+    attributes:
+      label: 是否愿意提交 PR 修复
+      options:
+        - "愿意提交 PR"
+        - "可以协助排查 / 提供更多信息"
+        - "暂不能参与开发"
+      default: 2
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我已搜索过 Issues，这不是重复问题
+          required: true
+        - label: 我填写了版本号、客户端与可复现步骤
+          required: true
+        - label: 这是实际异常，不是「希望加某某功能」的许愿
+          required: true

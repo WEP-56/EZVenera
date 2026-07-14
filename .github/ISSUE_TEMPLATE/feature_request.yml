@@ -1,0 +1,107 @@
+name: 功能强化
+description: 提出具体、可落地的增强。纯许愿/堆功能列表请勿提交。
+title: "[功能强化] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        EZVenera **不是许愿池**。请只提：
+        - 有明确场景的增强
+        - 你愿意参与讨论/实现的需求
+
+        先搜索 [已有 Issues](https://github.com/WEP-56/EZVenera/issues) 是否已有相同建议。
+
+  - type: dropdown
+    id: issue_type
+    attributes:
+      label: 类型
+      options:
+        - "[功能强化]"
+      default: 0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: client
+    attributes:
+      label: 主要使用的客户端
+      options:
+        - Android
+        - Windows
+        - 两者都有
+      default: 0
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: 当前版本
+      description: 你基于哪个版本提出建议
+      placeholder: "1.7.15+14"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: not_duplicate
+    attributes:
+      label: 确认不是重复 Issue
+      description: 我已搜索过现有 Issues，确认即将提交的内容不是重复的
+      options:
+        - "yes — 我确认不是重复"
+        - "not — 可能重复（请先搜索，勿提交）"
+      default: 0
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 需求描述
+      description: 你希望加入什么？解决什么使用问题？
+      placeholder: 我觉得 EZVenera 可以加入……
+    validations:
+      required: true
+
+  - type: textarea
+    id: scenario
+    attributes:
+      label: 使用场景
+      description: 什么时候会用到？没有它现在怎么做？
+      placeholder: |
+        场景：……
+        现状痛点：……
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 建议方案（可选）
+      description: 交互/入口/是否参考上游 Venera 等
+      placeholder: 建议在设置/阅读器中……
+
+  - type: dropdown
+    id: will_pr
+    attributes:
+      label: 是否愿意提交 PR 完成该强化
+      options:
+        - "愿意提交 PR"
+        - "可以协助设计 / 测试"
+        - "暂不能参与开发"
+      default: 2
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我已搜索过 Issues，这不是重复建议
+          required: true
+        - label: 需求有具体场景，不是一句话许愿
+          required: true
+        - label: 我理解维护者可能关闭优先级低或范围过大的请求
+          required: true
