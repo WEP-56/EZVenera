@@ -110,12 +110,34 @@ body:
     validations:
       required: true
 
+  - type: dropdown
+    id: has_logs
+    attributes:
+      label: 本次 Bug 是否有日志
+      description: 设置 → 日志；复现前后可先清理再导出，便于对照
+      options:
+        - "有日志，已在下方粘贴"
+        - "无相关日志 / 未出现 ERROR"
+        - "有日志但过长，已附文件或截图说明"
+      default: 0
+    validations:
+      required: true
+
   - type: textarea
     id: logs
     attributes:
-      label: 日志 / 截图（可选但强烈建议）
-      description: 设置 → 日志中导出或复制相关错误；可附截图链接
-      placeholder: 粘贴关键 ERROR 行，或说明「无报错」
+      label: 如有日志请粘贴
+      description: |
+        请粘贴与本次 Bug 相关的日志（尤其含 ERROR 的行）。
+        无日志时请写「无」。也可补充截图链接。
+      placeholder: |
+        本次 bug 是否有日志，如有请粘贴：
+
+        2026-… [ERROR] …
+        或：无
+      render: shell
+    validations:
+      required: true
 
   - type: dropdown
     id: will_pr
