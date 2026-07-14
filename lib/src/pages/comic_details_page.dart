@@ -6,6 +6,8 @@ import '../downloads/download_controller.dart';
 import '../downloads/download_models.dart';
 import '../library/favorite_controller.dart';
 import '../library/favorite_models.dart';
+import '../library/history_controller.dart';
+import '../library/history_models.dart';
 import '../plugin_runtime/models.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
 import '../plugin_runtime/services/plugin_image_loader.dart';
@@ -24,6 +26,7 @@ class ComicDetailsPage extends StatefulWidget {
 class _ComicDetailsPageState extends State<ComicDetailsPage> {
   late Future<PluginComicDetails> _future;
   final favoriteController = FavoriteController.instance;
+  final historyController = HistoryController.instance;
   final ScrollController _scrollController = ScrollController();
   bool _showBackToTop = false;
 
@@ -33,6 +36,7 @@ class _ComicDetailsPageState extends State<ComicDetailsPage> {
   void initState() {
     super.initState();
     favoriteController.addListener(_onFavoriteChanged);
+    historyController.addListener(_onHistoryChanged);
     _scrollController.addListener(_onScrollChanged);
     _future = _loadComicDetails();
   }
@@ -40,6 +44,7 @@ class _ComicDetailsPageState extends State<ComicDetailsPage> {
   @override
   void dispose() {
     favoriteController.removeListener(_onFavoriteChanged);
+    historyController.removeListener(_onHistoryChanged);
     _scrollController.removeListener(_onScrollChanged);
     _scrollController.dispose();
     super.dispose();
@@ -84,13 +89,23 @@ class _ComicDetailsPageState extends State<ComicDetailsPage> {
             widget.comic.id,
           );
 
+          final hasHistory =
+              HistoryController.instance.find(
+                widget.comic.sourceKey,
+                widget.comic.id,
+              ) !=
+              null;
+
           return _ComicDetailsBody(
             scrollController: _scrollController,
             summary: widget.comic,
             details: details,
             chaptersReversed: chaptersReversed,
-            onRead: () =>
-                _openReader(_firstChapter(details, chaptersReversed), details),
+            hasHistory: hasHistory,
+            onRead: () => _openReader(
+              _resolveReadChapter(details, chaptersReversed),
+              details,
+            ),
             onDownload: () => _downloadComic(details),
             onFavorite: () => _toggleFavorite(details),
             onToggleChapterOrder: () => _toggleChapterOrder(chaptersReversed),
@@ -208,7 +223,77 @@ class _ComicDetailsPageState extends State<ComicDetailsPage> {
     return _ChapterSelection(id: firstChapter.key, title: firstChapter.value);
   }
 
+  /// Prefer the last reading position when the user taps Read/Continue.
+  ///
+  /// Previously Read always opened the first chapter. That both ignored
+  /// progress and immediately overwrote history once the reader loaded.
+  _ChapterSelection _resolveReadChapter(
+    PluginComicDetails details,
+    bool chaptersReversed,
+  ) {
+    final history = HistoryController.instance.find(
+      widget.comic.sourceKey,
+      widget.comic.id,
+    );
+    final fromHistory = _chapterFromHistory(details, history);
+    return fromHistory ?? _firstChapter(details, chaptersReversed);
+  }
+
+  _ChapterSelection? _chapterFromHistory(
+    PluginComicDetails details,
+    ReadingHistoryEntry? history,
+  ) {
+    if (history == null) {
+      return null;
+    }
+
+    final chapters = details.chapters;
+    if (chapters == null) {
+      if (history.chapterId == null && history.chapterTitle == null) {
+        return null;
+      }
+      return _ChapterSelection(
+        id: history.chapterId,
+        title: history.chapterTitle ?? 'Read',
+      );
+    }
+
+    final flattened = <MapEntry<String, String>>[];
+    if (chapters.isGrouped) {
+      for (final group in chapters.groupedChapters!.values) {
+        flattened.addAll(group.entries);
+      }
+    } else {
+      flattened.addAll(chapters.chapters!.entries);
+    }
+
+    for (final entry in flattened) {
+      if (history.chapterId != null && entry.key == history.chapterId) {
+        return _ChapterSelection(id: entry.key, title: entry.value);
+      }
+    }
+    for (final entry in flattened) {
+      if (history.chapterTitle != null && entry.value == history.chapterTitle) {
+        return _ChapterSelection(id: entry.key, title: entry.value);
+      }
+    }
+    return null;
+  }
+
   void _openReader(_ChapterSelection chapter, PluginComicDetails details) {
+    final history = HistoryController.instance.find(
+      widget.comic.sourceKey,
+      widget.comic.id,
+    );
+    // Resume page only when opening the same chapter as the saved progress.
+    // Selecting a different chapter from the list starts at page 1.
+    final resumePage =
+        history != null &&
+            history.chapterId != null &&
+            history.chapterId == chapter.id
+        ? history.page
+        : null;
+
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (context) => ReaderPage(
@@ -220,6 +305,7 @@ class _ComicDetailsPageState extends State<ComicDetailsPage> {
           chapters: details.chapters,
           subtitle: details.subtitle ?? widget.comic.subtitle,
           cover: details.cover.isNotEmpty ? details.cover : widget.comic.cover,
+          initialPage: resumePage,
         ),
       ),
     );
@@ -287,6 +373,12 @@ class _ComicDetailsPageState extends State<ComicDetailsPage> {
     }
   }
 
+  void _onHistoryChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
   Future<List<ChapterDownloadRequest>?> _showDownloadOptions(
     PluginComicDetails details,
   ) {
@@ -347,6 +439,7 @@ class _ComicDetailsBody extends StatelessWidget {
     required this.summary,
     required this.details,
     required this.chaptersReversed,
+    required this.hasHistory,
     required this.onRead,
     required this.onDownload,
     required this.onFavorite,
@@ -359,6 +452,7 @@ class _ComicDetailsBody extends StatelessWidget {
   final PluginComic summary;
   final PluginComicDetails details;
   final bool chaptersReversed;
+  final bool hasHistory;
   final VoidCallback onRead;
   final VoidCallback onDownload;
   final VoidCallback onFavorite;
@@ -388,6 +482,7 @@ class _ComicDetailsBody extends StatelessWidget {
             _ActionStrip(
               isMobile: isMobile,
               isFavorite: isFavorite,
+              hasHistory: hasHistory,
               onRead: onRead,
               onDownload: onDownload,
               onFavorite: onFavorite,
@@ -532,6 +627,7 @@ class _ActionStrip extends StatelessWidget {
   const _ActionStrip({
     required this.isMobile,
     required this.isFavorite,
+    required this.hasHistory,
     required this.onRead,
     required this.onDownload,
     required this.onFavorite,
@@ -539,9 +635,12 @@ class _ActionStrip extends StatelessWidget {
 
   final bool isMobile;
   final bool isFavorite;
+  final bool hasHistory;
   final VoidCallback onRead;
   final VoidCallback onDownload;
   final VoidCallback onFavorite;
+
+  String get _readLabel => hasHistory ? 'Continue' : 'Read';
 
   @override
   Widget build(BuildContext context) {
@@ -554,7 +653,7 @@ class _ActionStrip extends StatelessWidget {
           if (!isMobile)
             _IconAction(
               icon: Icons.play_circle_outline,
-              label: 'Read',
+              label: _readLabel,
               color: Colors.orange,
               onPressed: onRead,
             ),
@@ -597,7 +696,7 @@ class _ActionStrip extends StatelessWidget {
               Expanded(
                 child: FilledButton(
                   onPressed: onRead,
-                  child: const Text('Read'),
+                  child: Text(_readLabel),
                 ),
               ),
             ],

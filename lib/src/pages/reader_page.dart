@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:window_manager/window_manager.dart';
@@ -82,8 +83,20 @@ class _ReaderPageState extends State<ReaderPage> {
   final Map<int, GlobalKey<_ReaderImageState>> _imageKeys =
       <int, GlobalKey<_ReaderImageState>>{};
   final Map<int, double> _verticalPageHeights = <int, double>{};
+  /// While non-null, vertical continuous mode is restoring a saved page.
+  /// Height changes re-anchor to this index (0-based). No hard scroll lock —
+  /// upstream uses index-based ScrollablePositionedList; we approximate that
+  /// with jump + re-anchor, and cancel as soon as the user takes over.
+  int? _verticalResumeTargetIndex;
+  int _verticalResumeCorrections = 0;
+  Timer? _verticalResumeWatchdog;
 
   static const _doubleTapMaxDelay = Duration(milliseconds: 150);
+  // Keep correcting until the target page is measured; short safety cap only.
+  static const _maxVerticalResumeCorrections = 40;
+  static const _verticalResumeWatchdogInterval = Duration(milliseconds: 80);
+  // ~1.2s worst-case background re-anchor; normal path ends when target is built.
+  static const _verticalResumeWatchdogMaxTicks = 15;
   static const _doubleTapMaxDistanceSquared = 24.0 * 24.0;
   static const _tapToTurnPagePercent = 0.33;
   static const _longPressZoomScale = 2.5;
@@ -142,10 +155,19 @@ class _ReaderPageState extends State<ReaderPage> {
     _volumeListener?.cancel();
     _volumeListener = null;
     _pendingTapTimer?.cancel();
+    _verticalResumeWatchdog?.cancel();
+    _verticalResumeWatchdog = null;
     _autoPageTimer?.cancel();
     _autoPageTimer = null;
     if (_isFullscreen) {
       _restoreFullscreenOnDispose();
+    }
+    // Persist the latest progress even if the user leaves without flipping
+    // pages (common in vertical continuous mode after only loading a chapter).
+    if (!isLoading && error == null && images.isNotEmpty) {
+      // Fire-and-forget: dispose cannot await, but HistoryController.record
+      // is safe to call after the widget is gone.
+      _recordHistory();
     }
     focusNode.dispose();
     pageController?.dispose();
@@ -221,7 +243,8 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   void _onScrollChanged() {
-    if (_suppressScrollListener) {
+    if (_suppressScrollListener || _verticalResumeTargetIndex != null) {
+      // Ignore scroll-driven page updates while restoring a saved position.
       return;
     }
     if (_isVerticalContinuousMode) {
@@ -271,6 +294,9 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   void _setCurrentPageFromScroll(int page) {
+    if (_verticalResumeTargetIndex != null) {
+      return;
+    }
     final clamped = page.clamp(1, images.isEmpty ? 1 : images.length);
     if (clamped != currentPage) {
       if (_isProgressDragging) {
@@ -707,7 +733,7 @@ class _ReaderPageState extends State<ReaderPage> {
   }) {
     _continuousItemExtent = itemExtent;
 
-    return ListView.builder(
+    final list = ListView.builder(
       key: ValueKey<String>(
         'continuous_${isVertical
             ? 'v'
@@ -775,6 +801,28 @@ class _ReaderPageState extends State<ReaderPage> {
           ),
         );
       },
+    );
+
+    // Like upstream: no hard lock. If the user starts scrolling during restore,
+    // stop re-anchoring immediately so we don't fight their gesture.
+    if (!isVertical) {
+      return list;
+    }
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (_verticalResumeTargetIndex == null) {
+          return false;
+        }
+        final isUserDrag = notification is ScrollStartNotification &&
+            notification.dragDetails != null;
+        final isUserScroll = notification is UserScrollNotification &&
+            notification.direction != ScrollDirection.idle;
+        if (isUserDrag || isUserScroll) {
+          _finishVerticalResume();
+        }
+        return false;
+      },
+      child: list,
     );
   }
 
@@ -957,11 +1005,24 @@ class _ReaderPageState extends State<ReaderPage> {
         _scrollController = _buildScrollController();
         _scrollControllerIsContinuous = true;
         pageController = null;
+        if (mode == ReaderPageMode.continuousTopToBottom && currentPage > 1) {
+          // Restore by jump + re-anchor as real image heights arrive.
+          // Animated resume stacks with early user flings and overshoots.
+          _beginVerticalResume(currentPage - 1);
+        } else {
+          _clearVerticalResume();
+        }
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
           if (_isVerticalContinuousMode) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) _moveToPage(currentPage - 1);
+              if (!mounted) return;
+              final target = _verticalResumeTargetIndex;
+              if (target != null) {
+                _jumpToVerticalPage(target);
+              } else {
+                _moveToPage(currentPage - 1);
+              }
             });
             return;
           }
@@ -974,6 +1035,7 @@ class _ReaderPageState extends State<ReaderPage> {
           }
         });
       } else {
+        _clearVerticalResume();
         pageController = PageController(initialPage: currentPage - 1);
       }
       _pageControllerMode = mode;
@@ -1325,12 +1387,21 @@ class _ReaderPageState extends State<ReaderPage> {
       return;
     }
 
+    // Explicit user jumps (chapter chrome / progress bar) cancel an in-flight
+    // resume so we don't fight the user after they pick a new page.
+    if (_verticalResumeTargetIndex != null &&
+        _verticalResumeTargetIndex != targetIndex) {
+      _finishVerticalResume();
+    }
+
     final itemContext = _imageKeyFor(targetIndex).currentContext;
     if (itemContext != null) {
+      final animate = SettingsController.instance.readerEnablePageAnimation &&
+          _verticalResumeTargetIndex == null;
       await Scrollable.ensureVisible(
         itemContext,
         alignment: 0,
-        duration: SettingsController.instance.readerEnablePageAnimation
+        duration: animate
             ? const Duration(milliseconds: 200)
             : Duration.zero,
         curve: Curves.easeOut,
@@ -1338,34 +1409,53 @@ class _ReaderPageState extends State<ReaderPage> {
       return;
     }
 
-    final target = _estimatedVerticalOffsetFor(
-      targetIndex,
-    ).clamp(sc.position.minScrollExtent, sc.position.maxScrollExtent);
-    _suppressScrollListener = true;
-    if (SettingsController.instance.readerEnablePageAnimation) {
-      await sc.animateTo(
-        target,
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOut,
-      );
-    } else {
-      sc.jumpTo(target);
-    }
-    _suppressScrollListener = false;
+    _jumpToVerticalPage(targetIndex);
 
     await WidgetsBinding.instance.endOfFrame;
-    if (!mounted) {
+    if (!mounted || _verticalResumeTargetIndex != null) {
+      // Resume path keeps re-anchoring from height callbacks; don't animate.
       return;
     }
     final nextContext = _imageKeyFor(targetIndex).currentContext;
     if (nextContext != null && nextContext.mounted) {
+      final animate = SettingsController.instance.readerEnablePageAnimation;
       await Scrollable.ensureVisible(
         nextContext,
         alignment: 0,
-        duration: const Duration(milliseconds: 120),
+        duration: animate
+            ? const Duration(milliseconds: 120)
+            : Duration.zero,
         curve: Curves.easeOut,
       );
     }
+  }
+
+  void _jumpToVerticalPage(int targetIndex) {
+    final sc = _scrollController;
+    if (sc == null || !sc.hasClients) {
+      return;
+    }
+
+    final itemContext = _imageKeyFor(targetIndex).currentContext;
+    if (itemContext != null) {
+      _suppressScrollListener = true;
+      Scrollable.ensureVisible(
+        itemContext,
+        alignment: 0,
+        duration: Duration.zero,
+      );
+      _suppressScrollListener = false;
+      currentPage = targetIndex + 1;
+      return;
+    }
+
+    final target = _estimatedVerticalOffsetFor(
+      targetIndex,
+    ).clamp(sc.position.minScrollExtent, sc.position.maxScrollExtent);
+    _suppressScrollListener = true;
+    sc.jumpTo(target);
+    _suppressScrollListener = false;
+    currentPage = targetIndex + 1;
   }
 
   double _estimatedVerticalOffsetFor(int targetIndex) {
@@ -1379,8 +1469,12 @@ class _ReaderPageState extends State<ReaderPage> {
 
   double _averageVerticalPageHeight() {
     if (_verticalPageHeights.isEmpty) {
+      // Webtoon pages are typically taller than one viewport. Using viewport
+      // height alone underestimates total length and makes mid-chapter resume
+      // land too early, then "catch up" as real heights expand.
       final height = MediaQuery.sizeOf(context).height;
-      return height <= 0 ? 720 : height;
+      final base = height <= 0 ? 720.0 : height;
+      return base * 2.2;
     }
     final total = _verticalPageHeights.values.fold<double>(
       0,
@@ -1397,7 +1491,114 @@ class _ReaderPageState extends State<ReaderPage> {
     if (previous != null && (previous - height).abs() < 1) {
       return;
     }
+    final usedEstimate = previous == null;
+    final estimateBefore = usedEstimate ? _averageVerticalPageHeight() : null;
     _verticalPageHeights[index] = height;
+
+    if (!_isVerticalContinuousMode) {
+      return;
+    }
+
+    final resumeTarget = _verticalResumeTargetIndex;
+    if (resumeTarget != null) {
+      // Only heights at/above the resume target affect its anchor.
+      if (index > resumeTarget) {
+        return;
+      }
+      // Keep re-anchoring until the restored page is laid out with a real size
+      // (or we hit the correction cap). Jump only — never animate.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _verticalResumeTargetIndex != resumeTarget) {
+          return;
+        }
+        _jumpToVerticalPage(resumeTarget);
+        _verticalResumeCorrections++;
+        final targetMeasured = _verticalPageHeights.containsKey(resumeTarget);
+        final targetBuilt =
+            _imageKeyFor(resumeTarget).currentContext != null;
+        if ((targetMeasured && targetBuilt) ||
+            _verticalResumeCorrections >= _maxVerticalResumeCorrections) {
+          _finishVerticalResume();
+        }
+      });
+      return;
+    }
+
+    // Outside resume: if a page above the viewport grows/shrinks, shift the
+    // scroll offset by the delta so the visible content does not jump.
+    final delta = height - (previous ?? estimateBefore ?? height);
+    if (delta.abs() < 1) {
+      return;
+    }
+    _compensateVerticalScrollForHeightChange(index, delta);
+  }
+
+  void _compensateVerticalScrollForHeightChange(int index, double delta) {
+    final sc = _scrollController;
+    if (sc == null || !sc.hasClients) {
+      return;
+    }
+    final offset = sc.offset;
+    // If the changed page starts at or below the current scroll position, the
+    // content under the viewport is unaffected.
+    final pageStart = _estimatedVerticalOffsetFor(index);
+    if (offset <= pageStart + 0.5) {
+      return;
+    }
+    final next = (offset + delta).clamp(
+      sc.position.minScrollExtent,
+      sc.position.maxScrollExtent,
+    );
+    if ((next - offset).abs() < 1) {
+      return;
+    }
+    _suppressScrollListener = true;
+    sc.jumpTo(next);
+    _suppressScrollListener = false;
+  }
+
+  void _beginVerticalResume(int targetIndex) {
+    _verticalResumeWatchdog?.cancel();
+    _verticalResumeTargetIndex = targetIndex;
+    _verticalResumeCorrections = 0;
+    var ticks = 0;
+    // Re-jump on a timer too: if the estimate overshoots, only pages past the
+    // target may load, and height callbacks for index > target are ignored.
+    // Periodic jumps re-sample the growing average until the target is built.
+    _verticalResumeWatchdog = Timer.periodic(
+      _verticalResumeWatchdogInterval,
+      (timer) {
+        if (!mounted || _verticalResumeTargetIndex == null) {
+          timer.cancel();
+          return;
+        }
+        final target = _verticalResumeTargetIndex!;
+        _jumpToVerticalPage(target);
+        ticks++;
+        final targetMeasured = _verticalPageHeights.containsKey(target);
+        final targetBuilt = _imageKeyFor(target).currentContext != null;
+        if ((targetMeasured && targetBuilt) ||
+            ticks >= _verticalResumeWatchdogMaxTicks ||
+            _verticalResumeCorrections >= _maxVerticalResumeCorrections) {
+          _finishVerticalResume();
+        }
+      },
+    );
+  }
+
+  void _clearVerticalResume() {
+    _verticalResumeWatchdog?.cancel();
+    _verticalResumeWatchdog = null;
+    _verticalResumeTargetIndex = null;
+    _verticalResumeCorrections = 0;
+  }
+
+  void _finishVerticalResume() {
+    if (_verticalResumeTargetIndex == null &&
+        _verticalResumeWatchdog == null) {
+      return;
+    }
+    _clearVerticalResume();
   }
 
   GlobalKey<_ReaderImageState> _imageKeyFor(int index) {
