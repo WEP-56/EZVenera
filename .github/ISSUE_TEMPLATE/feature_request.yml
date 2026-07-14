@@ -12,12 +12,30 @@ body:
 
         先搜索 [已有 Issues](https://github.com/WEP-56/EZVenera/issues) 是否已有相同建议。
 
+        **插件相关请勿在此提交。**
+        某个源的功能/解析/登录问题 → 插件仓库：
+        https://github.com/WEP-56/EZvenera-config
+
   - type: dropdown
     id: issue_type
     attributes:
       label: 类型
       options:
         - "[功能强化]"
+      default: 0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: 确认是本体强化，不是插件需求
+      description: |
+        本体：阅读器、历史、收藏、下载、设置、UI 等 App 自身能力。
+        插件：某个漫画源要加分类/搜索/登录等 → 请去插件仓库。
+      options:
+        - "yes — 这是 EZVenera 本体强化"
+        - "not — 这是插件/源需求（请去插件仓库，勿提交）"
       default: 0
     validations:
       required: true
@@ -100,6 +118,8 @@ body:
       label: 提交前确认
       options:
         - label: 我已搜索过 Issues，这不是重复建议
+          required: true
+        - label: 这是 App 本体强化，不是某个插件/漫画源需求（插件请去 https://github.com/WEP-56/EZvenera-config）
           required: true
         - label: 需求有具体场景，不是一句话许愿
           required: true

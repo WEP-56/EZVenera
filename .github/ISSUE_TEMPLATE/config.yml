@@ -3,6 +3,6 @@ contact_links:
   - name: 文档 / 使用说明
     url: https://wep-56.github.io/EZVenera/index.html
     about: 先查文档，很多用法问题不需要开 Issue
-  - name: 插件源仓库
+  - name: 插件问题请去插件仓库
     url: https://github.com/WEP-56/EZvenera-config
-    about: 插件源相关问题请到配置/源仓库反馈
+    about: 源站/插件搜索·详情·图片·登录·解析问题，请在此反馈（勿在本仓库开插件 Issue）
