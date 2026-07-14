@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'bootstrap/app_bootstrap.dart';
 import 'localization/app_localizations.dart';
@@ -37,7 +38,9 @@ class _EZVeneraAppState extends State<EZVeneraApp> {
       supportedLocales: AppLocalizations.supportedLocales,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       builder: (context, child) {
-        return WindowsWindowFrame(child: child ?? const SizedBox.shrink());
+        return _SystemUiProvider(
+          child: WindowsWindowFrame(child: child ?? const SizedBox.shrink()),
+        );
       },
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
@@ -62,5 +65,39 @@ class _EZVeneraAppState extends State<EZVeneraApp> {
     if (mounted) {
       setState(() {});
     }
+  }
+}
+
+/// Keeps status/navigation bars transparent and disables the system nav-bar
+/// contrast scrim (white/translucent bar on some OEMs) after Flutter starts.
+///
+/// Splash-phase styling is handled by LaunchTheme/NormalTheme in Android
+/// styles.xml — SystemUiOverlayStyle cannot affect that window.
+class _SystemUiProvider extends StatelessWidget {
+  const _SystemUiProvider({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final systemUiStyle = isDark
+        ? SystemUiOverlayStyle.light.copyWith(
+            statusBarColor: Colors.transparent,
+            systemNavigationBarColor: Colors.transparent,
+            systemNavigationBarIconBrightness: Brightness.light,
+            systemNavigationBarContrastEnforced: false,
+          )
+        : SystemUiOverlayStyle.dark.copyWith(
+            statusBarColor: Colors.transparent,
+            systemNavigationBarColor: Colors.transparent,
+            systemNavigationBarIconBrightness: Brightness.dark,
+            systemNavigationBarContrastEnforced: false,
+          );
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: systemUiStyle,
+      child: child,
+    );
   }
 }
