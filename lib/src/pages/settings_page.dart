@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ffi' show Abi;
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -11,6 +12,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../backup/backup_service.dart';
+import '../backup/webdav_auto_sync.dart';
 import '../downloads/download_controller.dart';
 import '../library/history_controller.dart';
 import '../localization/app_localizations.dart';
@@ -904,6 +906,61 @@ class _BackupSettingsPageState extends State<_BackupSettingsPage> {
                       ),
                       obscureText: true,
                     ),
+                    const SizedBox(height: 4),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      secondary: const Icon(Icons.sync),
+                      title: Text(
+                        _text(l10n, '自动同步数据', 'Auto Sync Data'),
+                      ),
+                      subtitle: Text(
+                        _text(
+                          l10n,
+                          '开启后启动时拉取较新的远端备份，本地收藏/历史/图源变更时自动上传。',
+                          'On launch, pull a newer remote backup; upload when favorites, history, or sources change.',
+                        ),
+                      ),
+                      value: controller.webDavAutoSync,
+                      onChanged: _setWebDavAutoSync,
+                    ),
+                    if (controller.webDavAutoSync) ...[
+                      const SizedBox(height: 4),
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .primaryContainer
+                              .withValues(alpha: 0.55),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(10),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                Icons.info_outline,
+                                size: 20,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onPrimaryContainer,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _text(
+                                    l10n,
+                                    '自动同步生效后，应用会在后台与 WebDAV 保持数据一致。请先保存有效的地址与账号。',
+                                    'While auto-sync is on, the app keeps data in sync with WebDAV in the background. Save a valid URL and account first.',
+                                  ),
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 12),
                     Align(
                       alignment: Alignment.centerLeft,
@@ -979,14 +1036,14 @@ class _BackupSettingsPageState extends State<_BackupSettingsPage> {
     );
   }
 
-  Future<void> _saveWebDavConfig() async {
+  Future<void> _saveWebDavConfig({bool showMessage = true}) async {
     final l10n = AppLocalizations.of(context);
     await controller.setWebDavConfig(
       url: urlController.text,
       username: usernameController.text,
       password: passwordController.text,
     );
-    if (!mounted) {
+    if (!mounted || !showMessage) {
       return;
     }
     _showSettingsMessage(
@@ -995,16 +1052,87 @@ class _BackupSettingsPageState extends State<_BackupSettingsPage> {
     );
   }
 
+  Future<void> _setWebDavAutoSync(bool value) async {
+    final l10n = AppLocalizations.of(context);
+    // Persist credentials first so isEnabled can become true immediately.
+    await _saveWebDavConfig(showMessage: false);
+    if (!mounted) {
+      return;
+    }
+    if (value && !controller.hasWebDavConfig) {
+      await controller.setWebDavAutoSync(false);
+      if (!mounted) {
+        return;
+      }
+      _showSettingsMessage(
+        context,
+        _text(
+          l10n,
+          '请先填写并保存 WebDAV 地址后再开启自动同步。',
+          'Save a WebDAV URL before enabling auto-sync.',
+        ),
+      );
+      return;
+    }
+    await controller.setWebDavAutoSync(value);
+    if (!mounted) {
+      return;
+    }
+    if (value) {
+      final navigator = Navigator.of(context, rootNavigator: true);
+      try {
+        await _runBusyDialog(navigator, () async {
+          // First enable: pull remote if newer (upstream continues with up/down).
+          await WebDavAutoSync.instance.downloadData();
+        });
+        if (!mounted) {
+          return;
+        }
+        final error = WebDavAutoSync.instance.lastError;
+        if (error != null) {
+          _showSettingsMessage(
+            context,
+            _text(l10n, '自动同步已开启，但首次拉取失败：$error',
+                'Auto-sync on, but initial pull failed: $error'),
+          );
+        } else {
+          _showSettingsMessage(
+            context,
+            _text(l10n, '自动同步已开启。', 'Auto-sync enabled.'),
+          );
+        }
+      } catch (error) {
+        if (!mounted) {
+          return;
+        }
+        _showSettingsMessage(
+          context,
+          _text(l10n, '自动同步已开启，但首次拉取失败：$error',
+              'Auto-sync on, but initial pull failed: $error'),
+        );
+      }
+    } else {
+      _showSettingsMessage(
+        context,
+        _text(l10n, '自动同步已关闭。', 'Auto-sync disabled.'),
+      );
+    }
+  }
+
   Future<void> _uploadWebDav() async {
     final l10n = AppLocalizations.of(context);
     final navigator = Navigator.of(context, rootNavigator: true);
     try {
-      await _saveWebDavConfig();
+      await _saveWebDavConfig(showMessage: false);
       await _runBusyDialog(navigator, () async {
-        await BackupService.instance.uploadToWebDav(
+        // Manual upload also bumps dataVersion so auto-sync stays coherent.
+        final dataVersion =
+            await SettingsController.instance.incrementDataVersion();
+        await BackupService.instance.uploadVersionedToWebDav(
           url: urlController.text,
           username: usernameController.text,
           password: passwordController.text,
+          dataVersion: dataVersion,
         );
       });
       if (!mounted) {
@@ -1357,27 +1485,68 @@ class _AboutSettingsPageState extends State<_AboutSettingsPage> {
     String tag,
     List<Map<String, dynamic>> assets,
   ) {
-    final targetName = Platform.isWindows
-        ? 'windows-setup.exe'
-        : Platform.isAndroid
-        ? 'android-release.apk'
-        : '';
-    if (targetName.isEmpty) {
+    if (Platform.isWindows) {
+      for (final asset in assets) {
+        final name = asset['name']?.toString() ?? '';
+        if (name.endsWith('windows-setup.exe')) {
+          return _releaseAssetFromMap(tag, version, asset);
+        }
+      }
+      throw StateError('No matching installer asset found.');
+    }
+
+    if (!Platform.isAndroid) {
       throw UnsupportedError('Update is not supported on this platform.');
     }
 
+    // Prefer the APK that matches this device's ABI (per-ABI release assets).
+    // Fall back to the legacy fat APK name so older releases still update.
+    final preferredAbis = _androidPreferredApkAbis();
+    for (final abi in preferredAbis) {
+      for (final asset in assets) {
+        final name = asset['name']?.toString() ?? '';
+        if (name.endsWith('android-$abi-release.apk')) {
+          return _releaseAssetFromMap(tag, version, asset);
+        }
+      }
+    }
     for (final asset in assets) {
       final name = asset['name']?.toString() ?? '';
-      if (name.endsWith(targetName)) {
-        return _ReleaseAsset(
-          tag: tag,
-          version: version,
-          name: name,
-          url: asset['browser_download_url']?.toString() ?? '',
-        );
+      if (name.endsWith('android-release.apk')) {
+        return _releaseAssetFromMap(tag, version, asset);
       }
     }
     throw StateError('No matching installer asset found.');
+  }
+
+  /// Ordered ABI tags for Android update APKs (best match first).
+  List<String> _androidPreferredApkAbis() {
+    switch (Abi.current()) {
+      case Abi.androidArm64:
+        return const ['arm64-v8a', 'armeabi-v7a'];
+      case Abi.androidArm:
+        return const ['armeabi-v7a'];
+      case Abi.androidX64:
+        return const ['x86_64', 'arm64-v8a'];
+      case Abi.androidIA32:
+        return const ['x86', 'armeabi-v7a'];
+      default:
+        // Desktop / unexpected host while targeting Android assets.
+        return const ['arm64-v8a', 'armeabi-v7a'];
+    }
+  }
+
+  _ReleaseAsset _releaseAssetFromMap(
+    String tag,
+    String version,
+    Map<String, dynamic> asset,
+  ) {
+    return _ReleaseAsset(
+      tag: tag,
+      version: version,
+      name: asset['name']?.toString() ?? '',
+      url: asset['browser_download_url']?.toString() ?? '',
+    );
   }
 
   bool _isNewerVersion(String latest, String current) {

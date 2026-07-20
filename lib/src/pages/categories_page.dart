@@ -264,11 +264,19 @@ class _CategorySourcePage extends StatelessWidget {
     }
 
     if (target.page == 'search') {
+      final optionsRaw = target.attributes?['options'];
+      final options = optionsRaw is List
+          ? optionsRaw.map((e) => e.toString()).toList()
+          : const <String>[];
       Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (context) => CategoryComicsSearchBridgePage(
             source: source,
-            keyword: target.attributes?['keyword']?.toString() ?? '',
+            keyword:
+                target.attributes?['keyword']?.toString() ??
+                target.attributes?['text']?.toString() ??
+                '',
+            options: options,
           ),
         ),
       );
@@ -322,18 +330,22 @@ class CategoryComicsSearchBridgePage extends StatelessWidget {
   const CategoryComicsSearchBridgePage({
     required this.source,
     required this.keyword,
+    this.options = const <String>[],
     super.key,
   });
 
   final PluginSource source;
   final String keyword;
+  final List<String> options;
 
   @override
   Widget build(BuildContext context) {
+    final title = keyword.trim().isEmpty ? source.name : keyword;
     return CategoryComicsPage(
       source: source,
-      pageTitle: keyword,
+      pageTitle: title,
       searchKeyword: keyword,
+      searchOptions: options,
     );
   }
 }

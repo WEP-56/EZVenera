@@ -55,17 +55,30 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Build release APK
-        run: flutter build apk --release
+      # Per-ABI APKs (armeabi-v7a + arm64-v8a) keep download size smaller
+      # than a fat APK that embeds every architecture.
+      - name: Build release APKs (split per ABI)
+        run: >
+          flutter build apk --release --split-per-abi
+          --target-platform android-arm,android-arm64
 
-      - name: Collect APK
+      - name: Collect APKs
         shell: bash
         run: |
           set -euo pipefail
           version="$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f1)"
           mkdir -p pack
-          cp build/app/outputs/flutter-apk/app-release.apk "pack/EZVenera-${version}-android-release.apk"
-          sha256sum "pack/EZVenera-${version}-android-release.apk" > "pack/EZVenera-${version}-android-release.apk.sha256"
+          for abi in armeabi-v7a arm64-v8a; do
+            src="build/app/outputs/flutter-apk/app-${abi}-release.apk"
+            if [[ ! -f "$src" ]]; then
+              echo "Missing split APK for ABI ${abi}: ${src}"
+              exit 1
+            fi
+            dest="pack/EZVenera-${version}-android-${abi}-release.apk"
+            cp "$src" "$dest"
+            sha256sum "$dest" > "${dest}.sha256"
+          done
+          ls -lh pack/
 
       - name: Upload Android artifact
         uses: actions/upload-artifact@v7

@@ -145,6 +145,50 @@ class BackupService {
     return file;
   }
 
+  /// Versioned WebDAV upload used by auto-sync (upstream DataSync style).
+  ///
+  /// Remote name: `{daySinceEpoch}-{dataVersion}.ezvenera`
+  /// Replaces any same-day file and keeps at most [keepCount] backups.
+  Future<File> uploadVersionedToWebDav({
+    required String url,
+    required String username,
+    required String password,
+    required int dataVersion,
+    int keepCount = 10,
+  }) async {
+    final day = DateTime.now().millisecondsSinceEpoch ~/ 86400000;
+    final remoteName = '$day-$dataVersion.ezvenera';
+    final exported = await exportToTemporaryFile();
+    final named = File(p.join(exported.parent.path, remoteName));
+    if (named.path != exported.path) {
+      await exported.copy(named.path);
+      try {
+        await exported.delete();
+      } catch (_) {}
+    }
+
+    final client = _WebDavClient(
+      dio: _dio,
+      url: url,
+      username: username,
+      password: password,
+    );
+    final existing = await client.listBackups();
+    for (final file in existing) {
+      if (file.name.startsWith('$day-') && file.name != remoteName) {
+        await client.delete(file.relativePath);
+      }
+    }
+    final remaining = (await client.listBackups())
+      ..sort((a, b) => a.name.compareTo(b.name));
+    while (remaining.length >= keepCount) {
+      final oldest = remaining.removeAt(0);
+      await client.delete(oldest.relativePath);
+    }
+    await client.upload(named, remoteName: remoteName);
+    return named;
+  }
+
   Future<BackupImportReport> downloadLatestFromWebDav({
     required String url,
     required String username,
@@ -158,6 +202,64 @@ class BackupService {
     );
     final file = await client.downloadLatest();
     return importEzVeneraFromPath(file.path);
+  }
+
+  /// Downloads the newest remote backup only when its dataVersion is greater
+  /// than [localDataVersion]. Returns `null` when nothing newer is available.
+  Future<BackupImportReport?> downloadNewerFromWebDav({
+    required String url,
+    required String username,
+    required String password,
+    required int localDataVersion,
+  }) async {
+    final client = _WebDavClient(
+      dio: _dio,
+      url: url,
+      username: username,
+      password: password,
+    );
+    final files = await client.listBackups();
+    if (files.isEmpty) {
+      return null;
+    }
+
+    _WebDavBackupFile? best;
+    var bestVersion = -1;
+    for (final file in files) {
+      final version = parseWebDavDataVersion(file.name);
+      if (version != null) {
+        if (version > bestVersion) {
+          bestVersion = version;
+          best = file;
+        }
+      }
+    }
+
+    if (best != null) {
+      if (bestVersion <= localDataVersion) {
+        return null;
+      }
+      final localFile = await client.downloadNamed(best);
+      return importEzVeneraFromPath(localFile.path);
+    }
+
+    // Legacy timestamp-named backups (no embedded version): only pull when
+    // the local device has never participated in versioned sync.
+    if (localDataVersion > 0) {
+      return null;
+    }
+    final file = await client.downloadLatest();
+    return importEzVeneraFromPath(file.path);
+  }
+
+  /// Parses `{day}-{dataVersion}.ezvenera` remote names. Returns null for
+  /// legacy `EZVenera-...` timestamp names.
+  static int? parseWebDavDataVersion(String fileName) {
+    final match = RegExp(r'^(\d+)-(\d+)\.ezvenera$').firstMatch(fileName);
+    if (match == null) {
+      return null;
+    }
+    return int.tryParse(match.group(2)!);
   }
 
   Future<BackupImportReport> importEzVeneraFromPath(String path) async {
@@ -627,8 +729,9 @@ class _WebDavClient {
   final String username;
   final String password;
 
-  Future<void> upload(File file) async {
-    final uri = baseUri.resolve(p.basename(file.path));
+  Future<void> upload(File file, {String? remoteName}) async {
+    final name = remoteName ?? p.basename(file.path);
+    final uri = baseUri.resolve(name);
     final response = await dio.put<dynamic>(
       uri.toString(),
       data: await file.readAsBytes(),
@@ -645,13 +748,31 @@ class _WebDavClient {
     }
   }
 
+  Future<void> delete(String relativePath) async {
+    final uri = baseUri.resolve(relativePath);
+    final response = await dio.delete<dynamic>(
+      uri.toString(),
+      options: Options(responseType: ResponseType.plain, headers: _headers()),
+    );
+    // 404 is fine when pruning a file that was already removed.
+    if (response.statusCode == 404) {
+      return;
+    }
+    if (!_isSuccess(response.statusCode)) {
+      throw StateError('WebDAV delete failed: HTTP ${response.statusCode}');
+    }
+  }
+
   Future<File> downloadLatest() async {
     final files = await listBackups();
     if (files.isEmpty) {
       throw StateError('No .ezvenera backup found on WebDAV.');
     }
     files.sort((a, b) => b.name.compareTo(a.name));
-    final backup = files.first;
+    return downloadNamed(files.first);
+  }
+
+  Future<File> downloadNamed(_WebDavBackupFile backup) async {
     final response = await dio.get<List<int>>(
       baseUri.resolve(backup.relativePath).toString(),
       options: Options(responseType: ResponseType.bytes, headers: _headers()),

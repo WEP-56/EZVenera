@@ -13,6 +13,7 @@ class CategoryComicsPage extends StatefulWidget {
     this.categoryName,
     this.categoryParam,
     this.searchKeyword,
+    this.searchOptions = const <String>[],
     this.ranking,
     super.key,
   });
@@ -22,6 +23,8 @@ class CategoryComicsPage extends StatefulWidget {
   final String? categoryName;
   final String? categoryParam;
   final String? searchKeyword;
+  /// Search options from plugin jump targets (e.g. onClickTag attributes.options).
+  final List<String> searchOptions;
   final PluginRankingCapability? ranking;
 
   @override
@@ -415,15 +418,16 @@ class _CategoryComicsPageState extends State<CategoryComicsPage> {
         'Source does not support search.',
       );
     }
+    final options = widget.searchOptions;
     if (search.loadPage != null) {
-      return search.loadPage!(widget.searchKeyword!, page, const <String>[]);
+      return search.loadPage!(widget.searchKeyword!, page, options);
     }
     if (page > 1 || search.loadNext == null) {
       return PluginResult<List<PluginComic>>.error(
         'Search bridge only supports first page for this source.',
       );
     }
-    return search.loadNext!(widget.searchKeyword!, null, const <String>[]);
+    return search.loadNext!(widget.searchKeyword!, null, options);
   }
 }
 

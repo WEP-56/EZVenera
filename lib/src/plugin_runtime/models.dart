@@ -53,6 +53,12 @@ typedef PluginThumbnailConfigLoader =
 typedef PluginDynamicCategoryLoader = List<PluginCategoryItem> Function();
 typedef PluginTagSuggestionSelect =
     String Function(String namespace, String tag);
+/// Plugin `comic.onClickTag` — always scoped to **this source**, not global search.
+typedef PluginClickTagHandler =
+    PluginJumpTarget? Function(String namespace, String tag);
+/// Plugin `comic.loadThumbnails(id, next)` — returns more thumbnail URLs + next token.
+typedef PluginThumbnailPageLoader =
+    Future<PluginResult<List<String>>> Function(String id, String? next);
 
 class PluginSource {
   PluginSource({
@@ -282,12 +288,16 @@ class PluginComicCapability {
     required this.loadEpisode,
     this.onImageLoad,
     this.onThumbnailLoad,
+    this.loadThumbnails,
+    this.onClickTag,
   });
 
   final PluginComicInfoLoader loadInfo;
   final PluginComicPagesLoader loadEpisode;
   final PluginImageConfigLoader? onImageLoad;
   final PluginThumbnailConfigLoader? onThumbnailLoad;
+  final PluginThumbnailPageLoader? loadThumbnails;
+  final PluginClickTagHandler? onClickTag;
 }
 
 class PluginComic {

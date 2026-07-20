@@ -117,17 +117,24 @@ function Build-AndroidApk {
         [hashtable]$Version
     )
 
-    $apkSource = Join-Path $ProjectRoot 'build\app\outputs\flutter-apk\app-release.apk'
-    $apkTarget = Join-Path $OutputRoot "EZVenera-$($Version.Name)-android-release.apk"
+    # Per-ABI APKs (armeabi-v7a + arm64-v8a) — same layout as CI releases.
+    Invoke-FlutterBuild -ProjectRoot $ProjectRoot -Arguments @(
+        'build', 'apk', '--release', '--split-per-abi',
+        '--target-platform', 'android-arm,android-arm64'
+    )
 
-    Invoke-FlutterBuild -ProjectRoot $ProjectRoot -Arguments @('build', 'apk', '--release')
-
-    if (-not (Test-Path $apkSource)) {
-        throw "Android APK not found: $apkSource"
+    $abis = @('armeabi-v7a', 'arm64-v8a')
+    $targets = [System.Collections.Generic.List[string]]::new()
+    foreach ($abi in $abis) {
+        $apkSource = Join-Path $ProjectRoot "build\app\outputs\flutter-apk\app-$abi-release.apk"
+        if (-not (Test-Path $apkSource)) {
+            throw "Android APK not found for ABI $abi : $apkSource"
+        }
+        $apkTarget = Join-Path $OutputRoot "EZVenera-$($Version.Name)-android-$abi-release.apk"
+        Copy-Item -Path $apkSource -Destination $apkTarget -Force
+        $targets.Add($apkTarget)
     }
-
-    Copy-Item -Path $apkSource -Destination $apkTarget -Force
-    return $apkTarget
+    return $targets
 }
 
 $version = Get-PubspecVersion -PubspecPath (Join-Path $ProjectRoot 'pubspec.yaml')
@@ -141,7 +148,9 @@ if (-not $SkipWindows) {
 }
 
 if (-not $SkipAndroid) {
-    $artifacts.Add((Build-AndroidApk -ProjectRoot $ProjectRoot -OutputRoot $OutputRoot -Version $version))
+    foreach ($apk in (Build-AndroidApk -ProjectRoot $ProjectRoot -OutputRoot $OutputRoot -Version $version)) {
+        $artifacts.Add($apk)
+    }
 }
 
 Write-Host ''

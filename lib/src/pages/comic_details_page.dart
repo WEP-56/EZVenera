@@ -1,6 +1,5 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../downloads/download_controller.dart';
 import '../downloads/download_models.dart';
@@ -12,6 +11,8 @@ import '../plugin_runtime/models.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
 import '../plugin_runtime/services/plugin_image_loader.dart';
 import '../reader/chapter_order.dart';
+import 'categories_page.dart';
+import 'category_comics_page.dart';
 import 'reader_page.dart';
 
 class ComicDetailsPage extends StatefulWidget {
@@ -114,6 +115,12 @@ class _ComicDetailsPageState extends State<ComicDetailsPage> {
               widget.comic.id,
             ),
             onChapterSelected: (chapter) => _openReader(chapter, details),
+            onPreviewPage: (page) => _openReaderAtPage(
+              details,
+              chaptersReversed,
+              page,
+            ),
+            onTagTap: _onTagTap,
           );
         },
       ),
@@ -280,19 +287,25 @@ class _ComicDetailsPageState extends State<ComicDetailsPage> {
     return null;
   }
 
-  void _openReader(_ChapterSelection chapter, PluginComicDetails details) {
+  void _openReader(
+    _ChapterSelection chapter,
+    PluginComicDetails details, {
+    int? initialPage,
+  }) {
     final history = HistoryController.instance.find(
       widget.comic.sourceKey,
       widget.comic.id,
     );
     // Resume page only when opening the same chapter as the saved progress.
     // Selecting a different chapter from the list starts at page 1.
+    // Explicit [initialPage] (e.g. preview grid) always wins.
     final resumePage =
-        history != null &&
-            history.chapterId != null &&
-            history.chapterId == chapter.id
-        ? history.page
-        : null;
+        initialPage ??
+        (history != null &&
+                history.chapterId != null &&
+                history.chapterId == chapter.id
+            ? history.page
+            : null);
 
     Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -309,6 +322,99 @@ class _ComicDetailsPageState extends State<ComicDetailsPage> {
         ),
       ),
     );
+  }
+
+  /// Preview thumbnail tap — open first chapter (or no-chapter comic) at [page]
+  /// (1-based), matching upstream `read(null, index + 1)`.
+  void _openReaderAtPage(
+    PluginComicDetails details,
+    bool chaptersReversed,
+    int page,
+  ) {
+    final chapter = _firstChapter(details, chaptersReversed);
+    _openReader(chapter, details, initialPage: page);
+  }
+
+  /// Tag click is **source-scoped** via plugin `comic.onClickTag`, not aggregate
+  /// search. Upstream: `comicSource.handleClickTagEvent?.call(namespace, tag)`.
+  void _onTagTap(String namespace, String tag) {
+    final source = PluginRuntimeController.instance.find(
+      widget.comic.sourceKey,
+    );
+    final handler = source?.comic?.onClickTag;
+    if (source == null || handler == null) {
+      _showMessage('This source does not support tag search.');
+      return;
+    }
+
+    PluginJumpTarget? target;
+    try {
+      target = handler(namespace, tag);
+    } catch (error) {
+      _showMessage(error.toString());
+      return;
+    }
+    if (target == null || target.page == 'unknown') {
+      return;
+    }
+    _openJumpTarget(source, target);
+  }
+
+  void _openJumpTarget(PluginSource source, PluginJumpTarget target) {
+    if (target.page == 'category') {
+      if (source.categoryComics == null) {
+        _showMessage('This source does not support categories.');
+        return;
+      }
+      final category =
+          target.attributes?['category']?.toString() ??
+          target.attributes?['keyword']?.toString() ??
+          '';
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (context) => CategoryComicsPage(
+            source: source,
+            pageTitle: category.isEmpty ? source.name : category,
+            categoryName: category,
+            categoryParam: target.attributes?['param']?.toString(),
+          ),
+        ),
+      );
+      return;
+    }
+
+    if (target.page == 'search') {
+      if (source.search == null) {
+        _showMessage('This source does not support search.');
+        return;
+      }
+      final optionsRaw = target.attributes?['options'];
+      final options = optionsRaw is List
+          ? optionsRaw.map((e) => e.toString()).toList()
+          : const <String>[];
+      final keyword =
+          target.attributes?['keyword']?.toString() ??
+          target.attributes?['text']?.toString() ??
+          '';
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (context) => CategoryComicsSearchBridgePage(
+            source: source,
+            keyword: keyword,
+            options: options,
+          ),
+        ),
+      );
+    }
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _downloadComic(PluginComicDetails details) async {
@@ -446,6 +552,8 @@ class _ComicDetailsBody extends StatelessWidget {
     required this.onToggleChapterOrder,
     required this.isFavorite,
     required this.onChapterSelected,
+    required this.onPreviewPage,
+    required this.onTagTap,
   });
 
   final ScrollController scrollController;
@@ -459,6 +567,8 @@ class _ComicDetailsBody extends StatelessWidget {
   final VoidCallback onToggleChapterOrder;
   final bool isFavorite;
   final ValueChanged<_ChapterSelection> onChapterSelected;
+  final ValueChanged<int> onPreviewPage;
+  final void Function(String namespace, String tag) onTagTap;
 
   /// Desktop <-> mobile breakpoint. Matches venera's `changePoint` so narrow
   /// desktop windows and phones share the same compact layout.
@@ -466,6 +576,12 @@ class _ComicDetailsBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final description = (details.description ?? summary.description).trim();
+    final source = PluginRuntimeController.instance.find(summary.sourceKey);
+    final showPreview =
+        (details.thumbnails != null && details.thumbnails!.isNotEmpty) ||
+        source?.comic?.loadThumbnails != null;
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final isMobile = constraints.maxWidth < _mobileBreakpoint;
@@ -488,16 +604,20 @@ class _ComicDetailsBody extends StatelessWidget {
               onFavorite: onFavorite,
             ),
             const Divider(height: 24),
-            if ((details.description ?? summary.description).trim().isNotEmpty)
+            if (description.isNotEmpty)
               Padding(
                 padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 0),
                 child: _SectionCard(
                   title: 'Description',
-                  child: Text(
-                    details.description ?? summary.description,
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodyLarge?.copyWith(height: 1.6),
+                  child: GestureDetector(
+                    onLongPress: () =>
+                        _copyToClipboard(context, description, 'Description'),
+                    child: Text(
+                      description,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodyLarge?.copyWith(height: 1.6),
+                    ),
                   ),
                 ),
               ),
@@ -507,7 +627,27 @@ class _ComicDetailsBody extends StatelessWidget {
                 padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 0),
                 child: _SectionCard(
                   title: 'Tags',
-                  child: _TagsBlock(tags: details.tags),
+                  child: _TagsBlock(
+                    tags: details.tags,
+                    canSearchTags: source?.comic?.onClickTag != null,
+                    onTagTap: onTagTap,
+                  ),
+                ),
+              ),
+            ],
+            if (showPreview) ...[
+              const SizedBox(height: 16),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 0),
+                child: _SectionCard(
+                  title: 'Preview',
+                  child: _PreviewGrid(
+                    sourceKey: summary.sourceKey,
+                    comicId: details.id,
+                    initialThumbnails: details.thumbnails ?? const <String>[],
+                    loadMore: source?.comic?.loadThumbnails,
+                    onTapPage: onPreviewPage,
+                  ),
                 ),
               ),
             ],
@@ -573,19 +713,27 @@ class _HeaderRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SelectableText(
-                  details.title,
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    height: 1.3,
+                GestureDetector(
+                  onLongPress: () =>
+                      _copyToClipboard(context, details.title, 'Title'),
+                  child: Text(
+                    details.title,
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      height: 1.3,
+                    ),
                   ),
                 ),
                 if (subtitle.isNotEmpty) ...[
                   const SizedBox(height: 6),
-                  SelectableText(
-                    subtitle,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
+                  GestureDetector(
+                    onLongPress: () =>
+                        _copyToClipboard(context, subtitle, 'Subtitle'),
+                    child: Text(
+                      subtitle,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
                 ],
@@ -773,9 +921,15 @@ class _IconAction extends StatelessWidget {
 }
 
 class _TagsBlock extends StatelessWidget {
-  const _TagsBlock({required this.tags});
+  const _TagsBlock({
+    required this.tags,
+    required this.canSearchTags,
+    required this.onTagTap,
+  });
 
   final Map<String, List<String>> tags;
+  final bool canSearchTags;
+  final void Function(String namespace, String tag) onTagTap;
 
   @override
   Widget build(BuildContext context) {
@@ -798,9 +952,35 @@ class _TagsBlock extends StatelessWidget {
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
-                children: entry.value
-                    .map((tag) => Chip(label: Text(tag)))
-                    .toList(),
+                children: entry.value.map((tag) {
+                  return Material(
+                    color: theme.colorScheme.surfaceContainerHighest.withValues(
+                      alpha: 0.72,
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(20),
+                      onTap: canSearchTags
+                          ? () => onTagTap(entry.key, tag)
+                          : null,
+                      onLongPress: () => _copyToClipboard(context, tag, 'Tag'),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 7,
+                        ),
+                        child: Text(
+                          tag,
+                          style: theme.textTheme.labelLarge?.copyWith(
+                            color: canSearchTags
+                                ? theme.colorScheme.primary
+                                : theme.colorScheme.onSurface,
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
               ),
             ],
           ),
@@ -808,6 +988,286 @@ class _TagsBlock extends StatelessWidget {
       }).toList(),
     );
   }
+}
+
+/// Gallery thumbnail preview under description/tags (upstream `_ComicThumbnails`).
+class _PreviewGrid extends StatefulWidget {
+  const _PreviewGrid({
+    required this.sourceKey,
+    required this.comicId,
+    required this.initialThumbnails,
+    required this.loadMore,
+    required this.onTapPage,
+  });
+
+  final String sourceKey;
+  final String comicId;
+  final List<String> initialThumbnails;
+  final PluginThumbnailPageLoader? loadMore;
+  final ValueChanged<int> onTapPage;
+
+  @override
+  State<_PreviewGrid> createState() => _PreviewGridState();
+}
+
+class _PreviewGridState extends State<_PreviewGrid> {
+  late List<String> _thumbnails;
+  String? _next;
+  bool _loading = false;
+  bool _initialLoadDone = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _thumbnails = List<String>.from(widget.initialThumbnails);
+    // Load first page of loadThumbnails when the details payload has none yet.
+    if (_thumbnails.isEmpty && widget.loadMore != null) {
+      _loadNext();
+    } else {
+      _initialLoadDone = true;
+    }
+  }
+
+  Future<void> _loadNext() async {
+    final loader = widget.loadMore;
+    if (loader == null || _loading) {
+      return;
+    }
+    if (_initialLoadDone && _next == null) {
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    final response = await loader(widget.comicId, _next);
+    if (!mounted) {
+      return;
+    }
+    if (response.isError) {
+      setState(() {
+        _loading = false;
+        _initialLoadDone = true;
+        _error = response.errorMessage;
+      });
+      return;
+    }
+    setState(() {
+      _thumbnails = [..._thumbnails, ...response.data];
+      _next = response.subData?.toString();
+      _loading = false;
+      _initialLoadDone = true;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    if (_thumbnails.isEmpty && _loading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 24),
+        child: Center(
+          child: SizedBox.square(
+            dimension: 28,
+            child: CircularProgressIndicator(strokeWidth: 2.4),
+          ),
+        ),
+      );
+    }
+
+    if (_thumbnails.isEmpty && _error != null) {
+      return Column(
+        children: [
+          Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
+          TextButton(onPressed: _loadNext, child: const Text('Retry')),
+        ],
+      );
+    }
+
+    if (_thumbnails.isEmpty) {
+      return Text(
+        'No previews available.',
+        style: theme.textTheme.bodyMedium?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: _thumbnails.length,
+          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+            maxCrossAxisExtent: 140,
+            mainAxisSpacing: 8,
+            crossAxisSpacing: 8,
+            childAspectRatio: 0.72,
+          ),
+          itemBuilder: (context, index) {
+            if (index == _thumbnails.length - 1 &&
+                _error == null &&
+                widget.loadMore != null) {
+              // Trigger pagination when the last visible cell builds.
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                  _loadNext();
+                }
+              });
+            }
+            final raw = _thumbnails[index];
+            final url = _thumbnailDisplayUrl(raw);
+            return _PreviewThumb(
+              sourceKey: widget.sourceKey,
+              imageUrl: url,
+              pageLabel: '${index + 1}',
+              onTap: () => widget.onTapPage(index + 1),
+            );
+          },
+        ),
+        if (_error != null) ...[
+          const SizedBox(height: 8),
+          Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
+          TextButton(onPressed: _loadNext, child: const Text('Retry')),
+        ] else if (_loading) ...[
+          const SizedBox(height: 12),
+          const Center(
+            child: SizedBox.square(
+              dimension: 22,
+              child: CircularProgressIndicator(strokeWidth: 2.2),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// Strip crop fragment (`url@x=..&y=..`) — load the full image URL.
+  String _thumbnailDisplayUrl(String raw) {
+    final at = raw.indexOf('@');
+    if (at <= 0) {
+      return raw;
+    }
+    return raw.substring(0, at);
+  }
+}
+
+class _PreviewThumb extends StatefulWidget {
+  const _PreviewThumb({
+    required this.sourceKey,
+    required this.imageUrl,
+    required this.pageLabel,
+    required this.onTap,
+  });
+
+  final String sourceKey;
+  final String imageUrl;
+  final String pageLabel;
+  final VoidCallback onTap;
+
+  @override
+  State<_PreviewThumb> createState() => _PreviewThumbState();
+}
+
+class _PreviewThumbState extends State<_PreviewThumb> {
+  static final Map<String, Future<Uint8List>> _cache =
+      <String, Future<Uint8List>>{};
+
+  late Future<Uint8List> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant _PreviewThumb oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.imageUrl != widget.imageUrl ||
+        oldWidget.sourceKey != widget.sourceKey) {
+      _future = _load();
+    }
+  }
+
+  Future<Uint8List> _load() {
+    final key = '${widget.sourceKey}|${widget.imageUrl}';
+    return _cache.putIfAbsent(key, () async {
+      final source = PluginRuntimeController.instance.find(widget.sourceKey);
+      if (source == null) {
+        throw StateError('Missing source for preview thumbnail.');
+      }
+      return PluginImageLoader.instance.loadThumbnail(
+        source: source,
+        imageUrl: widget.imageUrl,
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      children: [
+        Expanded(
+          child: Material(
+            color: theme.colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(8),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: widget.onTap,
+              child: FutureBuilder<Uint8List>(
+                future: _future,
+                builder: (context, snapshot) {
+                  if (snapshot.hasData) {
+                    return Image.memory(
+                      snapshot.data!,
+                      fit: BoxFit.contain,
+                      width: double.infinity,
+                      height: double.infinity,
+                    );
+                  }
+                  if (snapshot.hasError) {
+                    return Icon(
+                      Icons.broken_image_outlined,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    );
+                  }
+                  return const Center(
+                    child: SizedBox.square(
+                      dimension: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(widget.pageLabel, style: theme.textTheme.labelSmall),
+      ],
+    );
+  }
+}
+
+void _copyToClipboard(BuildContext context, String text, [String? label]) {
+  final value = text.trim();
+  if (value.isEmpty) {
+    return;
+  }
+  Clipboard.setData(ClipboardData(text: value));
+  final message = label == null ? 'Copied' : '$label copied';
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(message),
+      duration: const Duration(seconds: 1),
+    ),
+  );
 }
 
 class _CoverCard extends StatefulWidget {

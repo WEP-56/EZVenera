@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../backup/webdav_auto_sync.dart';
 import '../downloads/download_controller.dart';
 import '../library/favorite_controller.dart';
 import '../library/history_controller.dart';
@@ -27,6 +28,8 @@ class _AppBootstrapState extends State<AppBootstrap> {
     await HistoryController.instance.initialize();
     await FavoriteController.instance.initialize();
     await LocalLibraryController.instance.initialize();
+    // Start after data controllers are ready (upstream DataSync init).
+    await WebDavAutoSync.instance.start();
   }
 
   @override

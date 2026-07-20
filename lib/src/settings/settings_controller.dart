@@ -56,6 +56,8 @@ class SettingsController extends ChangeNotifier {
   String _webDavUrl = '';
   String _webDavUsername = '';
   String _webDavPassword = '';
+  bool _webDavAutoSync = false;
+  int _dataVersion = 0;
   int _readerCacheLimitMb = 512;
   File? _file;
 
@@ -83,6 +85,8 @@ class SettingsController extends ChangeNotifier {
   String get webDavUsername => _webDavUsername;
   String get webDavPassword => _webDavPassword;
   bool get hasWebDavConfig => _webDavUrl.trim().isNotEmpty;
+  bool get webDavAutoSync => _webDavAutoSync;
+  int get dataVersion => _dataVersion;
   int get readerCacheLimitMb => _readerCacheLimitMb;
   Locale? get locale => switch (_language) {
     AppLanguageOption.system => null,
@@ -156,6 +160,11 @@ class SettingsController extends ChangeNotifier {
         _webDavUrl = decoded['webDavUrl']?.toString() ?? '';
         _webDavUsername = decoded['webDavUsername']?.toString() ?? '';
         _webDavPassword = decoded['webDavPassword']?.toString() ?? '';
+        _webDavAutoSync = decoded['webDavAutoSync'] == true;
+        _dataVersion = (decoded['dataVersion'] as num?)?.toInt() ?? 0;
+        if (_dataVersion < 0) {
+          _dataVersion = 0;
+        }
         _readerCacheLimitMb = _parseCacheLimitMb(
           (decoded['readerCacheLimitMb'] as num?)?.toInt(),
         );
@@ -381,8 +390,29 @@ class SettingsController extends ChangeNotifier {
     _webDavUrl = normalizedUrl;
     _webDavUsername = normalizedUsername;
     _webDavPassword = password;
+    // Clearing credentials also turns off auto-sync (mirrors upstream).
+    if (normalizedUrl.isEmpty) {
+      _webDavAutoSync = false;
+    }
     await _persist();
     notifyListeners();
+  }
+
+  Future<void> setWebDavAutoSync(bool value) async {
+    if (_webDavAutoSync == value) {
+      return;
+    }
+    _webDavAutoSync = value;
+    await _persist();
+    notifyListeners();
+  }
+
+  /// Bumps the WebDAV sync counter (upstream `dataVersion`) before upload.
+  Future<int> incrementDataVersion() async {
+    _dataVersion += 1;
+    await _persist();
+    notifyListeners();
+    return _dataVersion;
   }
 
   Map<String, dynamic> toBackupJson() {
@@ -411,6 +441,8 @@ class SettingsController extends ChangeNotifier {
       'webDavUrl': _webDavUrl,
       'webDavUsername': _webDavUsername,
       'webDavPassword': _webDavPassword,
+      'webDavAutoSync': _webDavAutoSync,
+      'dataVersion': _dataVersion,
     };
   }
 
@@ -455,6 +487,11 @@ class SettingsController extends ChangeNotifier {
     _webDavUrl = json['webDavUrl']?.toString() ?? '';
     _webDavUsername = json['webDavUsername']?.toString() ?? '';
     _webDavPassword = json['webDavPassword']?.toString() ?? '';
+    _webDavAutoSync = json['webDavAutoSync'] == true;
+    _dataVersion = (json['dataVersion'] as num?)?.toInt() ?? _dataVersion;
+    if (_dataVersion < 0) {
+      _dataVersion = 0;
+    }
     await _persist();
     notifyListeners();
   }
@@ -483,6 +520,8 @@ class SettingsController extends ChangeNotifier {
     _webDavUrl = '';
     _webDavUsername = '';
     _webDavPassword = '';
+    _webDavAutoSync = false;
+    _dataVersion = 0;
     _readerCacheLimitMb = 512;
     await _persist();
     notifyListeners();
@@ -515,6 +554,8 @@ class SettingsController extends ChangeNotifier {
         'webDavUrl': _webDavUrl,
         'webDavUsername': _webDavUsername,
         'webDavPassword': _webDavPassword,
+        'webDavAutoSync': _webDavAutoSync,
+        'dataVersion': _dataVersion,
       }),
     );
   }

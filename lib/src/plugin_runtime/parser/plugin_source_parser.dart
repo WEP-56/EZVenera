@@ -618,6 +618,51 @@ class PluginSourceParser {
               return _imageRequest(result);
             }
           : null,
+      loadThumbnails: _existsSync(sourceKey, 'comic.loadThumbnails')
+          ? (id, next) async {
+              try {
+                final result = await _resolve(
+                  engine.runCode('''
+                    ComicSource.sources.$sourceKey.comic.loadThumbnails(
+                      ${jsonEncode(id)},
+                      ${jsonEncode(next)}
+                    )
+                  '''),
+                );
+                if (result is! Map) {
+                  return const PluginResult<List<String>>.error(
+                    'Invalid thumbnails result.',
+                  );
+                }
+                final map = Map<String, dynamic>.from(result);
+                final thumbs = map['thumbnails'];
+                return PluginResult<List<String>>(
+                  thumbs is List
+                      ? thumbs.map((e) => e.toString()).toList()
+                      : const <String>[],
+                  subData: map['next'],
+                );
+              } catch (error) {
+                return PluginResult<List<String>>.error(error.toString());
+              }
+            }
+          : null,
+      onClickTag: _existsSync(sourceKey, 'comic.onClickTag')
+          ? (namespace, tag) {
+              try {
+                final result = engine.runCode(
+                  'ComicSource.sources.$sourceKey.comic.onClickTag('
+                  '${jsonEncode(namespace)}, ${jsonEncode(tag)})',
+                );
+                if (result == null) {
+                  return null;
+                }
+                return _jumpTarget(result);
+              } catch (_) {
+                return null;
+              }
+            }
+          : null,
     );
   }
 
@@ -735,23 +780,51 @@ class PluginSourceParser {
     );
   }
 
+  /// Parses plugin jump payloads (`onClickTag`, category items).
+  ///
+  /// Supports both modern `{page, attributes}` and legacy
+  /// `{action, keyword, param}` shapes used by many sources.
   PluginJumpTarget _jumpTarget(dynamic value) {
     if (value is Map && value['page'] != null) {
+      final attributes = value['attributes'] == null
+          ? <String, dynamic>{}
+          : Map<String, dynamic>.from(value['attributes'] as Map);
+      // Normalize keyword/text so UI can read either key.
+      final keyword = attributes['keyword'] ?? attributes['text'];
+      if (keyword != null) {
+        attributes['keyword'] = keyword;
+        attributes['text'] = keyword;
+      }
       return PluginJumpTarget(
         page: value['page'].toString(),
-        attributes: value['attributes'] == null
-            ? null
-            : Map<String, dynamic>.from(value['attributes'] as Map),
+        attributes: attributes.isEmpty ? null : attributes,
       );
     }
     if (value is Map && value['action'] != null) {
-      return PluginJumpTarget(
-        page: value['action'].toString(),
-        attributes: <String, dynamic>{
-          'keyword': value['keyword'],
-          'param': value['param'],
-        },
-      );
+      final action = value['action'].toString();
+      // Upstream PageJumpTarget.parse: action "search" / "category".
+      if (action == 'search') {
+        final keyword = value['keyword'];
+        return PluginJumpTarget(
+          page: 'search',
+          attributes: <String, dynamic>{
+            'keyword': keyword,
+            'text': keyword,
+            if (value['options'] != null) 'options': value['options'],
+          },
+        );
+      }
+      if (action == 'category') {
+        return PluginJumpTarget(
+          page: 'category',
+          attributes: <String, dynamic>{
+            // Legacy uses keyword as the category label.
+            'category': value['keyword'] ?? value['category'],
+            'param': value['param'],
+          },
+        );
+      }
+      return PluginJumpTarget(page: action);
     }
     if (value is String && value.contains(':')) {
       final parts = value.split(':');
