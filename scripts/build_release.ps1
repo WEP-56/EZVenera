@@ -134,6 +134,11 @@ function Build-AndroidApk {
         Copy-Item -Path $apkSource -Destination $apkTarget -Force
         $targets.Add($apkTarget)
     }
+    # Legacy alias for pre-1.8.3 in-app updater (endsWith android-release.apk).
+    $legacy = Join-Path $OutputRoot "EZVenera-$($Version.Name)-android-release.apk"
+    $arm64 = Join-Path $OutputRoot "EZVenera-$($Version.Name)-android-arm64-v8a-release.apk"
+    Copy-Item -Path $arm64 -Destination $legacy -Force
+    $targets.Add($legacy)
     return $targets
 }
 

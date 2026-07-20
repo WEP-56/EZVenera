@@ -1486,11 +1486,21 @@ class _AboutSettingsPageState extends State<_AboutSettingsPage> {
     List<Map<String, dynamic>> assets,
   ) {
     if (Platform.isWindows) {
-      for (final asset in assets) {
-        final name = asset['name']?.toString() ?? '';
-        if (name.endsWith('windows-setup.exe')) {
-          return _releaseAssetFromMap(tag, version, asset);
-        }
+      final picked = _pickBestAsset(
+        assets,
+        prefer: (name) {
+          final n = name.toLowerCase();
+          if (!n.endsWith('.exe') || n.endsWith('.sha256')) {
+            return -1;
+          }
+          if (n.contains('setup') || n.contains('windows') || n.contains('installer')) {
+            return 100;
+          }
+          return 10;
+        },
+      );
+      if (picked != null) {
+        return _releaseAssetFromMap(tag, version, picked);
       }
       throw StateError('No matching installer asset found.');
     }
@@ -1499,22 +1509,40 @@ class _AboutSettingsPageState extends State<_AboutSettingsPage> {
       throw UnsupportedError('Update is not supported on this platform.');
     }
 
-    // Prefer the APK that matches this device's ABI (per-ABI release assets).
-    // Fall back to the legacy fat APK name so older releases still update.
+    // Flexible matching: ABI substring / legacy names / any .apk fallback.
+    // Do not require a single rigid suffix — release assets may be renamed.
     final preferredAbis = _androidPreferredApkAbis();
-    for (final abi in preferredAbis) {
-      for (final asset in assets) {
-        final name = asset['name']?.toString() ?? '';
-        if (name.endsWith('android-$abi-release.apk')) {
-          return _releaseAssetFromMap(tag, version, asset);
+    final picked = _pickBestAsset(
+      assets,
+      prefer: (name) {
+        final n = name.toLowerCase();
+        if (!n.endsWith('.apk') || n.contains('.sha256') || n.endsWith('.apk.sha256')) {
+          return -1;
         }
-      }
-    }
-    for (final asset in assets) {
-      final name = asset['name']?.toString() ?? '';
-      if (name.endsWith('android-release.apk')) {
-        return _releaseAssetFromMap(tag, version, asset);
-      }
+        // Higher score wins.
+        var score = 1; // any apk
+        // Legacy / default alias used by pre-1.8.3 clients and CI dual-name.
+        if (n.endsWith('android-release.apk') ||
+            (n.contains('android-release') &&
+                !n.contains('armeabi') &&
+                !n.contains('arm64') &&
+                !n.contains('x86'))) {
+          score = 40;
+        }
+        for (var i = 0; i < preferredAbis.length; i++) {
+          final abi = preferredAbis[i].toLowerCase();
+          final abiAlt = abi.replaceAll('-', '_'); // arm64_v8a
+          if (n.contains(abi) || n.contains(abiAlt)) {
+            // Prefer exact ABI match over generic; first preferred ABI scores higher.
+            score = 100 - i * 10;
+            break;
+          }
+        }
+        return score;
+      },
+    );
+    if (picked != null) {
+      return _releaseAssetFromMap(tag, version, picked);
     }
     throw StateError('No matching installer asset found.');
   }
@@ -1531,9 +1559,26 @@ class _AboutSettingsPageState extends State<_AboutSettingsPage> {
       case Abi.androidIA32:
         return const ['x86', 'armeabi-v7a'];
       default:
-        // Desktop / unexpected host while targeting Android assets.
         return const ['arm64-v8a', 'armeabi-v7a'];
     }
+  }
+
+  /// Pick the asset with the highest [prefer] score (>0). Ties keep first seen.
+  Map<String, dynamic>? _pickBestAsset(
+    List<Map<String, dynamic>> assets, {
+    required int Function(String name) prefer,
+  }) {
+    Map<String, dynamic>? best;
+    var bestScore = 0;
+    for (final asset in assets) {
+      final name = asset['name']?.toString() ?? '';
+      final score = prefer(name);
+      if (score > bestScore) {
+        bestScore = score;
+        best = asset;
+      }
+    }
+    return best;
   }
 
   _ReleaseAsset _releaseAssetFromMap(

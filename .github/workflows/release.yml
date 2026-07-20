@@ -95,6 +95,12 @@ jobs:
             cp "$src" "$dest"
             sha256sum "$dest" > "${dest}.sha256"
           done
+          # Legacy alias for pre-1.8.3 in-app updater (endsWith android-release.apk).
+          # arm64 is the default install path for almost all devices.
+          cp "pack/EZVenera-${VERSION_NAME}-android-arm64-v8a-release.apk" \
+            "pack/EZVenera-${VERSION_NAME}-android-release.apk"
+          sha256sum "pack/EZVenera-${VERSION_NAME}-android-release.apk" \
+            > "pack/EZVenera-${VERSION_NAME}-android-release.apk.sha256"
           ls -lh pack/
 
       - name: Upload Android artifact

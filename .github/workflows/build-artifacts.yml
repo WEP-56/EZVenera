@@ -78,6 +78,11 @@ jobs:
             cp "$src" "$dest"
             sha256sum "$dest" > "${dest}.sha256"
           done
+          # Legacy alias for pre-1.8.3 in-app updater (endsWith android-release.apk).
+          cp "pack/EZVenera-${version}-android-arm64-v8a-release.apk" \
+            "pack/EZVenera-${version}-android-release.apk"
+          sha256sum "pack/EZVenera-${version}-android-release.apk" \
+            > "pack/EZVenera-${version}-android-release.apk.sha256"
           ls -lh pack/
 
       - name: Upload Android artifact
