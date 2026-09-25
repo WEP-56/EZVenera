@@ -10,6 +10,7 @@ import '../plugin_runtime/services/plugin_image_loader.dart';
 import '../settings/settings_controller.dart';
 import 'download_library_store.dart';
 import 'download_models.dart';
+import 'image_download_retry.dart';
 
 class DownloadController extends ChangeNotifier {
   DownloadController._();
@@ -201,12 +202,25 @@ class DownloadController extends ChangeNotifier {
               'Downloading ${chapter.title} ${imageIndex + 1}/${imageUrls.length}';
           notifyListeners();
 
-          final bytes = await PluginImageLoader.instance.loadComicImage(
-            source: source,
-            comicId: summary.id,
-            episodeId: chapter.id ?? '0',
-            imageUrl: imageUrls[imageIndex],
+          // Bounded retry + non-empty check (REQ-010): a flaky page does not
+          // abort the whole job, it is retried and otherwise accounted as a
+          // failed unit.
+          final bytes = await fetchImageWithRetry(
+            () => PluginImageLoader.instance.loadComicImage(
+              source: source,
+              comicId: summary.id,
+              episodeId: chapter.id ?? '0',
+              imageUrl: imageUrls[imageIndex],
+            ),
+            debugLabel: '${chapter.title}#${imageIndex + 1}',
           );
+          if (bytes == null) {
+            job.failedUnits += 1;
+            job.message =
+                'Failed: ${chapter.title} ${imageIndex + 1}/${imageUrls.length}';
+            notifyListeners();
+            continue;
+          }
 
           final extension = _guessExtension(imageUrls[imageIndex]);
           final path = p.join(
@@ -226,7 +240,9 @@ class DownloadController extends ChangeNotifier {
         );
 
         job.completedUnits = chapterIndex + 1;
-        job.message = 'Downloaded ${chapter.title}';
+        job.message = job.failedUnits > 0
+            ? 'Downloaded ${chapter.title} (${job.failedUnits} page(s) failed)'
+            : 'Downloaded ${chapter.title}';
         notifyListeners();
       }
 
@@ -255,7 +271,9 @@ class DownloadController extends ChangeNotifier {
 
       job
         ..status = DownloadTaskStatus.completed
-        ..message = 'Completed';
+        ..message = job.failedUnits > 0
+            ? 'Completed with ${job.failedUnits} failed page(s)'
+            : 'Completed';
       notifyListeners();
     } on _CancelledDownloadException {
       job
@@ -407,6 +425,10 @@ class DownloadJob {
   DownloadTaskStatus status;
   String message;
   int completedUnits = 0;
+
+  /// Pages that failed after all retries (REQ-010). The job still completes
+  /// so the successfully downloaded chapters remain usable.
+  int failedUnits = 0;
   bool isCancelled = false;
 
   double get progress {

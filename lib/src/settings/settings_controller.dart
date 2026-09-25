@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -6,6 +5,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../localization/app_localizations.dart';
+import '../utils/json_file_store.dart';
 
 /// Layout mode for browsing results such as search output and category lists.
 enum ComicDisplayMode { grid, list }
@@ -23,6 +23,13 @@ enum ReaderPageMode {
   galleryRightToLeft,
   continuousTopToBottom,
 }
+
+/// Proxy selection for every outbound HTTP(S) request.
+///
+/// * [system] - follow the system/environment proxy (default).
+/// * [custom] - route through the user-provided proxy URL.
+/// * [off] - force direct connections, ignoring any system proxy.
+enum ProxyMode { system, custom, off }
 
 class SettingsController extends ChangeNotifier {
   SettingsController._();
@@ -63,9 +70,15 @@ class SettingsController extends ChangeNotifier {
   String _webDavUsername = '';
   String _webDavPassword = '';
   bool _webDavAutoSync = false;
+  ProxyMode _proxyMode = ProxyMode.system;
+  String _proxyUrl = '';
+  bool _einkMode = false;
+  bool _einkHighContrast = true;
+  bool _einkFullRefreshHint = true;
   int _dataVersion = 0;
   int _readerCacheLimitMb = 512;
   File? _file;
+  JsonFileStore? _store;
 
   ThemeMode get themeMode => _themeMode;
   List<String> get sourceIndexUrls =>
@@ -95,6 +108,17 @@ class SettingsController extends ChangeNotifier {
   String get webDavPassword => _webDavPassword;
   bool get hasWebDavConfig => _webDavUrl.trim().isNotEmpty;
   bool get webDavAutoSync => _webDavAutoSync;
+  ProxyMode get proxyMode => _proxyMode;
+  String get proxyUrl => _proxyUrl;
+
+  /// Proxy URL safe for display and logs — credentials stripped (ADR-NW-2).
+  String get proxyDisplayUrl => _sanitizeStoredProxyUrl(_proxyUrl);
+
+  /// E-Ink friendly mode: no animations, optional high-contrast theme
+  /// (REQ-001..004). Defaults to off so LCD/OLED users see no change.
+  bool get einkMode => _einkMode;
+  bool get einkHighContrast => _einkHighContrast;
+  bool get einkFullRefreshHint => _einkFullRefreshHint;
   int get dataVersion => _dataVersion;
   int get readerCacheLimitMb => _readerCacheLimitMb;
   Locale? get locale => switch (_language) {
@@ -120,13 +144,14 @@ class SettingsController extends ChangeNotifier {
     final root = Directory(p.join(supportDirectory.path, 'settings'));
     await root.create(recursive: true);
     _file = File(p.join(root.path, 'app_settings.json'));
+    _store = JsonFileStore(_file!);
 
-    if (await _file!.exists()) {
-      final content = await _file!.readAsString();
-      final decoded = jsonDecode(content);
-      if (decoded is Map<String, dynamic>) {
-        final needsSourceIndexMigration = decoded['sourceIndexUrls'] is! List;
-        _themeMode = _parseThemeMode(decoded['themeMode']?.toString());
+    // Corrupted or missing files yield an empty map: we fall back to
+    // defaults and immediately rewrite a healthy file (REQ-011).
+    final decoded = await _store!.read();
+    if (decoded.isNotEmpty) {
+      final needsSourceIndexMigration = decoded['sourceIndexUrls'] is! List;
+      _themeMode = _parseThemeMode(decoded['themeMode']?.toString());
         _loadSourceIndexSettings(decoded);
         _readerShowTapGuide = decoded['readerShowTapGuide'] != false;
         _readerPrefetchCount = _parsePrefetchCount(
@@ -173,6 +198,13 @@ class SettingsController extends ChangeNotifier {
         _webDavUsername = decoded['webDavUsername']?.toString() ?? '';
         _webDavPassword = decoded['webDavPassword']?.toString() ?? '';
         _webDavAutoSync = decoded['webDavAutoSync'] == true;
+        _proxyMode = _parseProxyMode(decoded['proxyMode']?.toString());
+        _proxyUrl = _sanitizeStoredProxyUrl(
+          decoded['proxyUrl']?.toString() ?? '',
+        );
+        _einkMode = decoded['einkMode'] == true;
+        _einkHighContrast = decoded['einkHighContrast'] != false;
+        _einkFullRefreshHint = decoded['einkFullRefreshHint'] != false;
         _dataVersion = (decoded['dataVersion'] as num?)?.toInt() ?? 0;
         if (_dataVersion < 0) {
           _dataVersion = 0;
@@ -183,7 +215,6 @@ class SettingsController extends ChangeNotifier {
         if (needsSourceIndexMigration) {
           await _persist();
         }
-      }
     } else {
       await _persist();
     }
@@ -468,6 +499,52 @@ class SettingsController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setProxyMode(ProxyMode value) async {
+    if (_proxyMode == value) {
+      return;
+    }
+    _proxyMode = value;
+    await _persist();
+    notifyListeners();
+  }
+
+  Future<void> setProxyUrl(String value) async {
+    final normalized = value.trim();
+    if (_proxyUrl == normalized) {
+      return;
+    }
+    _proxyUrl = normalized;
+    await _persist();
+    notifyListeners();
+  }
+
+  Future<void> setEinkMode(bool value) async {
+    if (_einkMode == value) {
+      return;
+    }
+    _einkMode = value;
+    await _persist();
+    notifyListeners();
+  }
+
+  Future<void> setEinkHighContrast(bool value) async {
+    if (_einkHighContrast == value) {
+      return;
+    }
+    _einkHighContrast = value;
+    await _persist();
+    notifyListeners();
+  }
+
+  Future<void> setEinkFullRefreshHint(bool value) async {
+    if (_einkFullRefreshHint == value) {
+      return;
+    }
+    _einkFullRefreshHint = value;
+    await _persist();
+    notifyListeners();
+  }
+
   /// Bumps the WebDAV sync counter (upstream `dataVersion`) before upload.
   Future<int> incrementDataVersion() async {
     _dataVersion += 1;
@@ -505,6 +582,11 @@ class SettingsController extends ChangeNotifier {
       'webDavUsername': _webDavUsername,
       'webDavPassword': _webDavPassword,
       'webDavAutoSync': _webDavAutoSync,
+      'proxyMode': _proxyMode.name,
+      'proxyUrl': _sanitizeStoredProxyUrl(_proxyUrl),
+      'einkMode': _einkMode,
+      'einkHighContrast': _einkHighContrast,
+      'einkFullRefreshHint': _einkFullRefreshHint,
       'dataVersion': _dataVersion,
     };
   }
@@ -553,6 +635,11 @@ class SettingsController extends ChangeNotifier {
     _webDavUsername = json['webDavUsername']?.toString() ?? '';
     _webDavPassword = json['webDavPassword']?.toString() ?? '';
     _webDavAutoSync = json['webDavAutoSync'] == true;
+    _proxyMode = _parseProxyMode(json['proxyMode']?.toString());
+    _proxyUrl = _sanitizeStoredProxyUrl(json['proxyUrl']?.toString() ?? '');
+    _einkMode = json['einkMode'] == true;
+    _einkHighContrast = json['einkHighContrast'] != false;
+    _einkFullRefreshHint = json['einkFullRefreshHint'] != false;
     _dataVersion = (json['dataVersion'] as num?)?.toInt() ?? _dataVersion;
     if (_dataVersion < 0) {
       _dataVersion = 0;
@@ -588,6 +675,11 @@ class SettingsController extends ChangeNotifier {
     _webDavUsername = '';
     _webDavPassword = '';
     _webDavAutoSync = false;
+    _proxyMode = ProxyMode.system;
+    _proxyUrl = '';
+    _einkMode = false;
+    _einkHighContrast = true;
+    _einkFullRefreshHint = true;
     _dataVersion = 0;
     _readerCacheLimitMb = 512;
     await _persist();
@@ -595,38 +687,9 @@ class SettingsController extends ChangeNotifier {
   }
 
   Future<void> _persist() async {
-    await _file?.writeAsString(
-      jsonEncode(<String, dynamic>{
-        'themeMode': _themeMode.name,
-        'sourceIndexUrls': _sourceIndexUrls,
-        'sourceIndexUrl': _sourceIndexUrl,
-        'readerShowTapGuide': _readerShowTapGuide,
-        'readerPrefetchCount': _readerPrefetchCount,
-        'readerEnableTapToTurnPages': _readerEnableTapToTurnPages,
-        'readerReverseTapToTurnPages': _readerReverseTapToTurnPages,
-        'readerEnableDoubleTapZoom': _readerEnableDoubleTapZoom,
-        'readerEnablePageAnimation': _readerEnablePageAnimation,
-        'readerAutoPageIntervalSeconds': _readerAutoPageIntervalSeconds,
-        'readerPageMode': _readerPageMode.name,
-        'readerVerticalMarginPercent': _readerVerticalMarginPercent,
-        'readerEnableVolumeKeys': _readerEnableVolumeKeys,
-        'readerHorizontalContinuous': _readerHorizontalContinuous,
-        'readerShowChapterEdgeButtons': _readerShowChapterEdgeButtons,
-        'comicDisplayMode': _comicDisplayMode.name,
-        'searchHistoryLimit': _searchHistoryLimit,
-        'downloadSaveCover': _downloadSaveCover,
-        'language': _language.name,
-        'themePreset': _themePreset.name,
-        'downloadDirectoryPath': _downloadDirectoryPath,
-        'readerCacheDirectoryPath': _readerCacheDirectoryPath,
-        'readerCacheLimitMb': _readerCacheLimitMb,
-        'webDavUrl': _webDavUrl,
-        'webDavUsername': _webDavUsername,
-        'webDavPassword': _webDavPassword,
-        'webDavAutoSync': _webDavAutoSync,
-        'dataVersion': _dataVersion,
-      }),
-    );
+    // Atomic write via temp file + rename (REQ-011). toBackupJson already
+    // strips proxy credentials (ADR-NW-2), so disk never sees them.
+    await _store?.write(toBackupJson());
   }
 
   ThemeMode _parseThemeMode(String? value) {
@@ -718,6 +781,50 @@ class SettingsController extends ChangeNotifier {
       'forest' => AppThemePreset.forest,
       _ => AppThemePreset.teal,
     };
+  }
+
+  ProxyMode _parseProxyMode(String? value) {
+    return switch (value) {
+      'custom' => ProxyMode.custom,
+      'off' => ProxyMode.off,
+      _ => ProxyMode.system,
+    };
+  }
+
+  /// Strips credentials from a proxy URL before it touches disk or backups
+  /// (ADR-NW-2: proxy credentials never persist).
+  static String _sanitizeStoredProxyUrl(String value) {
+    final uri = Uri.tryParse(value.trim());
+    if (uri == null || !uri.hasAuthority || uri.userInfo.isEmpty) {
+      return value.trim();
+    }
+    return uri.replace(userInfo: '').toString();
+  }
+
+  /// Whether [value] is a usable HTTP(S) proxy URL (`http(s)://host[:port]`).
+  static bool isValidProxyUrl(String value) {
+    final uri = Uri.tryParse(value.trim());
+    return uri != null &&
+        uri.hasAuthority &&
+        (uri.scheme == 'http' || uri.scheme == 'https') &&
+        uri.host.isNotEmpty;
+  }
+
+  /// The proxy endpoint as `host[:port]` for `findProxy`, or null when the
+  /// custom URL is absent/invalid.
+  static String? customProxyAuthority(String value) {
+    final uri = Uri.tryParse(value.trim());
+    if (uri == null ||
+        !uri.hasAuthority ||
+        (uri.scheme != 'http' && uri.scheme != 'https') ||
+        uri.host.isEmpty) {
+      return null;
+    }
+    final host = uri.host.contains(':') ? '[${uri.host}]' : uri.host;
+    final port = uri.hasPort
+        ? uri.port
+        : (uri.scheme == 'https' ? 443 : 80);
+    return '$host:$port';
   }
 
   int _parseCacheLimitMb(int? value) {

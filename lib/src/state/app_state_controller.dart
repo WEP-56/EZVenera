@@ -1,9 +1,10 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+
+import '../utils/json_file_store.dart';
 
 class AppStateController extends ChangeNotifier {
   AppStateController._();
@@ -11,7 +12,7 @@ class AppStateController extends ChangeNotifier {
   static final AppStateController instance = AppStateController._();
 
   bool _initialized = false;
-  File? _file;
+  JsonFileStore? _store;
   Map<String, dynamic> _state = <String, dynamic>{};
 
   bool get isInitialized => _initialized;
@@ -24,21 +25,15 @@ class AppStateController extends ChangeNotifier {
     final supportDirectory = await getApplicationSupportDirectory();
     final root = Directory(p.join(supportDirectory.path, 'app_state'));
     await root.create(recursive: true);
-    _file = File(p.join(root.path, 'page_state.json'));
+    _store = JsonFileStore(File(p.join(root.path, 'page_state.json')));
 
-    if (await _file!.exists()) {
-      try {
-        final content = await _file!.readAsString();
-        final decoded = jsonDecode(content);
-        if (decoded is Map<String, dynamic>) {
-          _state = decoded;
-        }
-      } catch (_) {
-        _state = <String, dynamic>{};
-        await _persist();
-      }
-    } else {
+    // Missing or corrupted files yield an empty map; rewrite a healthy file
+    // so corruption self-heals on next launch (REQ-011).
+    final decoded = await _store!.read();
+    if (decoded.isEmpty) {
       await _persist();
+    } else {
+      _state = decoded;
     }
 
     _initialized = true;
@@ -92,6 +87,6 @@ class AppStateController extends ChangeNotifier {
   }
 
   Future<void> _persist() async {
-    await _file?.writeAsString(jsonEncode(_state));
+    await _store?.write(_state);
   }
 }

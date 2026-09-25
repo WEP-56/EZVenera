@@ -25,6 +25,7 @@ import 'package:pointycastle/block/modes/ecb.dart';
 import 'package:pointycastle/block/modes/ofb.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../network/network_client_factory.dart';
 import '../engine/js_pool.dart';
 import '../models.dart';
 import '../storage/cookie_store.dart';
@@ -42,7 +43,6 @@ class PluginJsEngine {
   final String appVersion;
 
   FlutterQjs? _engine;
-  Dio? _dio;
   bool _initialized = false;
   final Map<String, PluginSource> _sources = {};
   final Map<int, _DocumentWrapper> _documents = {};
@@ -52,13 +52,6 @@ class PluginJsEngine {
     if (_initialized) {
       return;
     }
-
-    _dio = Dio(
-      BaseOptions(
-        responseType: ResponseType.plain,
-        validateStatus: (_) => true,
-      ),
-    )..interceptors.add(PluginCookieInterceptor(cookieStore));
 
     _engine = FlutterQjs()..dispatch();
     final setGlobal = _engine!.evaluate(
@@ -215,7 +208,11 @@ class PluginJsEngine {
     String? error;
 
     try {
-      response = await _dio!.request(
+      // Created per request so proxy settings apply immediately (REQ-007).
+      final dio = NetworkClientFactory.instance.httpClient(
+        interceptors: [PluginCookieInterceptor(cookieStore)],
+      );
+      response = await dio.request(
         request['url'].toString(),
         data: request['data'],
         options: Options(

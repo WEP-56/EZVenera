@@ -516,6 +516,11 @@ class AppLocalizations {
       isChinese ? '图源列表' : _value('sources.comicSourceList');
   String get sourcesInstallLocal =>
       isChinese ? '本地安装' : _value('sources.installLocal');
+  String get sourcesInstallLocalIndex =>
+      isChinese ? '本地索引安装' : 'Install from local index';
+  String get sourcesLocalIndexEmpty => isChinese
+      ? '索引文件没有可安装的图源条目。'
+      : 'The index file has no installable source entries.';
   String get sourcesReload => isChinese ? '重新加载' : _value('sources.reload');
   String sourcesInstalled(String name) =>
       (isChinese ? '已安装 {name}' : _value('sources.installed')).replaceAll(

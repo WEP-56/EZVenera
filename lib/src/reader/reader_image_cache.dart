@@ -71,6 +71,29 @@ class ReaderImageCache {
     return _cacheRoot!.path;
   }
 
+  /// Drops the in-memory and on-disk entry for one image (REQ-009). Called
+  /// when cached bytes turn out to be undecodable, so a retry re-downloads
+  /// instead of reading the same corrupted file forever.
+  Future<void> evict({
+    required PluginSource source,
+    required String comicId,
+    required String episodeId,
+    required String imageUrl,
+  }) async {
+    final cacheKey = _cacheKey(source.key, comicId, episodeId, imageUrl);
+    _memory.remove(cacheKey);
+    _memoryOrder.remove(cacheKey);
+    try {
+      final file = await _fileForKey(cacheKey);
+      if (await file.exists()) {
+        await file.delete();
+      }
+    } catch (_) {
+      // Best-effort: a file that cannot be deleted will be overwritten on
+      // the next successful download anyway.
+    }
+  }
+
   Future<int> diskUsageBytes() async {
     final root = await _resolveRoot();
     if (!await root.exists()) {

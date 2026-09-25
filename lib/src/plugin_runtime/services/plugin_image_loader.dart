@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 
+import '../../network/network_client_factory.dart';
 import '../models.dart';
 import '../plugin_runtime.dart';
 import '../storage/cookie_store.dart';
@@ -46,16 +47,11 @@ class PluginImageLoader {
     PluginImageRequest request, {
     required int remainingRetries,
   }) async {
-    final dio =
-        Dio(
-            BaseOptions(
-              responseType: ResponseType.bytes,
-              validateStatus: (_) => true,
-            ),
-          )
-          ..interceptors.add(
-            PluginCookieInterceptor(PluginRuntime.instance.cookieStore),
-          );
+    // Created per request so proxy settings apply immediately (REQ-007).
+    final dio = NetworkClientFactory.instance.httpClient(
+      responseType: ResponseType.bytes,
+      interceptors: [PluginCookieInterceptor(PluginRuntime.instance.cookieStore)],
+    );
 
     try {
       final url = _normalizeUrl(request.url ?? fallbackUrl);
