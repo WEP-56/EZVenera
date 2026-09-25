@@ -46,6 +46,15 @@ PathNotFoundException: Cannot rename file to '/data/user/0/com.ezvenera.ezvene..
   → 三条均为直连/错误代理档下的失败请求记录（结构化网络日志 REQ-012 生效）
 ```
 
+## 追加：本地索引安装（REQ-014，真机验证）
+
+| 项 | 结果 | 证据 |
+|---|---|---|
+| 按钮 | PASS | 图源管理页出现「本地索引安装」按钮（安装 / 图源列表 / 本地安装 / 本地索引安装 / 重新加载） |
+| 选择器 | PASS | 点击后系统文件选择器正常拉起（截图 `ezv_local_index_picker.png`） |
+| 解析/路径判定 | PASS（单测 9 例）| 上游 index.json 格式、filename 别名、坏行跳过、同目录 .js 存在性判定 |
+| 完整离线安装 | 【待人工】| 使用方式：把 `index.json` 和图源 `.js` 放到设备同一文件夹 → 本地索引安装 → 选 index.json → 多选安装 |
+
 ## 测试中发现的缺陷及处置
 
 | 缺陷 | 严重度 | 处置 |
