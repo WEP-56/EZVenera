@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import '../plugin_runtime/models.dart';
 import '../plugin_runtime/services/plugin_image_loader.dart';
 import '../settings/settings_controller.dart';
+import 'page_height_cache.dart';
 
 class ReaderImageCache {
   ReaderImageCache._();
@@ -55,6 +56,21 @@ class ReaderImageCache {
     } finally {
       _pending.remove(cacheKey);
     }
+  }
+
+  /// Bytes already held in memory for this page, or null.
+  ///
+  /// The reader uses this to warm [PageHeightCache] from pages it has on hand:
+  /// a page's height is then exact on the very first layout, instead of being
+  /// corrected after the image arrives (which is what made the vertical
+  /// continuous list jump and roll back). Never touches the network.
+  Uint8List? memoryBytes({
+    required PluginSource source,
+    required String comicId,
+    required String episodeId,
+    required String imageUrl,
+  }) {
+    return _memory[_cacheKey(source.key, comicId, episodeId, imageUrl)];
   }
 
   void prefetch({
@@ -154,6 +170,7 @@ class ReaderImageCache {
     final file = await _fileForKey(cacheKey);
     if (await file.exists()) {
       final bytes = await file.readAsBytes();
+      await _capturePageHeight(imageUrl, bytes);
       _remember(cacheKey, bytes);
       return bytes;
     }
@@ -166,9 +183,19 @@ class ReaderImageCache {
     );
     await file.parent.create(recursive: true);
     await file.writeAsBytes(bytes, flush: false);
+    await _capturePageHeight(imageUrl, bytes);
     await _trimDiskCacheIfNeeded();
     _remember(cacheKey, bytes);
     return bytes;
+  }
+
+  /// Feeds the encoded header to [PageHeightCache] (no pixel decode) so the
+  /// vertical continuous list knows this page's height before it is laid out.
+  ///
+  /// Awaited on purpose: it is a header parse of bytes we already hold, and the
+  /// reader must see the ratio before it renders the page.
+  Future<void> _capturePageHeight(String imageUrl, Uint8List bytes) async {
+    await PageHeightCache.instance.rememberFromBytes(imageUrl, bytes);
   }
 
   void _remember(String cacheKey, Uint8List bytes) {
