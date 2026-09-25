@@ -30,11 +30,21 @@ class PageHeightCache {
 
   static final PageHeightCache instance = PageHeightCache._();
 
-  /// Ratios outside this range mean we mis-read the header (or the source
-  /// served something that is not a scan). Ignore rather than reserve silly
-  /// heights.
-  static const double _minRatio = 0.2;
-  static const double _maxRatio = 20;
+  /// Sanity bounds on a measured ratio (height / width).
+  ///
+  /// These are *header* sanity checks, not layout preferences — they only exist
+  /// to catch a buffer that was mis-parsed into a nonsense number. They must
+  /// therefore stay well clear of any legitimate page shape:
+  ///
+  /// * Upper: webtoon (条漫) pages are long vertical strips. The common canvas
+  ///   is 800px wide, a chapter runs 20–30 of them, and several sources ship a
+  ///   whole chapter as one merged image — 800x25000 is real, i.e. ratio ~31,
+  ///   and the extreme end reaches ~110. A limit of 20 would silently reject
+  ///   those, which is worse than a wrong estimate: the page would fall back to
+  ///   a normal-comic median and render *shrunk* inside a short box.
+  /// * Lower: double-page spreads. They are wide but nowhere near 10:1.
+  static const double _minRatio = 0.1;
+  static const double _maxRatio = 128;
 
   /// Upper bound on persisted entries (~20000 pages). Oldest are dropped first.
   static const int _maxEntries = 20000;
