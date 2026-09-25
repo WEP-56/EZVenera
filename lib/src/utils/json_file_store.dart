@@ -50,22 +50,57 @@ class JsonFileStore {
 
   /// Serialized atomic write. Returns a future that completes when this
   /// write is durable; later writes are queued behind it, never interleaved.
-  Future<void> write(Map<String, dynamic> json) {
-    final next = _writeQueue.then((_) => _writeAtomic(json));
+  Future<void> write(Map<String, dynamic> json) => writeJson(json);
+
+  /// Serialized atomic write of a JSON array document (same queue and
+  /// self-healing semantics as [write]).
+  Future<void> writeList(List<dynamic> values) => writeJson(values);
+
+  Future<void> writeJson(Object? value) {
+    final next = _writeQueue.then((_) => _writeAtomic(value));
     // Keep the queue alive even if a write fails: the error is surfaced to
     // the caller of this write only.
     _writeQueue = next.catchError((Object _) {});
     return next;
   }
 
-  Future<void> _writeAtomic(Map<String, dynamic> json) async {
+  /// Reads a JSON array document. Missing, corrupted, or wrong-shape files
+  /// yield an empty list (with a warning log) — same contract as [read].
+  Future<List<dynamic>> readList() async {
+    try {
+      if (!await file.exists()) {
+        return <dynamic>[];
+      }
+      final content = await file.readAsString();
+      final decoded = jsonDecode(content);
+      if (decoded is List) {
+        return decoded;
+      }
+      unawaited(
+        AppLogger.instance.warning(
+          'Config file has unexpected JSON shape, resetting: ${file.path}',
+        ),
+      );
+      return <dynamic>[];
+    } catch (error) {
+      unawaited(
+        AppLogger.instance.warning(
+          'Config file is corrupted, falling back to defaults: '
+          '${file.path} ($error)',
+        ),
+      );
+      return <dynamic>[];
+    }
+  }
+
+  Future<void> _writeAtomic(Object? value) async {
     // Unique temp name per write: two stores pointing at the same target, or
     // an external cleanup, can no longer collide on a shared ".tmp" path.
     final tmp = File(
       '${file.path}.${DateTime.now().microsecondsSinceEpoch}.tmp',
     );
     await tmp.parent.create(recursive: true);
-    await tmp.writeAsString(jsonEncode(json), flush: true);
+    await tmp.writeAsString(jsonEncode(value), flush: true);
     try {
       await tmp.rename(file.path);
     } on PathNotFoundException {
@@ -75,7 +110,7 @@ class JsonFileStore {
       final retry = File(
         '${file.path}.${DateTime.now().microsecondsSinceEpoch}.tmp',
       );
-      await retry.writeAsString(jsonEncode(json), flush: true);
+      await retry.writeAsString(jsonEncode(value), flush: true);
       await retry.rename(file.path);
     }
   }

@@ -100,18 +100,23 @@ class _IsolateJsEngine {
         continue;
       }
 
+      JSInvokable? jsFunc;
       try {
-        final jsFunc = engine.evaluate(message.jsFunction);
-        if (jsFunc is! JSInvokable) {
+        final evaluated = engine.evaluate(message.jsFunction);
+        if (evaluated is! JSInvokable) {
           throw StateError(
             'The provided code does not evaluate to a function.',
           );
         }
+        jsFunc = evaluated;
         final result = jsFunc.invoke(message.args);
-        jsFunc.free();
         params.sendPort.send(_TaskResult(message.id, result, null));
       } catch (error) {
         params.sendPort.send(_TaskResult(message.id, null, error.toString()));
+      } finally {
+        // The native JSInvokable handle must be released even when invoke
+        // throws, otherwise repeated plugin errors leak QuickJS memory.
+        jsFunc?.free();
       }
     }
   }

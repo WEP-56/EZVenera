@@ -107,8 +107,23 @@ class NetworkClientFactory {
   }) {
     final config = resolveProxyConfig();
     if (_sharedDio == null || _sharedConfig != config) {
+      final previous = _sharedDio;
       _sharedDio = _buildSharedDio(config);
       _sharedConfig = config;
+      if (previous != null) {
+        // Gracefully retire the previous client after a grace period:
+        // in-flight requests finish and pooled idle sockets close. Switching
+        // back inside the window simply builds a fresh client (cheap).
+        unawaited(
+          Future<void>.delayed(const Duration(seconds: 30)).then((_) {
+            try {
+              previous.httpClientAdapter.close(force: false);
+            } catch (_) {
+              // Already closed or adapter-specific failure; nothing to do.
+            }
+          }),
+        );
+      }
     }
     final shared = _sharedDio!;
 

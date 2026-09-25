@@ -1,46 +1,42 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../utils/json_file_store.dart';
+
+/// Json-file-backed storage for library lists (favorites, history, folders).
+///
+/// Delegates to [JsonFileStore] for atomic, serialized, self-healing writes —
+/// these files used to be written with a bare `writeAsString`, so a crash
+/// mid-write could truncate favorites or history (F-01).
 class JsonStore {
   JsonStore(this.fileName);
 
   final String fileName;
-  File? _file;
+  JsonFileStore? _store;
 
   Future<void> initialize() async {
+    if (_store != null) {
+      return;
+    }
     final supportDirectory = await getApplicationSupportDirectory();
     final root = Directory(p.join(supportDirectory.path, 'library_state'));
     await root.create(recursive: true);
-    _file = File(p.join(root.path, fileName));
-    if (!await _file!.exists()) {
-      await _file!.writeAsString('[]');
-    }
+    _store = JsonFileStore(File(p.join(root.path, fileName)));
   }
 
   Future<List<Map<String, dynamic>>> readList() async {
     await initialize();
-    try {
-      final content = await _file!.readAsString();
-      final decoded = jsonDecode(content);
-      if (decoded is! List) {
-        await _file!.writeAsString('[]');
-        return const <Map<String, dynamic>>[];
-      }
-      return decoded
-          .whereType<Map>()
-          .map((item) => Map<String, dynamic>.from(item))
-          .toList();
-    } catch (_) {
-      await _file!.writeAsString('[]');
-      return const <Map<String, dynamic>>[];
-    }
+    final decoded = await _store!.readList();
+    return decoded
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
   }
 
   Future<void> writeList(List<Map<String, dynamic>> values) async {
     await initialize();
-    await _file!.writeAsString(jsonEncode(values));
+    await _store!.writeList(values);
   }
 }
