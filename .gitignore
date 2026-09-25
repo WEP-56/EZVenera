@@ -49,5 +49,6 @@ app.*.map.json
 /ACTION_RELEASE.md
 
 handoff.md
+.workbuddy/
 # Rust / cargo build artifacts
 **/target/
