@@ -14,6 +14,7 @@ import '../library/history_controller.dart';
 import '../library/history_models.dart';
 import '../local_library/local_library_models.dart';
 import '../localization/app_localizations.dart';
+import '../logging/app_logger.dart';
 import '../plugin_runtime/models.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
 import '../plugin_runtime/result.dart';
@@ -108,9 +109,17 @@ class _ReaderPageState extends State<ReaderPage> {
   bool _isProgressDragging = false;
   double? _progressDragPage;
   double _bottomPanelHeight = 0;
+  bool _showEinkFlash = false;
+  Timer? _einkFlashTimer;
 
   bool get _isPureLocalReader =>
       widget.localComic != null || widget.localLibraryComic != null;
+
+  // E-Ink mode: animations cause visible multi-flash ghosting on E-Ink
+  // panels, so every UI animation collapses to zero duration (REQ-002).
+  bool get _isEink => SettingsController.instance.einkMode;
+  Duration get _uiAnimDuration =>
+      _isEink ? Duration.zero : const Duration(milliseconds: 180);
 
   @override
   void initState() {
@@ -154,6 +163,8 @@ class _ReaderPageState extends State<ReaderPage> {
     _pendingTapTimer?.cancel();
     _autoPageTimer?.cancel();
     _autoPageTimer = null;
+    _einkFlashTimer?.cancel();
+    _einkFlashTimer = null;
     if (_isFullscreen) {
       _restoreFullscreenOnDispose();
     }
@@ -383,6 +394,7 @@ class _ReaderPageState extends State<ReaderPage> {
             SettingsController.instance.readerShowChapterEdgeButtons,
         verticalMarginPercent:
             SettingsController.instance.readerVerticalMarginPercent,
+        einkFullRefresh: SettingsController.instance.einkFullRefreshHint,
         onPageModeChanged: (value) async {
           await SettingsController.instance.setReaderPageMode(value);
           if (mounted) setState(() {});
@@ -434,6 +446,10 @@ class _ReaderPageState extends State<ReaderPage> {
             value,
           );
           if (_autoPageTimer != null) _startAutoPage(showMessage: false);
+          if (mounted) setState(() {});
+        },
+        onEinkFullRefreshChanged: (value) async {
+          await SettingsController.instance.setEinkFullRefreshHint(value);
           if (mounted) setState(() {});
         },
       ),
@@ -512,7 +528,7 @@ class _ReaderPageState extends State<ReaderPage> {
                 AnimatedContainer(
                   duration: _longPressDragging
                       ? Duration.zero
-                      : const Duration(milliseconds: 180),
+                      : _uiAnimDuration,
                   curve: Curves.easeOut,
                   transform: _isLongPressZooming
                       ? (Matrix4.identity()
@@ -540,10 +556,11 @@ class _ReaderPageState extends State<ReaderPage> {
                     bottom: 18,
                     child: _ReaderTapGuide(
                       visible: !_controlsVisible && !_isCurrentImageZoomed,
+                      duration: _uiAnimDuration,
                     ),
                   ),
                 AnimatedPositioned(
-                  duration: const Duration(milliseconds: 180),
+                  duration: _uiAnimDuration,
                   top: _controlsVisible
                       ? 0
                       : -(72 + MediaQuery.paddingOf(context).top),
@@ -560,7 +577,7 @@ class _ReaderPageState extends State<ReaderPage> {
                 ),
                 if (_showChapterEndActions)
                   AnimatedPositioned(
-                    duration: const Duration(milliseconds: 180),
+                    duration: _uiAnimDuration,
                     curve: Curves.easeOutCubic,
                     left: 16,
                     right: 16,
@@ -573,7 +590,7 @@ class _ReaderPageState extends State<ReaderPage> {
                     ),
                   ),
                 AnimatedPositioned(
-                  duration: const Duration(milliseconds: 180),
+                  duration: _uiAnimDuration,
                   curve: Curves.easeOutCubic,
                   left: 0,
                   right: 0,
@@ -581,7 +598,7 @@ class _ReaderPageState extends State<ReaderPage> {
                       ? -(36 + MediaQuery.paddingOf(context).bottom)
                       : 10 + MediaQuery.paddingOf(context).bottom,
                   child: AnimatedOpacity(
-                    duration: const Duration(milliseconds: 160),
+                    duration: _uiAnimDuration,
                     opacity: _controlsVisible ? 0 : 1,
                     child: Center(
                       child: _ReaderCollapsedProgressPill(
@@ -592,7 +609,7 @@ class _ReaderPageState extends State<ReaderPage> {
                   ),
                 ),
                 AnimatedPositioned(
-                  duration: const Duration(milliseconds: 180),
+                  duration: _uiAnimDuration,
                   left: 16,
                   right: 16,
                   bottom: _controlsVisible
@@ -624,6 +641,14 @@ class _ReaderPageState extends State<ReaderPage> {
                     ),
                   ),
                 ),
+                if (_showEinkFlash)
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: ColoredBox(
+                        color: Theme.of(context).colorScheme.surface,
+                      ),
+                    ),
+                  ),
               ],
             ),
           );
@@ -1068,6 +1093,9 @@ class _ReaderPageState extends State<ReaderPage> {
       _isCurrentImageZoomed = false;
       _prefetchAround(currentPage);
       await _recordHistory();
+      if (_isEink && SettingsController.instance.einkFullRefreshHint) {
+        _flashEinkRefresh();
+      }
     } catch (err) {
       error = err.toString();
     } finally {
@@ -1381,7 +1409,7 @@ class _ReaderPageState extends State<ReaderPage> {
         return Future<void>.value();
       }
       final target = targetIndex * _continuousItemExtent;
-      if (SettingsController.instance.readerEnablePageAnimation) {
+      if (SettingsController.instance.readerEnablePageAnimation && !_isEink) {
         return sc.animateTo(
           target,
           duration: const Duration(milliseconds: 200),
@@ -1396,7 +1424,7 @@ class _ReaderPageState extends State<ReaderPage> {
     if (controller == null) {
       return Future<void>.value();
     }
-    if (!SettingsController.instance.readerEnablePageAnimation) {
+    if (!SettingsController.instance.readerEnablePageAnimation || _isEink) {
       controller.jumpToPage(pageIndex);
       return Future<void>.value();
     }
@@ -1420,7 +1448,7 @@ class _ReaderPageState extends State<ReaderPage> {
       return Future<void>.value();
     }
     currentPage = targetIndex + 1;
-    if (SettingsController.instance.readerEnablePageAnimation) {
+    if (SettingsController.instance.readerEnablePageAnimation && !_isEink) {
       return controller.scrollTo(
         index: targetIndex,
         duration: const Duration(milliseconds: 200),
@@ -1653,6 +1681,19 @@ class _ReaderPageState extends State<ReaderPage> {
     } else {
       _stopAutoPage(showMessage: true);
     }
+  }
+
+  /// Brief full-screen flash on chapter switch (REQ-004). Large solid-color
+  /// changes prompt many E-Ink drivers to run a global refresh, clearing the
+  /// ghosting accumulated while reading.
+  void _flashEinkRefresh() {
+    _einkFlashTimer?.cancel();
+    setState(() => _showEinkFlash = true);
+    _einkFlashTimer = Timer(const Duration(milliseconds: 220), () {
+      if (mounted) {
+        setState(() => _showEinkFlash = false);
+      }
+    });
   }
 
   void _startAutoPage({required bool showMessage}) {
@@ -1940,8 +1981,6 @@ class _ReaderImageState extends State<_ReaderImage>
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return FutureBuilder<Uint8List>(
       future: _future,
       builder: (context, snapshot) {
@@ -1953,34 +1992,10 @@ class _ReaderImageState extends State<_ReaderImage>
         }
 
         if (snapshot.hasError || snapshot.data == null) {
-          return Container(
-            padding: const EdgeInsets.all(16),
-            margin: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surface,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: theme.colorScheme.outlineVariant),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Failed to load page ${widget.index}',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    color: theme.colorScheme.error,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(snapshot.error?.toString() ?? 'Unknown error'),
-                const SizedBox(height: 12),
-                OutlinedButton.icon(
-                  onPressed: _retry,
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Retry'),
-                ),
-              ],
-            ),
+          return _ReaderPageErrorCard(
+            index: widget.index,
+            detail: snapshot.error?.toString() ?? 'Unknown error',
+            onRetry: _retry,
           );
         }
 
@@ -1993,6 +2008,8 @@ class _ReaderImageState extends State<_ReaderImage>
               fit: BoxFit.fitWidth,
               gaplessPlayback: true,
               filterQuality: FilterQuality.medium,
+              errorBuilder: (context, error, stackTrace) =>
+                  _decodeErrorCard(error),
             ),
           );
         }
@@ -2015,6 +2032,8 @@ class _ReaderImageState extends State<_ReaderImage>
                         image: MemoryImage(snapshot.data!),
                         fit: BoxFit.contain,
                         gaplessPlayback: true,
+                        errorBuilder: (context, error, stackTrace) =>
+                            _decodeErrorCard(error),
                       ),
                     ),
                   ),
@@ -2041,6 +2060,37 @@ class _ReaderImageState extends State<_ReaderImage>
       episodeId: widget.chapterId,
       imageUrl: widget.imageUrl,
     );
+  }
+
+  Widget _decodeErrorCard(Object error) {
+    unawaited(
+      AppLogger.instance.warning(
+        '[reader] Image decode failed: ${widget.imageUrl} ($error)',
+      ),
+    );
+    return _ReaderPageErrorCard(
+      index: widget.index,
+      detail: error.toString(),
+      onRetry: _retryAfterDecodeFailure,
+    );
+  }
+
+  /// Decode failures mean the bytes themselves are bad — most often a
+  /// corrupted disk-cache file. Bust the cache so the retry re-downloads
+  /// instead of decoding the same bad bytes (REQ-009).
+  Future<void> _retryAfterDecodeFailure() async {
+    if (!widget.isLocal) {
+      final source = PluginRuntimeController.instance.find(widget.sourceKey);
+      if (source != null) {
+        await ReaderImageCache.instance.evict(
+          source: source,
+          comicId: widget.comicId,
+          episodeId: widget.chapterId,
+          imageUrl: widget.imageUrl,
+        );
+      }
+    }
+    _retry();
   }
 
   void _retry() {
@@ -2100,7 +2150,10 @@ class _ReaderImageState extends State<_ReaderImage>
     _animationController?.dispose();
     final animationController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 180),
+      // E-Ink: skip the zoom animation, jump straight to the target scale.
+      duration: SettingsController.instance.einkMode
+          ? Duration.zero
+          : const Duration(milliseconds: 180),
     );
     final curve = CurvedAnimation(
       parent: animationController,
@@ -2189,6 +2242,52 @@ class _ReaderImageState extends State<_ReaderImage>
     }
     _isZoomed = zoomed;
     widget.onZoomChanged?.call(zoomed);
+  }
+}
+
+class _ReaderPageErrorCard extends StatelessWidget {
+  const _ReaderPageErrorCard({
+    required this.index,
+    required this.detail,
+    required this.onRetry,
+  });
+
+  final int index;
+  final String detail;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Failed to load page $index',
+            style: theme.textTheme.titleMedium?.copyWith(
+              color: theme.colorScheme.error,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(detail),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Retry'),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -2700,16 +2799,20 @@ class _ReaderUtilityButton extends StatelessWidget {
 }
 
 class _ReaderTapGuide extends StatelessWidget {
-  const _ReaderTapGuide({required this.visible});
+  const _ReaderTapGuide({
+    required this.visible,
+    this.duration = const Duration(milliseconds: 180),
+  });
 
   final bool visible;
+  final Duration duration;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return IgnorePointer(
       child: AnimatedOpacity(
-        duration: const Duration(milliseconds: 180),
+        duration: duration,
         opacity: visible ? 1 : 0,
         child: DecoratedBox(
           decoration: BoxDecoration(
@@ -2746,6 +2849,7 @@ class _ReaderSettingsDrawer extends StatelessWidget {
     required this.horizontalContinuous,
     required this.chapterEdgeButtons,
     required this.verticalMarginPercent,
+    required this.einkFullRefresh,
     required this.onTapToTurnChanged,
     required this.onReverseTapToTurnChanged,
     required this.onDoubleTapZoomChanged,
@@ -2756,6 +2860,7 @@ class _ReaderSettingsDrawer extends StatelessWidget {
     required this.onHorizontalContinuousChanged,
     required this.onChapterEdgeButtonsChanged,
     required this.onVerticalMarginChanged,
+    required this.onEinkFullRefreshChanged,
   });
 
   final VoidCallback onClose;
@@ -2769,6 +2874,7 @@ class _ReaderSettingsDrawer extends StatelessWidget {
   final bool horizontalContinuous;
   final bool chapterEdgeButtons;
   final double verticalMarginPercent;
+  final bool einkFullRefresh;
   final ValueChanged<bool> onTapToTurnChanged;
   final ValueChanged<bool> onReverseTapToTurnChanged;
   final ValueChanged<bool> onDoubleTapZoomChanged;
@@ -2779,6 +2885,7 @@ class _ReaderSettingsDrawer extends StatelessWidget {
   final ValueChanged<bool> onHorizontalContinuousChanged;
   final ValueChanged<bool> onChapterEdgeButtonsChanged;
   final ValueChanged<double> onVerticalMarginChanged;
+  final ValueChanged<bool> onEinkFullRefreshChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -2897,6 +3004,18 @@ class _ReaderSettingsDrawer extends StatelessWidget {
                     title: Text(l10n.readerPageAnimation),
                     value: pageAnimation,
                     onChanged: onPageAnimationChanged,
+                  ),
+                  SwitchListTile(
+                    title: Text(
+                      l10n.isChinese ? 'E-Ink 切章刷新' : 'E-Ink chapter refresh',
+                    ),
+                    subtitle: Text(
+                      l10n.isChinese
+                          ? '切换章节时全屏闪烁一次，帮助清除残影。'
+                          : 'Flash the screen once per chapter switch to clear ghosting.',
+                    ),
+                    value: einkFullRefresh,
+                    onChanged: onEinkFullRefreshChanged,
                   ),
                   SwitchListTile(
                     title: Text(l10n.readerDoubleTapZoom),

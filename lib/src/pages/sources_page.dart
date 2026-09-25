@@ -1,10 +1,10 @@
 import 'dart:convert';
 
-import 'package:dio/dio.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import '../localization/app_localizations.dart';
+import '../network/network_client_factory.dart';
 import '../plugin_runtime/models.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
 import '../settings/settings_controller.dart';
@@ -21,9 +21,6 @@ class _SourcesPageState extends State<SourcesPage> {
   final controller = PluginRuntimeController.instance;
   final settings = SettingsController.instance;
   final urlController = TextEditingController();
-  final dio = Dio(
-    BaseOptions(responseType: ResponseType.plain, validateStatus: (_) => true),
-  );
 
   @override
   void initState() {
@@ -242,6 +239,7 @@ class _SourcesPageState extends State<SourcesPage> {
   Future<void> _browseRepoIndex() async {
     try {
       final indexUrl = settings.sourceIndexUrl;
+      final dio = NetworkClientFactory.instance.httpClient();
       final response = await dio.get<String>(indexUrl);
       if (response.statusCode == null ||
           response.statusCode! < 200 ||

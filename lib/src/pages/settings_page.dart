@@ -17,6 +17,7 @@ import '../downloads/download_controller.dart';
 import '../library/history_controller.dart';
 import '../localization/app_localizations.dart';
 import '../logging/app_logger.dart';
+import '../network/network_client_factory.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
 import '../reader/reader_image_cache.dart';
 import '../settings/settings_controller.dart';
@@ -91,6 +92,13 @@ class _SettingsPageState extends State<SettingsPage> {
             subtitle: controller.sourceIndexUrl,
             icon: Icons.extension_outlined,
             onTap: () => _openSection(context, const _SourcesSettingsPage()),
+          ),
+          const SizedBox(height: 14),
+          _SettingsMenuCard(
+            title: _text(l10n, '网络', 'Network'),
+            subtitle: _proxySubtitle(l10n),
+            icon: Icons.lan_outlined,
+            onTap: () => _openSection(context, const _NetworkSettingsPage()),
           ),
           const SizedBox(height: 14),
           _SettingsMenuCard(
@@ -169,6 +177,17 @@ class _SettingsPageState extends State<SettingsPage> {
     Navigator.of(
       context,
     ).push(MaterialPageRoute<void>(builder: (context) => page));
+  }
+
+  String _proxySubtitle(AppLocalizations l10n) {
+    return switch (controller.proxyMode) {
+      ProxyMode.system => _text(l10n, '代理：跟随系统', 'Proxy: system'),
+      ProxyMode.off => _text(l10n, '代理：已关闭', 'Proxy: off'),
+      ProxyMode.custom =>
+        SettingsController.isValidProxyUrl(controller.proxyUrl)
+            ? controller.proxyDisplayUrl
+            : _text(l10n, '代理：自定义（地址无效）', 'Proxy: custom (invalid URL)'),
+    };
   }
 }
 
@@ -294,6 +313,8 @@ class _AppearanceSettingsPageState extends State<_AppearanceSettingsPage> {
       child: ListView(
         padding: const EdgeInsets.all(24),
         children: [
+          const _EinkSection(),
+          const SizedBox(height: 20),
           _SettingsGroup(
             title: l10n.settingsAppearance,
             icon: Icons.palette_outlined,
@@ -378,6 +399,61 @@ class _AppearanceSettingsPageState extends State<_AppearanceSettingsPage> {
     if (mounted) {
       setState(() {});
     }
+  }
+}
+
+class _EinkSection extends StatelessWidget {
+  const _EinkSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final controller = SettingsController.instance;
+
+    return _SettingsGroup(
+      title: _text(l10n, 'E-Ink 模式', 'E-Ink mode'),
+      icon: Icons.contrast,
+      children: [
+        SwitchListTile(
+          title: Text(_text(l10n, 'E-Ink 模式', 'E-Ink mode')),
+          subtitle: Text(
+            _text(
+              l10n,
+              '为电子墨水屏优化：禁用翻页与界面动画，减少闪屏和残影。',
+              'Optimized for E-Ink: disables page and UI animations to reduce flashing and ghosting.',
+            ),
+          ),
+          value: controller.einkMode,
+          onChanged: controller.setEinkMode,
+        ),
+        if (controller.einkMode) ...[
+          SwitchListTile(
+            title: Text(_text(l10n, '高对比度主题', 'High-contrast theme')),
+            subtitle: Text(
+              _text(
+                l10n,
+                '纯黑/纯白配色，去除灰阶表面色。',
+                'Pure black/white colors without gray surface tones.',
+              ),
+            ),
+            value: controller.einkHighContrast,
+            onChanged: controller.setEinkHighContrast,
+          ),
+          SwitchListTile(
+            title: Text(_text(l10n, '切章刷新提示', 'Chapter refresh flash')),
+            subtitle: Text(
+              _text(
+                l10n,
+                '切换章节时全屏闪烁一次，促使设备全局刷新以清除残影。',
+                'Flash the screen once per chapter switch to prompt a full refresh that clears ghosting.',
+              ),
+            ),
+            value: controller.einkFullRefreshHint,
+            onChanged: controller.setEinkFullRefreshHint,
+          ),
+        ],
+      ],
+    );
   }
 }
 
@@ -539,6 +615,202 @@ class _SourcesSettingsPageState extends State<_SourcesSettingsPage> {
   void _handleChange() {
     if (!mounted) {
       return;
+    }
+    setState(() {});
+  }
+}
+
+class _NetworkSettingsPage extends StatefulWidget {
+  const _NetworkSettingsPage();
+
+  @override
+  State<_NetworkSettingsPage> createState() => _NetworkSettingsPageState();
+}
+
+class _NetworkSettingsPageState extends State<_NetworkSettingsPage> {
+  final controller = SettingsController.instance;
+  late final TextEditingController urlController = TextEditingController(
+    text: controller.proxyUrl,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    controller.addListener(_handleChange);
+  }
+
+  @override
+  void dispose() {
+    controller.removeListener(_handleChange);
+    urlController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final customSelected = controller.proxyMode == ProxyMode.custom;
+
+    return _SettingsSectionScaffold(
+      title: _text(l10n, '网络', 'Network'),
+      child: ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          _SettingsGroup(
+            title: _text(l10n, '代理', 'Proxy'),
+            icon: Icons.lan_outlined,
+            children: [
+              RadioGroup<ProxyMode>(
+                groupValue: controller.proxyMode,
+                onChanged: (value) {
+                  if (value != null) {
+                    controller.setProxyMode(value);
+                  }
+                },
+                child: Column(
+                  children: [
+                    ListTile(
+                      leading: const Radio<ProxyMode>(value: ProxyMode.system),
+                      title: Text(_text(l10n, '跟随系统', 'System')),
+                      subtitle: Text(
+                        _text(
+                          l10n,
+                          '使用系统或环境变量中的代理设置。',
+                          'Use the system / environment proxy settings.',
+                        ),
+                      ),
+                      onTap: () => controller.setProxyMode(ProxyMode.system),
+                    ),
+                    ListTile(
+                      leading: const Radio<ProxyMode>(value: ProxyMode.custom),
+                      title: Text(_text(l10n, '自定义代理', 'Custom proxy')),
+                      subtitle: Text(
+                        _text(
+                          l10n,
+                          '图源、图片、应用更新和 WebDAV 同步都会经过该代理。',
+                          'Source, image, app-update, and WebDAV traffic goes through this proxy.',
+                        ),
+                      ),
+                      onTap: () => controller.setProxyMode(ProxyMode.custom),
+                    ),
+                    ListTile(
+                      leading: const Radio<ProxyMode>(value: ProxyMode.off),
+                      title: Text(
+                        _text(l10n, '直连（不使用代理）', 'Direct (no proxy)'),
+                      ),
+                      subtitle: Text(
+                        _text(
+                          l10n,
+                          '忽略系统代理，所有请求直连。',
+                          'Ignore the system proxy and connect directly.',
+                        ),
+                      ),
+                      onTap: () => controller.setProxyMode(ProxyMode.off),
+                    ),
+                  ],
+                ),
+              ),
+              if (customSelected) ...[
+                const Divider(height: 1),
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      TextField(
+                        controller: urlController,
+                        decoration: InputDecoration(
+                          border: const OutlineInputBorder(),
+                          labelText: _text(l10n, '代理地址', 'Proxy URL'),
+                          hintText: 'http://192.168.2.153:16492',
+                        ),
+                        keyboardType: TextInputType.url,
+                        onSubmitted: (_) => _saveProxy(),
+                      ),
+                      const SizedBox(height: 12),
+                      FilledButton.icon(
+                        onPressed: _saveProxy,
+                        icon: const Icon(Icons.save_outlined),
+                        label: Text(l10n.save),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest
+                        .withValues(alpha: 0.55),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(10),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          size: 20,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _text(
+                              l10n,
+                              '保存后立即生效，无需重启。如需代理认证，请使用 http://用户名:密码@主机:端口 格式；凭据不会被保存到设备或备份中。',
+                              'Applies immediately, no restart needed. For authenticated proxies use http://user:pass@host:port; credentials are never saved to the device or backups.',
+                            ),
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _saveProxy() async {
+    final l10n = AppLocalizations.of(context);
+    final value = urlController.text.trim();
+    if (value.isNotEmpty && !SettingsController.isValidProxyUrl(value)) {
+      _showSettingsMessage(
+        context,
+        _text(
+          l10n,
+          '代理地址无效，格式应为 http(s)://主机:端口。',
+          'Invalid proxy URL. Expected http(s)://host:port.',
+        ),
+      );
+      return;
+    }
+    await controller.setProxyUrl(value);
+    if (controller.proxyMode != ProxyMode.custom) {
+      await controller.setProxyMode(ProxyMode.custom);
+    }
+    if (!mounted) {
+      return;
+    }
+    _showSettingsMessage(
+      context,
+      _text(l10n, '代理已保存，立即生效。', 'Proxy saved and applied immediately.'),
+    );
+  }
+
+  void _handleChange() {
+    if (!mounted) {
+      return;
+    }
+    if (urlController.text != controller.proxyUrl) {
+      urlController.text = controller.proxyUrl;
     }
     setState(() {});
   }
@@ -1533,7 +1805,11 @@ class _AboutSettingsPageState extends State<_AboutSettingsPage> {
     final uri = Uri.parse(
       'https://api.github.com/repos/WEP-56/EZvenera/releases/latest',
     );
-    final response = await Dio().getUri<Map<String, dynamic>>(uri);
+    final dio = NetworkClientFactory.instance.httpClient(
+      responseType: ResponseType.json,
+      throwOnError: true,
+    );
+    final response = await dio.getUri<Map<String, dynamic>>(uri);
     final data = response.data;
     if (response.statusCode != 200 || data == null) {
       throw StateError('Invalid update response.');
@@ -1741,7 +2017,7 @@ class _AboutSettingsPageState extends State<_AboutSettingsPage> {
     );
 
     try {
-      await Dio().download(
+      await NetworkClientFactory.instance.httpClient(throwOnError: true).download(
         release.url,
         file.path,
         onReceiveProgress: (received, total) {

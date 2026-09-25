@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
+import '../network/network_client_factory.dart';
 import 'models.dart';
 import 'plugin_runtime.dart';
 
@@ -13,9 +13,6 @@ class PluginRuntimeController extends ChangeNotifier {
   static final PluginRuntimeController instance = PluginRuntimeController._();
 
   final PluginRuntime _runtime = PluginRuntime.instance;
-  final Dio _dio = Dio(
-    BaseOptions(responseType: ResponseType.plain, validateStatus: (_) => true),
-  );
 
   bool _initialized = false;
   bool _busy = false;
@@ -47,7 +44,8 @@ class PluginRuntimeController extends ChangeNotifier {
 
   Future<PluginSource> installFromUrl(String url) async {
     return _runBusy(() async {
-      final response = await _dio.get<String>(url);
+      final dio = NetworkClientFactory.instance.httpClient();
+      final response = await dio.get<String>(url);
       if (response.statusCode == null ||
           response.statusCode! < 200 ||
           response.statusCode! >= 300 ||
@@ -110,7 +108,8 @@ class PluginRuntimeController extends ChangeNotifier {
     }
 
     await _runBusy(() async {
-      final response = await _dio.get<String>(updateUrl);
+      final dio = NetworkClientFactory.instance.httpClient();
+      final response = await dio.get<String>(updateUrl);
       if (response.statusCode == null ||
           response.statusCode! < 200 ||
           response.statusCode! >= 300 ||
