@@ -49,3 +49,5 @@ app.*.map.json
 /ACTION_RELEASE.md
 
 handoff.md
+# Rust / cargo build artifacts
+**/target/
