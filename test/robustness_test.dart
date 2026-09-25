@@ -66,6 +66,28 @@ void main() {
           .writeAsString('{"version": 2'); // crashed mid-write
       expect((await store.read())['version'], 1);
     });
+
+    test('concurrent writes are serialized and never lose the tmp file',
+        () async {
+      // Regression: two fire-and-forget persists racing on a shared ".tmp"
+      // made one rename steal the other's temp file (PathNotFoundException
+      // observed on device). Per-call temp names + a write queue fix it.
+      final file = File('${tempDir.path}/race.json');
+      final store = JsonFileStore(file);
+      await Future.wait([
+        for (var i = 0; i < 20; i++) store.write({'round': i}),
+      ]);
+      final finalRead = await store.read();
+      // The surviving content must be one of the written rounds, and the
+      // directory must hold no leftover temp files.
+      expect(finalRead['round'], inInclusiveRange(0, 19));
+      final leftovers = tempDir
+          .listSync()
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.tmp'))
+          .toList();
+      expect(leftovers, isEmpty);
+    });
   });
 
   group('fetchImageWithRetry (REQ-010)', () {
