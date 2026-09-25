@@ -1944,6 +1944,7 @@ class _ReaderImageState extends State<_ReaderImage>
   Animation<double>? _scaleAnimation;
   Animation<Offset>? _offsetAnimation;
   bool _isZoomed = false;
+  bool _decodeFailureLogged = false;
   double _scale = 1;
   Offset _offset = Offset.zero;
   double _gestureStartScale = 1;
@@ -2063,11 +2064,16 @@ class _ReaderImageState extends State<_ReaderImage>
   }
 
   Widget _decodeErrorCard(Object error) {
-    unawaited(
-      AppLogger.instance.warning(
-        '[reader] Image decode failed: ${widget.imageUrl} ($error)',
-      ),
-    );
+    // errorBuilder runs on every rebuild of the failed widget; log once per
+    // image instead of flooding the log while the card is on screen.
+    if (!_decodeFailureLogged) {
+      _decodeFailureLogged = true;
+      unawaited(
+        AppLogger.instance.warning(
+          '[reader] Image decode failed: ${widget.imageUrl} ($error)',
+        ),
+      );
+    }
     return _ReaderPageErrorCard(
       index: widget.index,
       detail: error.toString(),

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -173,4 +174,62 @@ void main() {
       await controller.setProxyMode(ProxyMode.system);
     });
   });
+
+  group('NetworkClientFactory connection reuse', () {
+    test('default calls share one Dio instance per config', () async {
+      final controller = SettingsController.instance;
+      await controller.setProxyMode(ProxyMode.system);
+      final a = NetworkClientFactory.instance.httpClient();
+      final b = NetworkClientFactory.instance.httpClient();
+      expect(identical(a, b), isTrue);
+    });
+
+    test('rebuilding only happens when the proxy config changes', () async {
+      final controller = SettingsController.instance;
+      await controller.setProxyMode(ProxyMode.system);
+      final sharedBefore = NetworkClientFactory.instance.httpClient();
+      await controller.setProxyMode(ProxyMode.off);
+      final sharedAfter = NetworkClientFactory.instance.httpClient();
+      expect(identical(sharedBefore, sharedAfter), isFalse);
+
+      await controller.setProxyMode(ProxyMode.system);
+    });
+
+    test('clones share the adapter but get independent options', () async {
+      final controller = SettingsController.instance;
+      await controller.setProxyMode(ProxyMode.system);
+      final shared = NetworkClientFactory.instance.httpClient();
+      final cloned = NetworkClientFactory.instance.httpClient(
+        responseType: ResponseType.bytes,
+        interceptors: [_NoopInterceptor()],
+      );
+      expect(identical(cloned, shared), isFalse);
+      // Pooled connections live on the shared adapter.
+      expect(identical(cloned.httpClientAdapter, shared.httpClientAdapter),
+          isTrue);
+      // clone(options: fresh instance) must not leak into the shared client.
+      expect(shared.options.responseType, ResponseType.plain);
+      expect(cloned.options.responseType, ResponseType.bytes);
+      expect(cloned.interceptors.length, greaterThan(0));
+    });
+
+    test('throwOnError restores Dio default 2xx validation', () async {
+      final controller = SettingsController.instance;
+      await controller.setProxyMode(ProxyMode.system);
+      final shared = NetworkClientFactory.instance.httpClient();
+      final strict = NetworkClientFactory.instance.httpClient(
+        responseType: ResponseType.json,
+        throwOnError: true,
+      );
+      // Dio's default: 2xx passes, anything else throws.
+      expect(strict.options.validateStatus(200), isTrue);
+      expect(strict.options.validateStatus(404), isFalse);
+      // The shared client keeps the app-wide "never throw" convention.
+      expect(shared.options.validateStatus(500), isTrue);
+
+      await controller.setProxyMode(ProxyMode.system);
+    });
+  });
 }
+
+class _NoopInterceptor extends Interceptor {}

@@ -26,18 +26,38 @@ class ProxyConfig {
   String? get customAuthority => usesCustomProxy
       ? SettingsController.customProxyAuthority(url)
       : null;
+
+  @override
+  bool operator ==(Object other) =>
+      other is ProxyConfig && other.mode == mode && other.url == url;
+
+  @override
+  int get hashCode => Object.hash(mode, url);
 }
 
 /// Single entry point for every outbound HTTP(S) request.
 ///
 /// All Dio instances and the rhttp (WebDAV) adapter must be created here so
 /// the proxy setting applies uniformly and reacts to settings changes
-/// (REQ-006 / REQ-008). Instances are cheap; create one per request batch
-/// instead of caching, so config changes are never sticky.
+/// (REQ-006 / REQ-008).
+///
+/// Connection reuse: the factory keeps one shared Dio per resolved
+/// [ProxyConfig]; its adapter owns the HttpClient (TCP/TLS keep-alive pool).
+/// Callers with default settings share that instance directly, callers with
+/// special options get `shared.clone()` which reuses the same adapter and
+/// therefore the same pooled connections. Only a proxy-configuration change
+/// rebuilds the shared client (REQ-007).
 class NetworkClientFactory {
   NetworkClientFactory._();
 
   static final NetworkClientFactory instance = NetworkClientFactory._();
+
+  Dio? _sharedDio;
+  ProxyConfig? _sharedConfig;
+
+  /// Invalid custom-proxy URLs are warned about once per distinct URL, not
+  /// once per request (a misconfigured proxy must not flood the log).
+  static String? _warnedInvalidProxyUrl;
 
   /// Reads the current settings on every call — the settings controller is
   /// the single source of truth, so no explicit reload is needed.
@@ -45,30 +65,37 @@ class NetworkClientFactory {
     final settings = SettingsController.instance;
     final mode = settings.proxyMode;
     if (mode != ProxyMode.custom) {
+      _warnedInvalidProxyUrl = null;
       return ProxyConfig(mode: mode);
     }
     final url = settings.proxyUrl.trim();
     if (!SettingsController.isValidProxyUrl(url)) {
       // An invalid custom URL must not break every request; fall back to
-      // system behavior and surface the misconfiguration in the log.
-      unawaited(
-        AppLogger.instance.warning(
-          '[network] Custom proxy URL is invalid, falling back to system '
-          'proxy: "$url"',
-        ),
-      );
+      // system behavior. Warn once per distinct URL.
+      if (_warnedInvalidProxyUrl != url) {
+        _warnedInvalidProxyUrl = url;
+        unawaited(
+          AppLogger.instance.warning(
+            '[network] Custom proxy URL is invalid, falling back to system '
+            'proxy: "$url"',
+          ),
+        );
+      }
       return const ProxyConfig(mode: ProxyMode.system);
     }
+    _warnedInvalidProxyUrl = null;
     return ProxyConfig(mode: ProxyMode.custom, url: url);
   }
 
-  /// Creates a Dio client wired to the current proxy configuration.
+  /// Returns a Dio client wired to the current proxy configuration.
   ///
   /// * [responseType] mirrors the caller's previous `BaseOptions`.
   /// * [throwOnError] false keeps the app-wide "never throw for status"
   ///   convention (`validateStatus: (_) => true`); set true for callers that
   ///   relied on Dio's default 2xx-only validation (update checks).
-  /// * [interceptors] are appended after the logging interceptor.
+  /// * [interceptors] are appended after the logging interceptor. They live
+  ///   on the returned instance only (use [interceptorsKey] if you want them
+  ///   shared across calls — pass a stable identity such as the cookie store).
   /// * [logSuccessResponses] records successful requests in the app log;
   ///   failures are always logged. Keep it off for high-frequency calls
   ///   such as image loading.
@@ -79,16 +106,47 @@ class NetworkClientFactory {
     bool logSuccessResponses = false,
   }) {
     final config = resolveProxyConfig();
-    final dio = Dio(
-      BaseOptions(
+    if (_sharedDio == null || _sharedConfig != config) {
+      _sharedDio = _buildSharedDio(config);
+      _sharedConfig = config;
+    }
+    final shared = _sharedDio!;
+
+    final isDefaultCall =
+        responseType == ResponseType.plain &&
+        !throwOnError &&
+        interceptors == null &&
+        !logSuccessResponses;
+    if (isDefaultCall) {
+      return shared;
+    }
+
+    // clone() shares the adapter (and its pooled connections) while giving
+    // this caller its own options/interceptors. A fresh BaseOptions is passed
+    // because Dio.clone otherwise reuses the shared options instance.
+    final dio = shared.clone(
+      options: BaseOptions(
         responseType: responseType,
         validateStatus: throwOnError ? null : (_) => true,
       ),
-    )..interceptors.add(_NetworkLogInterceptor(logSuccess: logSuccessResponses));
-    dio.httpClientAdapter = _createAdapter(config);
+    );
+    if (logSuccessResponses) {
+      dio.interceptors.add(_NetworkLogInterceptor(logSuccess: true));
+    }
     if (interceptors != null) {
       dio.interceptors.addAll(interceptors);
     }
+    return dio;
+  }
+
+  Dio _buildSharedDio(ProxyConfig config) {
+    final dio = Dio(
+      BaseOptions(
+        responseType: ResponseType.plain,
+        validateStatus: (_) => true,
+      ),
+    )..interceptors.add(_NetworkLogInterceptor(logSuccess: false));
+    dio.httpClientAdapter = _createAdapter(config);
     return dio;
   }
 
@@ -114,7 +172,8 @@ class NetworkClientFactory {
 }
 
 /// Structured network logging (REQ-012). Failures always land in the log;
-/// successful requests only when the caller opts in.
+/// successful requests only when the caller opts in. Stateless, so a single
+/// instance can safely be shared (and copied by Dio.clone).
 class _NetworkLogInterceptor extends Interceptor {
   _NetworkLogInterceptor({required this.logSuccess});
 
