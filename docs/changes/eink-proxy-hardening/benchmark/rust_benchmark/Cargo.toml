@@ -1,0 +1,12 @@
+[package]
+name = "ezv_benchmark"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+walkdir = "2"
+md-5 = "0.10"
+
+[profile.release]
+lto = true
+codegen-units = 1
