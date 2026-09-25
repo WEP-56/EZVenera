@@ -1,12 +1,14 @@
-import 'dart:convert';
+import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
 
 import '../localization/app_localizations.dart';
 import '../network/network_client_factory.dart';
 import '../plugin_runtime/models.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
+import '../plugin_runtime/repository/source_index.dart';
 import '../settings/settings_controller.dart';
 import 'plugin_webview_login_page.dart';
 
@@ -117,6 +119,11 @@ class _SourcesPageState extends State<SourcesPage> {
                   onPressed: controller.isBusy ? null : _installFromLocalFile,
                   icon: const Icon(Icons.folder_open_outlined),
                   label: Text(l10n.sourcesInstallLocal),
+                ),
+                OutlinedButton.icon(
+                  onPressed: controller.isBusy ? null : _installFromLocalIndex,
+                  icon: const Icon(Icons.file_download_outlined),
+                  label: Text(l10n.sourcesInstallLocalIndex),
                 ),
                 OutlinedButton.icon(
                   onPressed: controller.isBusy ? null : _reloadSources,
@@ -250,38 +257,15 @@ class _SourcesPageState extends State<SourcesPage> {
         );
       }
 
-      final decoded = jsonDecode(response.data!);
-      if (decoded is! List) {
-        throw StateError('Source index is not a JSON list.');
-      }
+      final items = parseSourceIndex(response.data!);
 
       if (!mounted) {
         return;
       }
 
-      final selectedItems = await showModalBottomSheet<List<_RepoIndexItem>>(
-        context: context,
-        isScrollControlled: true,
-        showDragHandle: true,
-        useSafeArea: true,
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(context).height * 0.82,
-        ),
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        builder: (context) {
-          final items = decoded.whereType<Map>().map((item) {
-            return _RepoIndexItem.fromJson(Map<String, dynamic>.from(item));
-          }).toList();
-          return _RepoIndexSheet(
-            indexUrl: indexUrl,
-            installedKeys: controller.sources
-                .map((source) => source.key)
-                .toSet(),
-            items: items,
-          );
-        },
+      final selectedItems = await _showIndexSheet(
+        items: items,
+        originLabel: indexUrl,
       );
 
       if (selectedItems == null || selectedItems.isEmpty || !mounted) {
@@ -321,6 +305,114 @@ class _SourcesPageState extends State<SourcesPage> {
         context,
       ).showSnackBar(SnackBar(content: Text(error.toString())));
     }
+  }
+
+  /// Installs comic sources in bulk from a locally-imported index document
+  /// (`index.json`). The index file's `.js` entries are resolved relative to
+  /// the chosen file's directory, so an offline bundle is just "index.json +
+  /// source .js files in one folder" (REQ-014).
+  Future<void> _installFromLocalIndex() async {
+    final l10n = AppLocalizations.of(context);
+    try {
+      const typeGroup = XTypeGroup(
+        label: 'JSON',
+        extensions: <String>['json'],
+      );
+      final file = await openFile(
+        acceptedTypeGroups: const <XTypeGroup>[typeGroup],
+      );
+      if (file == null) {
+        return;
+      }
+
+      final raw = await File(file.path).readAsString();
+      final items = parseSourceIndex(raw);
+      if (items.isEmpty) {
+        throw StateError(l10n.sourcesLocalIndexEmpty);
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      final indexDirectory = p.dirname(file.path);
+      final selectedItems = await _showIndexSheet(
+        items: items,
+        originLabel: p.basename(file.path),
+      );
+
+      if (selectedItems == null || selectedItems.isEmpty || !mounted) {
+        return;
+      }
+
+      var installedCount = 0;
+      final failedNames = <String>[];
+      for (final item in selectedItems) {
+        try {
+          final localPath = item.resolvedLocalPath(indexDirectory);
+          if (localPath != null && File(localPath).existsSync()) {
+            await controller.installFromLocalFile(localPath);
+          } else if (item.url != null && item.url!.isNotEmpty) {
+            // Entry carries an absolute URL (not shipped in the local
+            // bundle): fall back to a network install.
+            await controller.installFromUrl(item.url!);
+          } else {
+            throw StateError(
+              'Source file not found next to the index: ${item.fileName}',
+            );
+          }
+          installedCount += 1;
+        } catch (_) {
+          failedNames.add(item.name.isEmpty ? item.key : item.name);
+        }
+      }
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            l10n.sourcesBatchInstallResult(
+              installedCount,
+              failedNames.length,
+              failedNames.join(', '),
+            ),
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
+    }
+  }
+
+  Future<List<SourceIndexEntry>?> _showIndexSheet({
+    required List<SourceIndexEntry> items,
+    required String originLabel,
+  }) {
+    return showModalBottomSheet<List<SourceIndexEntry>>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      useSafeArea: true,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * 0.82,
+      ),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return _RepoIndexSheet(
+          originLabel: originLabel,
+          installedKeys: controller.sources.map((source) => source.key).toSet(),
+          items: items,
+        );
+      },
+    );
   }
 
   void _onControllerChanged() {
@@ -1034,14 +1126,16 @@ class _SourceAccountTileState extends State<_SourceAccountTile> {
 
 class _RepoIndexSheet extends StatefulWidget {
   const _RepoIndexSheet({
-    required this.indexUrl,
+    required this.originLabel,
     required this.installedKeys,
     required this.items,
   });
 
-  final String indexUrl;
+  /// What the index came from: an index URL (online browsing) or the
+  /// locally-imported file's name.
+  final String originLabel;
   final Set<String> installedKeys;
-  final List<_RepoIndexItem> items;
+  final List<SourceIndexEntry> items;
 
   @override
   State<_RepoIndexSheet> createState() => _RepoIndexSheetState();
@@ -1058,7 +1152,7 @@ class _RepoIndexSheetState extends State<_RepoIndexSheet> {
       children: [
         ListTile(
           title: Text(l10n.sourcesComicSourceList),
-          subtitle: Text(widget.indexUrl),
+          subtitle: Text(widget.originLabel),
         ),
         Flexible(
           child: ListView.builder(
@@ -1123,48 +1217,6 @@ class _RepoIndexSheetState extends State<_RepoIndexSheet> {
         ),
       ],
     );
-  }
-}
-
-class _RepoIndexItem {
-  const _RepoIndexItem({
-    required this.name,
-    required this.key,
-    required this.version,
-    this.url,
-    this.fileName,
-  });
-
-  final String name;
-  final String key;
-  final String version;
-  final String? url;
-  final String? fileName;
-
-  factory _RepoIndexItem.fromJson(Map<String, dynamic> json) {
-    return _RepoIndexItem(
-      name: json['name']?.toString() ?? '',
-      key: json['key']?.toString() ?? '',
-      version: json['version']?.toString() ?? '',
-      url: json['url']?.toString(),
-      fileName: json['fileName']?.toString() ?? json['filename']?.toString(),
-    );
-  }
-
-  String resolvedUrl(String indexUrl) {
-    if (url != null && url!.isNotEmpty) {
-      return url!;
-    }
-    if (fileName == null || fileName!.isEmpty) {
-      throw StateError('Source entry does not contain url or fileName.');
-    }
-
-    final uri = Uri.parse(indexUrl);
-    final segments = [...uri.pathSegments];
-    if (segments.isNotEmpty) {
-      segments.removeLast();
-    }
-    return uri.replace(pathSegments: [...segments, fileName!]).toString();
   }
 }
 

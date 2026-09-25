@@ -94,6 +94,20 @@
   迁移的 FRB 集成与 CI 交叉编译成本大于收益。H2 改进走纯 Dart
   算法路线（增量索引）。REQ-013 验证：基准数据可复现（源码在库）。
 
+## Phase 5 — 本地索引安装（P1，REQ-014）
+
+- [x] TASK-501 — 新增 `plugin_runtime/repository/source_index.dart`：
+  `SourceIndexEntry`（name/key/version/url/fileName，含 `resolvedUrl` 与
+  `resolvedLocalPath`）与 `parseSourceIndex`（校验 JSON 列表、跳过坏行）。
+  验证：`test/source_index_test.dart` 9 例（上游格式/filename 别名/容错/
+  本地路径/存在性判定）。
+- [x] TASK-502 — `SourcesPage` 新增「本地索引安装」按钮与
+  `_installFromLocalIndex()`：文件选择器选 `.json` → 解析 → 复用在线索引
+  的 `_RepoIndexSheet` 多选 → 同目录 `.js` 逐个 `installFromLocalFile`，
+  缺文件/坏条目计入失败汇总；条目带绝对 url 时回退网络安装。
+  在线索引浏览同步迁移到共享解析器与 `_showIndexSheet`。
+  验证：`flutter analyze` 零新增告警 + 全套测试通过 + 真机构建。
+
 ## 验证顺序
 
 Phase 0 → 1 → 2 可并行两轨；Phase 3 依赖 Phase 1 的网络工厂；
