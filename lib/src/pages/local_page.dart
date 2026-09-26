@@ -1497,7 +1497,7 @@ class _LocalComicCard extends StatelessWidget {
                             ),
                           ),
                         ),
-                        if (topRight != null) topRight!,
+                        ?topRight,
                       ],
                     ),
                   ],

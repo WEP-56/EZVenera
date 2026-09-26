@@ -26,6 +26,10 @@ class PluginJsPool {
         _instances.add(await _IsolateJsEngine.create(jsInit));
       }
     } on Object {
+      // Drop partially spawned engines so a retry cannot accumulate instances
+      // beyond the pool capacity; the spawned isolates leak until process
+      // exit, which is acceptable for a failure path this rare.
+      _instances.clear();
       // Reset so a later call can retry; the error still propagates to the
       // caller that triggered this initialization.
       _initFuture = null;
