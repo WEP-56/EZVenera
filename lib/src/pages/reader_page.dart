@@ -19,6 +19,7 @@ import '../plugin_runtime/models.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
 import '../plugin_runtime/result.dart';
 import '../reader/chapter_order.dart';
+import '../reader/page_height_cache.dart';
 import '../reader/reader_image_cache.dart';
 import '../settings/settings_controller.dart';
 import '../utils/natural_sort.dart';
@@ -84,6 +85,30 @@ class _ReaderPageState extends State<ReaderPage> {
   /// Seed for [ScrollablePositionedList.initialScrollIndex] when the vertical
   /// list is (re)created. Updated when opening a chapter / changing mode.
   int _verticalInitialIndex = 0;
+
+  /// Fraction of a chapter's pages we are willing to read off disk just to
+  /// learn their height when the chapter opens. Bounded so a 500-page chapter
+  /// never turns into 500 file reads.
+  static const int _primeHeightLimit = 24;
+
+  /// Reserved height per page, computed once and then kept for the session.
+  ///
+  /// The freeze is the whole point: a page whose height changes *after* it has
+  /// been laid out is what makes `ScrollablePositionedList` throw away its
+  /// leading-edge bookkeeping and re-anchor, which the user sees as the reader
+  /// jumping and rolling back. A page that was laid out with an estimate keeps
+  /// that height until the chapter is reopened; pages that are still below the
+  /// viewport pick up an exact ratio as soon as one is measured, so only the
+  /// first screenful of a never-before-read chapter is ever estimated.
+  final Map<int, double> _reservedHeights = <int, double>{};
+
+  /// Content width the entries in [_reservedHeights] were computed for. A
+  /// window resize or device rotation invalidates them.
+  double _reservedHeightsWidth = 0;
+
+  /// Height / width used for pages in this chapter whose image has not been
+  /// measured. Frozen after the first measured page so the estimate is stable.
+  double? _chapterRatioCache;
   final FocusNode focusNode = FocusNode();
   final GlobalKey<ScaffoldState> scaffoldKey = GlobalKey<ScaffoldState>();
   bool _attemptedContextLoad = false;
@@ -179,6 +204,9 @@ class _ReaderPageState extends State<ReaderPage> {
     pageController?.dispose();
     _scrollController?.dispose();
     _detachItemPositionsListener();
+    // Persist the ratios we learned this session so the next visit reserves
+    // exact heights from the first frame.
+    unawaited(PageHeightCache.instance.flush());
     super.dispose();
   }
 
@@ -765,6 +793,121 @@ class _ReaderPageState extends State<ReaderPage> {
     _longPressZoomOffset = Offset.zero;
   }
 
+  /// Reserved height for page [index] in vertical continuous mode.
+  ///
+  /// Exact for any page that has been measured — which covers everything the
+  /// reader has ever displayed, because the ratio is recorded the moment the
+  /// bytes are cached, and it is persisted, so a resumed or re-read chapter is
+  /// exact from the very first frame. Pages that were never loaded fall back to
+  /// this chapter's median ratio.
+  ///
+  /// The value is computed once per page per session (and per viewport width):
+  /// see [_reservedHeights].
+  double _reservedHeightFor(int index, double contentWidth) {
+    if (contentWidth <= 0 || index < 0 || index >= images.length) {
+      return 0;
+    }
+    if ((contentWidth - _reservedHeightsWidth).abs() > 0.5) {
+      // Viewport width changed (rotation / window resize): every cached height
+      // is stale.
+      _reservedHeights.clear();
+      _reservedHeightsWidth = contentWidth;
+    }
+    final existing = _reservedHeights[index];
+    if (existing != null) {
+      return existing;
+    }
+    final known = PageHeightCache.instance.ratioFor(images[index]);
+    final height = contentWidth * (known ?? _chapterRatio());
+    _reservedHeights[index] = height;
+    return height;
+  }
+
+  /// Median ratio of this chapter's measured pages, frozen after the first one.
+  /// Falls back to the global median until then.
+  double _chapterRatio() {
+    final cached = _chapterRatioCache;
+    if (cached != null) {
+      return cached;
+    }
+    final measured = <double>[];
+    for (final image in images) {
+      final ratio = PageHeightCache.instance.ratioFor(image);
+      if (ratio != null) {
+        measured.add(ratio);
+      }
+    }
+    if (measured.isEmpty) {
+      return PageHeightCache.instance.globalMedianRatio();
+    }
+    measured.sort();
+    final median = measured[measured.length ~/ 2];
+    _chapterRatioCache = median;
+    return median;
+  }
+
+  /// Warms [PageHeightCache] for this chapter so the first layout already has
+  /// real heights for every page we can measure without touching the network.
+  ///
+  /// This is what makes resuming from history smooth: pages above the resume
+  /// point are unmeasured by definition, and without this they would resize as
+  /// you scroll back up into them.
+  Future<void> _primePageHeights() async {
+    final heightCache = PageHeightCache.instance;
+    await heightCache.initialize();
+    if (images.isEmpty) {
+      return;
+    }
+    final isLocal =
+        widget.localComic != null || widget.localLibraryComic != null;
+    final source = isLocal
+        ? null
+        : PluginRuntimeController.instance.find(widget.sourceKey);
+    if (!isLocal && source == null) {
+      return;
+    }
+    // Local files are read from disk, so keep the read-ahead small: a handful
+    // is enough to seed this chapter's median ratio.
+    final limit = isLocal ? 4 : _primeHeightLimit;
+
+    var measured = 0;
+    for (final imageUrl in images) {
+      if (measured >= limit || !mounted) {
+        break;
+      }
+      if (heightCache.ratioFor(imageUrl) != null) {
+        continue;
+      }
+      Uint8List? bytes;
+      try {
+        if (isLocal) {
+          bytes = await File(imageUrl).readAsBytes();
+        } else {
+          bytes = ReaderImageCache.instance.memoryBytes(
+            source: source!,
+            comicId: widget.comicId,
+            episodeId: currentChapterId ?? '0',
+            imageUrl: imageUrl,
+          );
+        }
+      } catch (_) {
+        bytes = null;
+      }
+      if (bytes == null) {
+        continue;
+      }
+      if (await heightCache.rememberFromBytes(imageUrl, bytes) != null) {
+        measured += 1;
+      }
+    }
+
+    if (!mounted || measured == 0) {
+      return;
+    }
+    // Pick up the exact heights for pages that were still estimates.
+    setState(() {});
+  }
+
   Widget _buildContinuousView({
     required BoxConstraints constraints,
     required bool isVertical,
@@ -801,6 +944,13 @@ class _ReaderPageState extends State<ReaderPage> {
               constraints.maxWidth *
               SettingsController.instance.readerVerticalMarginPercent /
               100;
+          // Reserve the page's real height up front. An item that changes size
+          // after it has been laid out is exactly what makes this list jump and
+          // roll back when scrolling up — see [PageHeightCache].
+          final reservedHeight = _reservedHeightFor(
+            index,
+            constraints.maxWidth - sideMargin * 2,
+          );
           return Padding(
             padding: EdgeInsets.symmetric(horizontal: sideMargin),
             child: _ReaderImage(
@@ -814,9 +964,7 @@ class _ReaderPageState extends State<ReaderPage> {
               index: index + 1,
               isActive: index + 1 == currentPage,
               fitWidth: true,
-              // Lightweight placeholder only — height changes no longer re-anchor
-              // via estimated pixel offsets.
-              reservedHeight: constraints.maxHeight * 0.6,
+              reservedHeight: reservedHeight,
               onZoomChanged: (zoomed) {
                 if (!mounted) {
                   return;
@@ -1062,6 +1210,18 @@ class _ReaderPageState extends State<ReaderPage> {
 
       pageController?.dispose();
       _tearDownContinuousControllers();
+
+      // New chapter: recompute the height baseline from scratch, then warm the
+      // height cache from pages we already hold so the first layout of the
+      // vertical continuous list reserves real heights.
+      //
+      // The table is awaited because it only costs one small file read, and it
+      // is what makes resuming from history exact from the first frame: every
+      // page read in an earlier session already has a persisted ratio.
+      _chapterRatioCache = null;
+      _reservedHeights.clear();
+      await PageHeightCache.instance.initialize();
+      unawaited(_primePageHeights());
 
       final mode = SettingsController.instance.readerPageMode;
       final horizContinuous =
@@ -1919,7 +2079,6 @@ class _ReaderImage extends StatefulWidget {
     required this.isActive,
     this.fitWidth = false,
     this.reservedHeight,
-    this.onSizeChanged,
     this.onZoomChanged,
     super.key,
   });
@@ -1933,7 +2092,6 @@ class _ReaderImage extends StatefulWidget {
   final bool isActive;
   final bool fitWidth;
   final double? reservedHeight;
-  final ValueChanged<double>? onSizeChanged;
   final ValueChanged<bool>? onZoomChanged;
 
   @override
@@ -1996,20 +2154,37 @@ class _ReaderImageState extends State<_ReaderImage>
         }
 
         if (snapshot.hasError || snapshot.data == null) {
-          return _ReaderPageErrorCard(
+          final card = _ReaderPageErrorCard(
             index: widget.index,
             detail: snapshot.error?.toString() ?? 'Unknown error',
             onRetry: _retry,
           );
+          final reserved = widget.reservedHeight;
+          if (reserved == null) {
+            // Paged / horizontal modes size the item themselves; keep the card
+            // exactly as it was.
+            return card;
+          }
+          // Vertical continuous: keep the reserved slot so a failed page does
+          // not change the item's size either.
+          return SizedBox(
+            height: reserved,
+            child: Align(alignment: Alignment.topCenter, child: card),
+          );
         }
 
         if (widget.fitWidth) {
-          return _MeasuredReaderImage(
-            onSizeChanged: widget.onSizeChanged,
+          // Vertical continuous: the outer box owns the height so the item is
+          // exactly the same size while loading, after the image arrives, and
+          // for the rest of the session. [BoxFit.contain] keeps the image
+          // inside that box even if the reserved height was an estimate.
+          return SizedBox(
+            height: widget.reservedHeight,
             child: Image(
               image: MemoryImage(snapshot.data!),
               width: double.infinity,
-              fit: BoxFit.fitWidth,
+              height: double.infinity,
+              fit: BoxFit.contain,
               gaplessPlayback: true,
               filterQuality: FilterQuality.medium,
               errorBuilder: (context, error, stackTrace) =>
@@ -2052,7 +2227,11 @@ class _ReaderImageState extends State<_ReaderImage>
 
   Future<Uint8List> _loadBytes() async {
     if (widget.isLocal) {
-      return File(widget.imageUrl).readAsBytes();
+      final bytes = await File(widget.imageUrl).readAsBytes();
+      // Local pages never pass through ReaderImageCache, so record their height
+      // here — otherwise a local comic would stay on the estimated ratio.
+      await PageHeightCache.instance.rememberFromBytes(widget.imageUrl, bytes);
+      return bytes;
     }
     final source = PluginRuntimeController.instance.find(widget.sourceKey);
     if (source == null) {
@@ -2374,49 +2553,6 @@ class _MeasuredSizeState extends State<_MeasuredSize> {
       }
       _lastSize = size;
       widget.onSizeChanged(size);
-    });
-  }
-}
-
-class _MeasuredReaderImage extends StatefulWidget {
-  const _MeasuredReaderImage({
-    required this.child,
-    required this.onSizeChanged,
-  });
-
-  final Widget child;
-  final ValueChanged<double>? onSizeChanged;
-
-  @override
-  State<_MeasuredReaderImage> createState() => _MeasuredReaderImageState();
-}
-
-class _MeasuredReaderImageState extends State<_MeasuredReaderImage> {
-  final GlobalKey _key = GlobalKey();
-  double? _lastHeight;
-
-  @override
-  Widget build(BuildContext context) {
-    _scheduleMeasure();
-    return KeyedSubtree(key: _key, child: widget.child);
-  }
-
-  void _scheduleMeasure() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) {
-        return;
-      }
-      final renderObject = _key.currentContext?.findRenderObject();
-      if (renderObject is! RenderBox || !renderObject.hasSize) {
-        return;
-      }
-      final height = renderObject.size.height;
-      final previous = _lastHeight;
-      if (previous != null && (previous - height).abs() < 1) {
-        return;
-      }
-      _lastHeight = height;
-      widget.onSizeChanged?.call(height);
     });
   }
 }
