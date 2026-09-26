@@ -91,12 +91,17 @@ void main() {
   });
 
   group('fetchImageWithRetry (REQ-010)', () {
+    // Minimal payload passing the magic-byte check: PNG signature + padding.
+    final pngBytes = Uint8List.fromList(
+      [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0],
+    );
+
     test('returns bytes on first success without retrying', () async {
       var calls = 0;
       final bytes = await fetchImageWithRetry(
         () async {
           calls += 1;
-          return Uint8List.fromList([1, 2, 3]);
+          return pngBytes;
         },
         sleep: (_) async {},
       );
@@ -112,7 +117,7 @@ void main() {
           if (calls < 3) {
             throw StateError('transient');
           }
-          return Uint8List.fromList([9]);
+          return pngBytes;
         },
         sleep: (_) async {},
       );
@@ -145,6 +150,43 @@ void main() {
       );
       expect(bytes, isNull);
       expect(calls, 2);
+    });
+
+    test('HTML error page (anti-scraping 200) counts as a failure', () async {
+      // Regression: a 200 + HTML error page used to pass the empty-body
+      // check and land in the image cache as "downloaded" bytes.
+      var calls = 0;
+      final bytes = await fetchImageWithRetry(
+        () async {
+          calls += 1;
+          return Uint8List.fromList(
+            '<html><body>403 Forbidden</body></html>'.codeUnits,
+          );
+        },
+        maxRetries: 2,
+        sleep: (_) async {},
+      );
+      expect(bytes, isNull);
+      expect(calls, 3);
+    });
+
+    test('recognizes common image magic bytes', () {
+      final jpeg = Uint8List.fromList(
+        [0xFF, 0xD8, 0xFF, 0xE0, 0, 0, 0, 0, 0, 0, 0, 0],
+      );
+      final webp = Uint8List.fromList(
+        'RIFF'.codeUnits + [0, 0, 0, 0] + 'WEBP'.codeUnits,
+      );
+      final avif = Uint8List.fromList(
+        [0, 0, 0, 0] + 'ftyp'.codeUnits + 'avif'.codeUnits,
+      );
+      final html = Uint8List.fromList('<!DOCTYPE html>'.codeUnits);
+      expect(looksLikeImage(pngBytes), isTrue);
+      expect(looksLikeImage(jpeg), isTrue);
+      expect(looksLikeImage(webp), isTrue);
+      expect(looksLikeImage(avif), isTrue);
+      expect(looksLikeImage(html), isFalse);
+      expect(looksLikeImage(Uint8List.fromList([1, 2, 3])), isFalse);
     });
 
     test('respects a custom maxRetries', () async {

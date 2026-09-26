@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
@@ -5,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
 import '../localization/app_localizations.dart';
+import '../logging/app_logger.dart';
 import '../network/network_client_factory.dart';
 import '../plugin_runtime/models.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
@@ -279,8 +281,18 @@ class _SourcesPageState extends State<SourcesPage> {
         try {
           await controller.installFromUrl(item.resolvedUrl(indexUrl));
           installedCount += 1;
-        } catch (_) {
-          failedNames.add(item.name.isEmpty ? item.key : item.name);
+        } catch (error) {
+          final name = item.name.isEmpty ? item.key : item.name;
+          failedNames.add(name);
+          // The SnackBar only shows names; keep the actual cause (missing
+          // file / network failure / JS parse error) in the log so the
+          // failure is diagnosable without re-running the install.
+          unawaited(
+            AppLogger.instance.warning(
+              '[sources] Index install failed for "$name" '
+              '(${item.fileName ?? item.url ?? 'no target'}): $error',
+            ),
+          );
         }
       }
       if (!mounted) {
@@ -362,8 +374,18 @@ class _SourcesPageState extends State<SourcesPage> {
             );
           }
           installedCount += 1;
-        } catch (_) {
-          failedNames.add(item.name.isEmpty ? item.key : item.name);
+        } catch (error) {
+          final name = item.name.isEmpty ? item.key : item.name;
+          failedNames.add(name);
+          // The SnackBar only shows names; keep the actual cause (missing
+          // file / network failure / JS parse error) in the log so the
+          // failure is diagnosable without re-running the install.
+          unawaited(
+            AppLogger.instance.warning(
+              '[sources] Index install failed for "$name" '
+              '(${item.fileName ?? item.url ?? 'no target'}): $error',
+            ),
+          );
         }
       }
       if (!mounted) {

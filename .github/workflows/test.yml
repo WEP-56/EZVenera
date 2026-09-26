@@ -1,0 +1,30 @@
+name: test
+
+# Automatic regression path (C-11 review finding): the artifact/release
+# workflows stay manual/tag-triggered, but analyze + test must run on every
+# push and PR so the test suite actually guards regressions.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  analyze-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test

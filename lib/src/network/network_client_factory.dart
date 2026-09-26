@@ -196,8 +196,21 @@ class _NetworkLogInterceptor extends Interceptor {
 
   @override
   void onResponse(Response response, ResponseInterceptorHandler handler) {
+    final request = response.requestOptions;
+    if (response.statusCode == 407) {
+      // A proxy requiring credentials this client cannot send: dart:io's
+      // `PROXY host:port` carries no userinfo (ADR-NW-2), so an
+      // authenticated proxy only works for the rhttp/WebDAV path. Call it
+      // out explicitly instead of letting it surface as a generic failure.
+      unawaited(
+        AppLogger.instance.warning(
+          '[network] ${request.method} ${request.uri} -> 407: proxy '
+          'requires authentication; proxy credentials are currently only '
+          'applied to WebDAV (rhttp) requests (ADR-NW-2)',
+        ),
+      );
+    }
     if (logSuccess) {
-      final request = response.requestOptions;
       unawaited(
         AppLogger.instance.info(
           '[network] ${request.method} ${request.uri} '

@@ -760,8 +760,8 @@ class _NetworkSettingsPageState extends State<_NetworkSettingsPage> {
                           child: Text(
                             _text(
                               l10n,
-                              '保存后立即生效，无需重启。如需代理认证，请使用 http://用户名:密码@主机:端口 格式；凭据不会被保存到设备或备份中。',
-                              'Applies immediately, no restart needed. For authenticated proxies use http://user:pass@host:port; credentials are never saved to the device or backups.',
+                              '保存后立即生效，无需重启。如需代理认证，可使用 http://用户名:密码@主机:端口 格式；凭据不会被保存到设备或备份中。注意：认证代理目前仅对 WebDAV 同步生效，其余请求经代理时不携带凭据。',
+                              'Applies immediately, no restart needed. For authenticated proxies you may use http://user:pass@host:port; credentials are never saved to the device or backups. Note: proxy authentication currently only applies to WebDAV sync; other requests sent through the proxy carry no credentials.',
                             ),
                             style: Theme.of(context).textTheme.bodySmall,
                           ),

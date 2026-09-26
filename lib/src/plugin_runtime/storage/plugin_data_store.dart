@@ -40,6 +40,9 @@ class PluginDataStore {
     if (await file.exists()) {
       await file.delete();
     }
+    // Drop the cached store (and its write queue) so a deleted source leaves
+    // nothing behind; reinstalling the same key creates a fresh store.
+    _stores.remove(sourceKey);
   }
 
   String _filePath(String sourceKey) => p.join(rootPath, '$sourceKey.json');
