@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
+import 'package:flutter/services.dart' show rootBundle;
 
 import '../logging/app_logger.dart';
 import '../settings/settings_controller.dart';
@@ -54,6 +55,38 @@ class NetworkClientFactory {
 
   Dio? _sharedDio;
   ProxyConfig? _sharedConfig;
+
+  /// TLS trust store built from the bundled Mozilla root bundle
+  /// (assets/certs/cacert.pem — the same set curl/Python certifi ship).
+  ///
+  /// dart:io validates certificates against the OS trust store, which on
+  /// old devices (e.g. Android 8.1) misses newer roots such as Sectigo Root
+  /// R46 — some CDNs (ZeroSSL) chain exclusively to them, producing
+  /// CERTIFICATE_VERIFY_FAILED. Bundling keeps full certificate verification
+  /// intact while staying current; it is a newer trust store, not a bypass.
+  SecurityContext? _bundledRoots;
+  Future<void>? _initFuture;
+
+  /// Loads the bundled root certificates once. Awaits before the first
+  /// network request (main.dart) so every client benefits from it.
+  Future<void> ensureInitialized() => _initFuture ??= _loadBundledRoots();
+
+  Future<void> _loadBundledRoots() async {
+    try {
+      final data = await rootBundle.load('assets/certs/cacert.pem');
+      final context = SecurityContext();
+      context.setTrustedCertificatesBytes(data.buffer.asUint8List());
+      _bundledRoots = context;
+    } catch (error) {
+      // Fall back to the system trust store rather than failing startup.
+      unawaited(
+        AppLogger.instance.warning(
+          '[network] Bundled root certificates unavailable ($error); '
+          'using the system trust store',
+        ),
+      );
+    }
+  }
 
   /// Invalid custom-proxy URLs are warned about once per distinct URL, not
   /// once per request (a misconfigured proxy must not flood the log).
@@ -168,7 +201,9 @@ class NetworkClientFactory {
   HttpClientAdapter _createAdapter(ProxyConfig config) {
     return IOHttpClientAdapter(
       createHttpClient: () {
-        final client = HttpClient();
+        // null falls back to the system trust store if the bundle failed to
+        // load (see [_loadBundledRoots]).
+        final client = HttpClient(context: _bundledRoots);
         switch (config.mode) {
           case ProxyMode.custom:
             final authority = config.customAuthority;
