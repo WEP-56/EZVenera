@@ -1847,6 +1847,9 @@ class _ReaderPageState extends State<ReaderPage> {
   /// changes prompt many E-Ink drivers to run a global refresh, clearing the
   /// ghosting accumulated while reading.
   void _flashEinkRefresh() {
+    // Callers reach here after real IO (e.g. history recording); the State
+    // may have been disposed during the await.
+    if (!mounted) return;
     _einkFlashTimer?.cancel();
     setState(() => _showEinkFlash = true);
     _einkFlashTimer = Timer(const Duration(milliseconds: 220), () {
@@ -2264,6 +2267,9 @@ class _ReaderImageState extends State<_ReaderImage>
   /// corrupted disk-cache file. Bust the cache so the retry re-downloads
   /// instead of decoding the same bad bytes (REQ-009).
   Future<void> _retryAfterDecodeFailure() async {
+    // Retrying is exactly when we need the failure logged again if it
+    // repeats: re-arm the once-per-image dedup (see _decodeErrorCard).
+    _decodeFailureLogged = false;
     if (!widget.isLocal) {
       final source = PluginRuntimeController.instance.find(widget.sourceKey);
       if (source != null) {
@@ -2275,6 +2281,9 @@ class _ReaderImageState extends State<_ReaderImage>
         );
       }
     }
+    // The cache eviction above is real IO; the State may have been disposed
+    // while the user left the page after tapping retry.
+    if (!mounted) return;
     _retry();
   }
 

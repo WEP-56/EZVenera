@@ -1,35 +1,38 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
+
+import '../../utils/json_file_store.dart';
 
 class PluginDataStore {
   PluginDataStore(this.rootPath);
 
   final String rootPath;
 
+  /// One store per source key: the write queue lives on the store instance,
+  /// so concurrent writes to the same source are serialized and atomic
+  /// instead of racing a bare writeAsString (F-01).
+  final Map<String, JsonFileStore> _stores = {};
+
   Future<void> ensureInitialized() async {
     await Directory(rootPath).create(recursive: true);
   }
 
-  Future<Map<String, dynamic>> read(String sourceKey) async {
-    final file = File(_filePath(sourceKey));
-    if (!await file.exists()) {
-      return <String, dynamic>{};
-    }
+  JsonFileStore _storeFor(String sourceKey) {
+    return _stores.putIfAbsent(
+      sourceKey,
+      () => JsonFileStore(File(_filePath(sourceKey))),
+    );
+  }
 
-    final content = await file.readAsString();
-    final decoded = jsonDecode(content);
-    if (decoded is Map<String, dynamic>) {
-      return decoded;
-    }
-    return <String, dynamic>{};
+  Future<Map<String, dynamic>> read(String sourceKey) async {
+    await ensureInitialized();
+    return _storeFor(sourceKey).read();
   }
 
   Future<void> write(String sourceKey, Map<String, dynamic> value) async {
-    final file = File(_filePath(sourceKey));
-    await file.parent.create(recursive: true);
-    await file.writeAsString(jsonEncode(value));
+    await ensureInitialized();
+    await _storeFor(sourceKey).write(value);
   }
 
   Future<void> delete(String sourceKey) async {
@@ -37,6 +40,9 @@ class PluginDataStore {
     if (await file.exists()) {
       await file.delete();
     }
+    // Drop the cached store (and its write queue) so a deleted source leaves
+    // nothing behind; reinstalling the same key creates a fresh store.
+    _stores.remove(sourceKey);
   }
 
   String _filePath(String sourceKey) => p.join(rootPath, '$sourceKey.json');

@@ -87,3 +87,4 @@ flutter:
   uses-material-design: true
   assets:
     - assets/init.js
+    - assets/certs/cacert.pem

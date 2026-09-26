@@ -10,23 +10,31 @@ class PluginJsPool {
   static const _maxInstances = 4;
 
   final List<_IsolateJsEngine> _instances = [];
-  bool _isInitializing = false;
 
-  Future<void> ensureInitialized() async {
-    if (_instances.isNotEmpty || _isInitializing) {
-      while (_isInitializing) {
-        await Future<void>.delayed(const Duration(milliseconds: 10));
+  /// Cached initialization future: concurrent callers await the same
+  /// initialization instead of polling a flag. A failure clears the cache
+  /// so the next call retries instead of hanging forever.
+  Future<void>? _initFuture;
+
+  Future<void> ensureInitialized() => _initFuture ??= _initialize();
+
+  Future<void> _initialize() async {
+    try {
+      final buffer = await rootBundle.load('assets/init.js');
+      final jsInit = buffer.buffer.asUint8List();
+      for (var index = 0; index < _maxInstances; index++) {
+        _instances.add(await _IsolateJsEngine.create(jsInit));
       }
-      return;
+    } on Object {
+      // Drop partially spawned engines so a retry cannot accumulate instances
+      // beyond the pool capacity; the spawned isolates leak until process
+      // exit, which is acceptable for a failure path this rare.
+      _instances.clear();
+      // Reset so a later call can retry; the error still propagates to the
+      // caller that triggered this initialization.
+      _initFuture = null;
+      rethrow;
     }
-
-    _isInitializing = true;
-    final buffer = await rootBundle.load('assets/init.js');
-    final jsInit = buffer.buffer.asUint8List();
-    for (var index = 0; index < _maxInstances; index++) {
-      _instances.add(_IsolateJsEngine(jsInit));
-    }
-    _isInitializing = false;
   }
 
   Future<dynamic> execute(String jsFunction, List<dynamic> args) async {
@@ -49,16 +57,26 @@ class _IsolateJsEngineInitParams {
 }
 
 class _IsolateJsEngine {
-  _IsolateJsEngine(this.jsInit) {
+  _IsolateJsEngine._(this.jsInit) {
     _receivePort = ReceivePort();
     _receivePort!.listen(_onMessage);
-    Isolate.spawn(
+    _spawnFuture = Isolate.spawn(
       _run,
       _IsolateJsEngineInitParams(_receivePort!.sendPort, jsInit),
     );
   }
 
+  /// Creates the engine and surfaces spawn failures at pool initialization
+  /// time — the spawn future used to be discarded, so a failed spawn left an
+  /// engine whose dead isolate would never answer its tasks.
+  static Future<_IsolateJsEngine> create(Uint8List jsInit) async {
+    final engine = _IsolateJsEngine._(jsInit);
+    await engine._spawnFuture;
+    return engine;
+  }
+
   final Uint8List jsInit;
+  late final Future<void> _spawnFuture;
   ReceivePort? _receivePort;
   SendPort? _sendPort;
   int _counter = 0;
@@ -100,18 +118,23 @@ class _IsolateJsEngine {
         continue;
       }
 
+      JSInvokable? jsFunc;
       try {
-        final jsFunc = engine.evaluate(message.jsFunction);
-        if (jsFunc is! JSInvokable) {
+        final evaluated = engine.evaluate(message.jsFunction);
+        if (evaluated is! JSInvokable) {
           throw StateError(
             'The provided code does not evaluate to a function.',
           );
         }
+        jsFunc = evaluated;
         final result = jsFunc.invoke(message.args);
-        jsFunc.free();
         params.sendPort.send(_TaskResult(message.id, result, null));
       } catch (error) {
         params.sendPort.send(_TaskResult(message.id, null, error.toString()));
+      } finally {
+        // The native JSInvokable handle must be released even when invoke
+        // throws, otherwise repeated plugin errors leak QuickJS memory.
+        jsFunc?.free();
       }
     }
   }
