@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 
+import '../../logging/app_logger.dart';
 import '../../network/network_client_factory.dart';
 import '../models.dart';
 import '../plugin_runtime.dart';
@@ -17,6 +19,12 @@ class PluginImageLoader {
     'user-agent':
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
   };
+
+  /// Image CDNs occasionally answer 5xx for single requests (origin hiccup,
+  /// flaky device networks). Retry the identical request briefly before
+  /// surfacing the failure or invoking the plugin's onLoadFailed.
+  static const _transientRetryLimit = 2;
+  static const _transientRetryDelay = Duration(milliseconds: 600);
 
   Future<Uint8List> loadComicImage({
     required PluginSource source,
@@ -46,6 +54,7 @@ class PluginImageLoader {
     String fallbackUrl,
     PluginImageRequest request, {
     required int remainingRetries,
+    int transientRetries = _transientRetryLimit,
   }) async {
     // Created per request so proxy settings apply immediately (REQ-007).
     final dio = NetworkClientFactory.instance.httpClient(
@@ -64,11 +73,28 @@ class PluginImageLoader {
         ),
       );
 
-      if (response.statusCode == null ||
-          response.statusCode! < 200 ||
-          response.statusCode! >= 300 ||
+      final code = response.statusCode;
+      if (code == null ||
+          code < 200 ||
+          code >= 300 ||
           response.data == null) {
-        throw StateError('Image request failed: HTTP ${response.statusCode}');
+        // 5xx is treated as transient: retry the identical request before
+        // failing the page (and before the plugin's onLoadFailed gets a say).
+        if (code != null && code >= 500 && transientRetries > 0) {
+          unawaited(
+            AppLogger.instance.warning(
+              '[image] GET $url -> $code, retrying ($transientRetries left)',
+            ),
+          );
+          await Future<void>.delayed(_transientRetryDelay);
+          return await _loadBytes(
+            fallbackUrl,
+            request,
+            remainingRetries: remainingRetries,
+            transientRetries: transientRetries - 1,
+          );
+        }
+        throw StateError('Image request failed: HTTP ${code ?? 'null'}: $url');
       }
 
       var bytes = Uint8List.fromList(response.data!);
