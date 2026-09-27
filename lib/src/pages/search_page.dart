@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../localization/app_localizations.dart';
 import '../plugin_runtime/models.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
+import '../plugin_runtime/result.dart';
 import '../plugin_runtime/services/plugin_image_loader.dart';
 import '../settings/settings_controller.dart';
 import '../state/app_state_controller.dart';
@@ -475,20 +476,22 @@ class _SearchPageState extends State<SearchPage> {
           return;
         }
 
+        // Stagger the fan-out: all sources dialing the same proxy/network in
+        // the same instant makes every concurrent TLS handshake compete, and
+        // one transient blip then kills the whole batch at once (observed on
+        // a device behind a LAN proxy). Sequential flows like category
+        // browsing never hit this, which made search look "broken" while
+        // everything else worked. A small per-source delay keeps the burst
+        // gentle; total wall time is unaffected because requests still run
+        // concurrently after the stagger.
+        if (index > 0) {
+          await Future<void>.delayed(
+            Duration(milliseconds: 120 * index.clamp(0, 20)),
+          );
+        }
+
         try {
-          final response = switch (search) {
-            PluginSearchCapability(loadPage: final loadPage?) =>
-              await loadPage(keyword, 1, _defaultOptionsFor(source)).timeout(
-                aggregateSourceTimeout,
-                onTimeout: () => throw TimeoutException(l10n.searchTimeout),
-              ),
-            PluginSearchCapability(loadNext: final loadNext?) =>
-              await loadNext(keyword, null, _defaultOptionsFor(source)).timeout(
-                aggregateSourceTimeout,
-                onTimeout: () => throw TimeoutException(l10n.searchTimeout),
-              ),
-            _ => throw StateError(l10n.searchLoaderMissing),
-          };
+          final response = await _runSearchRequest(search, keyword, source, l10n);
           if (response.isError) {
             throw StateError(response.errorMessage ?? 'Unknown error');
           }
@@ -501,14 +504,45 @@ class _SearchPageState extends State<SearchPage> {
             ),
           );
         } catch (error) {
-          _updateAggregateResult(
-            run: run,
-            index: index,
-            next: _AggregateSearchResult.error(
-              source: source,
-              error: _searchErrorMessage(error, l10n),
-            ),
-          );
+          // One bounded retry with a short backoff: a transient handshake /
+          // proxy blip should not surface as a permanent error card when a
+          // single immediate re-attempt succeeds (category requests, being
+          // one-off and sequential, effectively never see this).
+          try {
+            await Future<void>.delayed(const Duration(seconds: 2));
+            final retried = await _runSearchRequest(
+              search,
+              keyword,
+              source,
+              l10n,
+            );
+            if (retried.isError) {
+              throw StateError(retried.errorMessage ?? 'Unknown error');
+            }
+            if (!mounted || run != searchRun) {
+              return;
+            }
+            _updateAggregateResult(
+              run: run,
+              index: index,
+              next: _AggregateSearchResult.loaded(
+                source: source,
+                comics: retried.data,
+              ),
+            );
+          } catch (retryError) {
+            if (!mounted || run != searchRun) {
+              return;
+            }
+            _updateAggregateResult(
+              run: run,
+              index: index,
+              next: _AggregateSearchResult.error(
+                source: source,
+                error: _searchErrorMessage(retryError, l10n),
+              ),
+            );
+          }
         }
       }),
     );
@@ -520,6 +554,28 @@ class _SearchPageState extends State<SearchPage> {
       isSearching = false;
     });
     unawaited(_persistState());
+  }
+
+  /// Runs one search request against [search] with the aggregate timeout
+  /// applied. Kept separate so the stagger/retry policy in
+  /// [_searchAggregated] stays readable.
+  Future<PluginResult<List<PluginComic>>> _runSearchRequest(
+    PluginSearchCapability search,
+    String keyword,
+    PluginSource source,
+    AppLocalizations l10n,
+  ) {
+    final response = switch (search) {
+      PluginSearchCapability(loadPage: final loadPage?) =>
+        loadPage(keyword, 1, _defaultOptionsFor(source)),
+      PluginSearchCapability(loadNext: final loadNext?) =>
+        loadNext(keyword, null, _defaultOptionsFor(source)),
+      _ => throw StateError(l10n.searchLoaderMissing),
+    };
+    return response.timeout(
+      aggregateSourceTimeout,
+      onTimeout: () => throw TimeoutException(l10n.searchTimeout),
+    );
   }
 
   void _updateAggregateResult({

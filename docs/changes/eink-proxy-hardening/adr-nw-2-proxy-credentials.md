@@ -24,7 +24,16 @@
 ## Consequences
 
 - 简单、无凭证泄露面；认证代理用户首版需要等后续版本。
-- 与 rhttp/Dio 的 URL 内联认证天然兼容（无凭据持久化时直接用 URL）。
+- rhttp（WebDAV）路径支持 URL 内联认证：认证代理下的 WebDAV 同步可用。
+- **Dio（dart:io HttpClient）路径不支持**：`PROXY host:port` 语法不携带
+  凭据，也未接 `authenticateProxy` 回调，认证代理下插件请求/图片下载会
+  收到 407 并按普通网络失败处理。处置：设置页提示已注明"认证代理目前
+  仅对 WebDAV 同步生效"；网络日志拦截器对 407 输出专门警告。后续可经
+  `HttpClient.authenticateProxy` 补齐 Dio 路径。
+- **遗留问题（显式记录，本次未处置）**：WebDAV 密码目前明文持久化于
+  `app_settings.json` 并随 `toBackupJson`/`exportToPath` 进入备份与远端，
+  与 NFR-002 冲突；与代理凭据不同，它未在本次变更中剥离。计划按
+  Decision 所述路线迁移 `flutter_secure_storage`。
 
 ## Alternatives
 

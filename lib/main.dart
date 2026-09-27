@@ -7,6 +7,7 @@ import 'package:window_manager/window_manager.dart';
 
 import 'src/app.dart';
 import 'src/logging/app_logger.dart';
+import 'src/network/network_client_factory.dart';
 import 'src/state/app_state_controller.dart';
 
 Future<void> main() async {
@@ -15,6 +16,13 @@ Future<void> main() async {
     await AppLogger.instance.initialize();
   } catch (_) {
     // The app should still start if the diagnostics log cannot be opened.
+  }
+  try {
+    // Load the bundled TLS root bundle before any network client is built
+    // (Android < 9 misses newer roots such as Sectigo Root R46).
+    await NetworkClientFactory.instance.ensureInitialized();
+  } catch (_) {
+    // The factory falls back to the system trust store.
   }
   FlutterError.onError = (details) {
     FlutterError.presentError(details);
