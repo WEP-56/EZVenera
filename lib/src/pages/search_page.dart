@@ -44,7 +44,11 @@ class _SearchPageState extends State<SearchPage> {
   String? nextToken;
   String lastKeyword = '';
   bool searchFormExpanded = false;
-  bool aggregatedSearch = false;
+
+  /// E-Ink defaults the aggregate toggle on: the source-labeled result view
+  /// (one rounded tag per source, tap to see that source's hits) is the most
+  /// readable shape on a 1-bit panel.
+  bool aggregatedSearch = SettingsController.instance.einkMode;
   int searchRun = 0;
   List<String> searchHistory = const <String>[];
   bool searchHistoryPointerActive = false;
@@ -1022,7 +1026,7 @@ class _AggregateSearchResult {
   final String? error;
 }
 
-class _AggregateSearchResultsView extends StatelessWidget {
+class _AggregateSearchResultsView extends StatefulWidget {
   const _AggregateSearchResultsView({
     required this.results,
     required this.onTap,
@@ -1037,16 +1041,106 @@ class _AggregateSearchResultsView extends StatelessWidget {
   final ValueChanged<PluginComic> onTap;
 
   @override
+  State<_AggregateSearchResultsView> createState() =>
+      _AggregateSearchResultsViewState();
+}
+
+class _AggregateSearchResultsViewState
+    extends State<_AggregateSearchResultsView> {
+  /// Which source's results are currently shown in the E-Ink layout.
+  int _selectedIndex = 0;
+
+  @override
   Widget build(BuildContext context) {
+    // E-Ink layout: one rounded-top tag per source wrapping into multiple
+    // rows; tapping a tag swaps in that source's results directly (no
+    // animation, matching the categories page). Non-E-Ink keeps the
+    // stacked per-source sections.
+    if (SettingsController.instance.einkMode) {
+      final index = _selectedIndex.clamp(0, widget.results.length - 1);
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Align(
+            alignment: Alignment.topLeft,
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              children: [
+                for (var i = 0; i < widget.results.length; i++)
+                  _aggregateSourceTag(
+                    context,
+                    result: widget.results[i],
+                    selected: i == index,
+                    onTap: () => setState(() => _selectedIndex = i),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 4),
+          _AggregateSourceSection(
+            result: widget.results[index],
+            onTap: widget.onTap,
+          ),
+        ],
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (final result in results)
+        for (final result in widget.results)
           Padding(
             padding: const EdgeInsets.only(bottom: 22),
-            child: _AggregateSourceSection(result: result, onTap: onTap),
+            child: _AggregateSourceSection(result: result, onTap: widget.onTap),
           ),
       ],
+    );
+  }
+
+  /// Rounded-top source tag, mirroring the categories page E-Ink tabs: the
+  /// selected state floats via a stronger outline plus a drop shadow instead
+  /// of a color fill (a fill would turn the tag solid black on the 1-bit
+  /// panel).
+  Widget _aggregateSourceTag(
+    BuildContext context, {
+    required _AggregateSearchResult result,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    final theme = Theme.of(context);
+    final loadingSuffix = result.isLoading ? ' …' : '';
+    return InkWell(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
+          border: Border.all(
+            color: selected
+                ? theme.colorScheme.onSurface
+                : theme.colorScheme.outlineVariant,
+            width: selected ? 1.4 : 1,
+          ),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: theme.colorScheme.shadow.withValues(alpha: 0.35),
+                    blurRadius: 6,
+                    offset: const Offset(0, -2),
+                  ),
+                ]
+              : null,
+        ),
+        child: Text(
+          '${result.source.name}$loadingSuffix',
+          style: theme.textTheme.labelLarge?.copyWith(
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+          ),
+        ),
+      ),
     );
   }
 }
