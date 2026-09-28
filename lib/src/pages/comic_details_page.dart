@@ -631,8 +631,10 @@ class _ComicDetailsBody extends StatelessWidget {
             if (description.isNotEmpty)
               Padding(
                 padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 0),
-                child: _SectionCard(
+                child: _CollapsibleCard(
                   title: 'Description',
+                  // E-Ink mode starts collapsed to reduce page refreshes.
+                  initiallyExpanded: !SettingsController.instance.einkMode,
                   child: GestureDetector(
                     onLongPress: () =>
                         _copyToClipboard(context, description, 'Description'),
@@ -649,8 +651,9 @@ class _ComicDetailsBody extends StatelessWidget {
               const SizedBox(height: 16),
               Padding(
                 padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 0),
-                child: _SectionCard(
+                child: _CollapsibleCard(
                   title: 'Tags',
+                  initiallyExpanded: !SettingsController.instance.einkMode,
                   child: _TagsBlock(
                     tags: details.tags,
                     canSearchTags: source?.comic?.onClickTag != null,
@@ -1408,11 +1411,20 @@ class _CoverCardState extends State<_CoverCard> {
 }
 
 class _SectionCard extends StatelessWidget {
-  const _SectionCard({required this.title, required this.child, this.trailing});
+  const _SectionCard({
+    required this.title,
+    required this.child,
+    this.trailing,
+    this.showChild = true,
+  });
 
   final String title;
   final Widget child;
   final Widget? trailing;
+
+  /// When false the card renders only its title row (used by the
+  /// collapsible wrapper in its collapsed state).
+  final bool showChild;
 
   @override
   Widget build(BuildContext context) {
@@ -1441,10 +1453,46 @@ class _SectionCard extends StatelessWidget {
               ?trailing,
             ],
           ),
-          const SizedBox(height: 16),
-          child,
+          if (showChild) ...[const SizedBox(height: 16), child],
         ],
       ),
+    );
+  }
+}
+
+/// Section card that collapses to its title row. The toggle button sits at
+/// the right edge of the title row; E-Ink mode defaults to collapsed and
+/// toggles instantly (no animation, per e-ink display constraints).
+class _CollapsibleCard extends StatefulWidget {
+  const _CollapsibleCard({
+    required this.title,
+    required this.child,
+    this.initiallyExpanded = true,
+  });
+
+  final String title;
+  final Widget child;
+  final bool initiallyExpanded;
+
+  @override
+  State<_CollapsibleCard> createState() => _CollapsibleCardState();
+}
+
+class _CollapsibleCardState extends State<_CollapsibleCard> {
+  late bool _expanded = widget.initiallyExpanded;
+
+  @override
+  Widget build(BuildContext context) {
+    return _SectionCard(
+      title: widget.title,
+      showChild: _expanded,
+      trailing: IconButton(
+        visualDensity: VisualDensity.compact,
+        icon: Icon(_expanded ? Icons.expand_less : Icons.expand_more),
+        tooltip: _expanded ? 'Collapse' : 'Expand',
+        onPressed: () => setState(() => _expanded = !_expanded),
+      ),
+      child: widget.child,
     );
   }
 }

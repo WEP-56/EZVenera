@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../plugin_runtime/models.dart';
 import '../plugin_runtime/result.dart';
+import '../settings/settings_controller.dart';
 import '../widgets/comic_card_grid.dart';
 import '../widgets/comic_display_toggle.dart';
 import 'comic_details_page.dart';
@@ -87,24 +88,37 @@ class _CategoryComicsPageState extends State<CategoryComicsPage> {
         title: Text(widget.pageTitle),
         actions: const [ComicDisplayToggle(dense: true), SizedBox(width: 4)],
       ),
-      body: Column(
-        children: [
-          if (_options.isNotEmpty)
-            ClipRect(
-              child: AnimatedAlign(
-                duration: const Duration(milliseconds: 250),
-                curve: Curves.easeOutCubic,
-                alignment: Alignment.topCenter,
-                heightFactor: _optionsVisible ? 1.0 : 0.0,
-                child: AnimatedOpacity(
-                  duration: const Duration(milliseconds: 180),
-                  opacity: _optionsVisible ? 1.0 : 0.0,
-                  child: _buildOptions(),
+      body: Builder(
+        builder: (context) {
+          // E-Ink mode: switch instantly, no transition animations
+          // (reduces ghosting / full-screen refreshes on e-ink panels).
+          final isEink = SettingsController.instance.einkMode;
+          final alignDuration = isEink
+              ? Duration.zero
+              : const Duration(milliseconds: 250);
+          final opacityDuration = isEink
+              ? Duration.zero
+              : const Duration(milliseconds: 180);
+          return Column(
+            children: [
+              if (_options.isNotEmpty)
+                ClipRect(
+                  child: AnimatedAlign(
+                    duration: alignDuration,
+                    curve: Curves.easeOutCubic,
+                    alignment: Alignment.topCenter,
+                    heightFactor: _optionsVisible ? 1.0 : 0.0,
+                    child: AnimatedOpacity(
+                      duration: opacityDuration,
+                      opacity: _optionsVisible ? 1.0 : 0.0,
+                      child: _buildOptions(),
+                    ),
+                  ),
                 ),
-              ),
-            ),
-          Expanded(child: _buildBody()),
-        ],
+              Expanded(child: _buildBody()),
+            ],
+          );
+        },
       ),
     );
   }

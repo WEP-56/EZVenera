@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../plugin_runtime/models.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
+import '../settings/settings_controller.dart';
 import '../state/app_state_controller.dart';
 import 'category_comics_page.dart';
 
@@ -19,6 +20,10 @@ class _CategoriesPageState extends State<CategoriesPage>
     with TickerProviderStateMixin {
   TabController? _controller;
 
+  /// Selected source for the E-Ink layout (multi-row tab labels, no
+  /// TabBarView swiping).
+  int _einkIndex = 0;
+
   List<PluginSource> get _sources {
     return PluginRuntimeController.instance.sources
         .where((source) => source.category != null)
@@ -30,6 +35,7 @@ class _CategoriesPageState extends State<CategoriesPage>
     super.initState();
     PluginRuntimeController.instance.addListener(_onSourcesChanged);
     _resetController();
+    _einkIndex = _restoredIndex(_sources);
   }
 
   @override
@@ -66,6 +72,44 @@ class _CategoriesPageState extends State<CategoriesPage>
       );
     }
 
+    // E-Ink layout: source labels as rounded-top tab rectangles wrapping
+    // into multiple rows; tapping switches instantly (no TabBarView, no
+    // indicator/page animations).
+    if (SettingsController.instance.einkMode) {
+      final index = _einkIndex.clamp(0, sources.length - 1);
+      return SafeArea(
+        child: Column(
+          children: [
+            Material(
+              color: theme.colorScheme.surface,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                child: Align(
+                  alignment: Alignment.topLeft,
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: [
+                      for (var i = 0; i < sources.length; i++)
+                        _einkSourceTab(
+                          context,
+                          label: sources[i].category!.title.isEmpty
+                              ? sources[i].name
+                              : sources[i].category!.title,
+                          selected: i == index,
+                          onTap: () => _selectEinkSource(i),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Expanded(child: _CategorySourcePage(source: sources[index])),
+          ],
+        ),
+      );
+    }
+
     return SafeArea(
       child: Column(
         children: [
@@ -98,10 +142,83 @@ class _CategoriesPageState extends State<CategoriesPage>
     );
   }
 
+  Widget _einkSourceTab(
+    BuildContext context, {
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    final theme = Theme.of(context);
+    // E-Ink high-contrast themes are pure black/white: a filled selected
+    // state would turn the label solid black and unreadable. Selected tabs
+    // therefore "float" via a drop shadow plus a stronger outline instead
+    // of a color fill.
+    return InkWell(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
+          border: Border.all(
+            color: selected
+                ? theme.colorScheme.onSurface
+                : theme.colorScheme.outlineVariant,
+            width: selected ? 1.4 : 1,
+          ),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                    blurRadius: 4,
+                    offset: const Offset(0, 3),
+                  ),
+                ]
+              : const <BoxShadow>[],
+        ),
+        child: Text(
+          label,
+          style: theme.textTheme.labelLarge?.copyWith(
+            fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
+            color: selected
+                ? theme.colorScheme.onSurface
+                : theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _selectEinkSource(int index) {
+    final sources = _sources;
+    if (index < 0 || index >= sources.length) {
+      return;
+    }
+    setState(() => _einkIndex = index);
+    unawaited(
+      AppStateController.instance.setString(
+        'categories.selectedSourceKey',
+        sources[index].key,
+      ),
+    );
+  }
+
   void _onSourcesChanged() {
     if (mounted) {
       setState(_resetController);
     }
+  }
+
+  int _restoredIndex(List<PluginSource> sources) {
+    final restoredKey = AppStateController.instance.getString(
+      'categories.selectedSourceKey',
+    );
+    if (restoredKey == null || sources.isEmpty) {
+      return 0;
+    }
+    final index = sources.indexWhere((source) => source.key == restoredKey);
+    return index >= 0 ? index : 0;
   }
 
   void _resetController() {
@@ -109,22 +226,10 @@ class _CategoriesPageState extends State<CategoriesPage>
     _controller?.removeListener(_onTabChanged);
     _controller?.dispose();
     final length = math.max(1, sources.length);
-    final restoredKey = AppStateController.instance.getString(
-      'categories.selectedSourceKey',
-    );
-    var initialIndex = 0;
-    if (restoredKey != null && sources.isNotEmpty) {
-      final restoredIndex = sources.indexWhere(
-        (source) => source.key == restoredKey,
-      );
-      if (restoredIndex >= 0) {
-        initialIndex = restoredIndex;
-      }
-    }
     _controller = TabController(
       length: length,
       vsync: this,
-      initialIndex: sources.isEmpty ? 0 : initialIndex,
+      initialIndex: sources.isEmpty ? 0 : _restoredIndex(sources),
     );
     _controller!.addListener(_onTabChanged);
   }
