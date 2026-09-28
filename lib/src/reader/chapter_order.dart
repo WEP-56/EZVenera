@@ -1,3 +1,4 @@
+import '../settings/settings_controller.dart';
 import '../state/app_state_controller.dart';
 
 /// How the chapter section of the details page lays out chapters.
@@ -15,12 +16,17 @@ String _chapterDisplayKey(String sourceKey, String comicId) {
   return 'reader.chapterDisplay.$source.$comic.mode';
 }
 
-/// Per-comic chapter display mode; defaults to list (the historical look)
-/// for comics that never had it toggled.
+/// Per-comic chapter display mode. Comics that were never toggled default
+/// to list (the historical look) — except in E-Ink mode, where the compact
+/// grid is the default (fewer, denser refreshes).
 ChapterDisplayMode chapterDisplayModeFor(String sourceKey, String comicId) {
-  return AppStateController.instance
-              .getString(_chapterDisplayKey(sourceKey, comicId)) ==
-          'grid'
+  final stored = AppStateController.instance.getString(
+    _chapterDisplayKey(sourceKey, comicId),
+  );
+  if (stored != null && stored.isNotEmpty) {
+    return stored == 'grid' ? ChapterDisplayMode.grid : ChapterDisplayMode.list;
+  }
+  return SettingsController.instance.einkMode
       ? ChapterDisplayMode.grid
       : ChapterDisplayMode.list;
 }

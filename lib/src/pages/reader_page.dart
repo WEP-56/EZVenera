@@ -1400,6 +1400,9 @@ class _ReaderPageState extends State<ReaderPage> {
       context: context,
       isScrollControlled: true,
       builder: (context) {
+        // Shared per-comic display mode (same key as the details page);
+        // E-Ink mode defaults to grid via chapterDisplayModeFor.
+        var displayMode = chapterDisplayModeFor(widget.sourceKey, widget.comicId);
         return StatefulBuilder(
           builder: (context, setSheetState) {
             final theme = Theme.of(context);
@@ -1422,6 +1425,27 @@ class _ReaderPageState extends State<ReaderPage> {
                               ),
                             ),
                           ),
+                          IconButton(
+                            visualDensity: VisualDensity.compact,
+                            tooltip: 'Display mode',
+                            onPressed: () async {
+                              final next =
+                                  displayMode == ChapterDisplayMode.grid
+                                  ? ChapterDisplayMode.list
+                                  : ChapterDisplayMode.grid;
+                              await setChapterDisplayModeFor(
+                                widget.sourceKey,
+                                widget.comicId,
+                                next,
+                              );
+                              setSheetState(() => displayMode = next);
+                            },
+                            icon: Icon(
+                              displayMode == ChapterDisplayMode.grid
+                                  ? Icons.view_list
+                                  : Icons.grid_view,
+                            ),
+                          ),
                           TextButton.icon(
                             onPressed: () async {
                               await _setChapterOrderReversed(!reversed);
@@ -1441,23 +1465,89 @@ class _ReaderPageState extends State<ReaderPage> {
                     ),
                     const Divider(height: 1),
                     Expanded(
-                      child: ListView.builder(
-                        itemCount: chapterItems.length,
-                        itemBuilder: (context, index) {
-                          final chapter = chapterItems[index];
-                          return ListTile(
-                            title: Text(chapter.title),
-                            subtitle: chapter.groupTitle == null
-                                ? null
-                                : Text(chapter.groupTitle!),
-                            trailing: chapter.id == currentChapterId
-                                ? const Icon(Icons.check)
-                                : const Icon(Icons.chevron_right),
-                            selected: chapter.id == currentChapterId,
-                            onTap: () => Navigator.of(context).pop(chapter),
-                          );
-                        },
-                      ),
+                      child: displayMode == ChapterDisplayMode.grid
+                          ? GridView.builder(
+                              padding: const EdgeInsets.all(12),
+                              gridDelegate:
+                                  const SliverGridDelegateWithMaxCrossAxisExtent(
+                                    maxCrossAxisExtent: 120,
+                                    childAspectRatio: 1.6,
+                                    mainAxisSpacing: 8,
+                                    crossAxisSpacing: 8,
+                                  ),
+                              itemCount: chapterItems.length,
+                              itemBuilder: (context, index) {
+                                final chapter = chapterItems[index];
+                                final isCurrent = chapter.id == currentChapterId;
+                                // E-Ink high-contrast themes are pure
+                                // black/white: highlight the current chapter
+                                // with a strong outline instead of a fill.
+                                return InkWell(
+                                  borderRadius: BorderRadius.circular(10),
+                                  onTap: () =>
+                                      Navigator.of(context).pop(chapter),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                    ),
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
+                                      color: theme.colorScheme.surface,
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(
+                                        color: isCurrent
+                                            ? theme.colorScheme.onSurface
+                                            : theme.colorScheme.outlineVariant,
+                                        width: isCurrent ? 1.4 : 1,
+                                      ),
+                                    ),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        if (isCurrent)
+                                          Icon(
+                                            Icons.check,
+                                            size: 14,
+                                            color: theme.colorScheme.onSurface,
+                                          ),
+                                        Flexible(
+                                          child: Text(
+                                            chapter.title,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            textAlign: TextAlign.center,
+                                            style: theme.textTheme.labelMedium
+                                                ?.copyWith(
+                                                  fontWeight: isCurrent
+                                                      ? FontWeight.w700
+                                                      : null,
+                                                ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            )
+                          : ListView.builder(
+                              itemCount: chapterItems.length,
+                              itemBuilder: (context, index) {
+                                final chapter = chapterItems[index];
+                                return ListTile(
+                                  title: Text(chapter.title),
+                                  subtitle: chapter.groupTitle == null
+                                      ? null
+                                      : Text(chapter.groupTitle!),
+                                  trailing: chapter.id == currentChapterId
+                                      ? const Icon(Icons.check)
+                                      : const Icon(Icons.chevron_right),
+                                  selected: chapter.id == currentChapterId,
+                                  onTap: () =>
+                                      Navigator.of(context).pop(chapter),
+                                );
+                              },
+                            ),
                     ),
                   ],
                 ),
