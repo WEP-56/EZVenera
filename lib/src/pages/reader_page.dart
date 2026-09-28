@@ -131,6 +131,11 @@ class _ReaderPageState extends State<ReaderPage> {
   bool _longPressDragging = false;
   Offset _longPressZoomOffset = Offset.zero;
   Offset _longPressStartLocal = Offset.zero;
+
+  /// Long-press anchor in local (untransformed) coordinates: the image point
+  /// under the finger stays put while zooming, so the zoom centers on the
+  /// tapped position instead of the widget center.
+  Offset _longPressAnchor = Offset.zero;
   bool _isProgressDragging = false;
   double? _progressDragPage;
   double _bottomPanelHeight = 0;
@@ -558,11 +563,14 @@ class _ReaderPageState extends State<ReaderPage> {
                       ? Duration.zero
                       : _uiAnimDuration,
                   curve: Curves.easeOut,
+                  // Zoom anchored at the long-press point: scale about the
+                  // finger's position (the touched image point stays under
+                  // the finger), drag offset pans in screen space.
                   transform: _isLongPressZooming
                       ? (Matrix4.identity()
                           ..translateByDouble(
-                            _longPressZoomOffset.dx,
-                            _longPressZoomOffset.dy,
+                            _longPressAnchor.dx + _longPressZoomOffset.dx,
+                            _longPressAnchor.dy + _longPressZoomOffset.dy,
                             0,
                             1,
                           )
@@ -571,9 +579,14 @@ class _ReaderPageState extends State<ReaderPage> {
                             _longPressZoomScale,
                             1,
                             1,
+                          )
+                          ..translateByDouble(
+                            -_longPressAnchor.dx,
+                            -_longPressAnchor.dy,
+                            0,
+                            1,
                           ))
                       : Matrix4.identity(),
-                  transformAlignment: Alignment.center,
                   child: scrollContent,
                 ),
                 if (SettingsController.instance.readerShowTapGuide &&
@@ -791,6 +804,7 @@ class _ReaderPageState extends State<ReaderPage> {
     _isLongPressZooming = false;
     _longPressDragging = false;
     _longPressZoomOffset = Offset.zero;
+    _longPressAnchor = Offset.zero;
   }
 
   /// Reserved height for page [index] in vertical continuous mode.
@@ -1827,6 +1841,7 @@ class _ReaderPageState extends State<ReaderPage> {
       return;
     }
     _longPressStartLocal = details.localPosition;
+    _longPressAnchor = details.localPosition;
     _longPressZoomOffset = Offset.zero;
     _longPressDragging = false;
     _isLongPressZooming = true;
