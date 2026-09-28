@@ -12,6 +12,7 @@ import '../plugin_runtime/models.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
 import '../plugin_runtime/repository/source_index.dart';
 import '../settings/settings_controller.dart';
+import '../widgets/eink_source_tab.dart';
 import 'plugin_webview_login_page.dart';
 
 class SourcesPage extends StatefulWidget {
@@ -25,6 +26,9 @@ class _SourcesPageState extends State<SourcesPage> {
   final controller = PluginRuntimeController.instance;
   final settings = SettingsController.instance;
   final urlController = TextEditingController();
+
+  /// Selected source key for the E-Ink tab layout.
+  String? _selectedSourceKey;
 
   @override
   void initState() {
@@ -63,11 +67,61 @@ class _SourcesPageState extends State<SourcesPage> {
           const SizedBox(height: 20),
           if (controller.sources.isEmpty)
             _buildEmptyState(context)
+          else if (settings.einkMode)
+            ..._buildEinkLayout(context, controller.sources)
           else
             ...controller.sources.map((source) => _SourceCard(source: source)),
         ],
       ),
     );
+  }
+
+  /// E-Ink layout: installed sources as rounded-top tab labels wrapping into
+  /// multiple rows; tapping a tab shows that source's card below. Disabled
+  /// sources keep their tab (dimmed) so they can be re-enabled.
+  List<Widget> _buildEinkLayout(
+    BuildContext context,
+    List<PluginSource> sources,
+  ) {
+    final theme = Theme.of(context);
+    final selected = _selectedSourceKey ?? sources.firstOrNull?.key;
+    final selectedSource = sources
+        .where((source) => source.key == selected)
+        .firstOrNull;
+    return [
+      Padding(
+        padding: const EdgeInsets.only(bottom: 0),
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              for (final source in sources)
+                EinkSourceTab(
+                  label: source.name,
+                  selected: source.key == selected,
+                  onTap: () => setState(() => _selectedSourceKey = source.key),
+                ),
+            ],
+          ),
+        ),
+      ),
+      const SizedBox(height: 16),
+      if (selectedSource != null)
+        Container(
+          padding: const EdgeInsets.only(top: 2),
+          decoration: BoxDecoration(
+            border: Border(
+              top: BorderSide(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                width: 1.4,
+              ),
+            ),
+          ),
+          child: _SourceCard(source: selectedSource),
+        ),
+    ];
   }
 
   Widget _buildAddSourceCard(BuildContext context) {
@@ -326,10 +380,7 @@ class _SourcesPageState extends State<SourcesPage> {
   Future<void> _installFromLocalIndex() async {
     final l10n = AppLocalizations.of(context);
     try {
-      const typeGroup = XTypeGroup(
-        label: 'JSON',
-        extensions: <String>['json'],
-      );
+      const typeGroup = XTypeGroup(label: 'JSON', extensions: <String>['json']);
       final file = await openFile(
         acceptedTypeGroups: const <XTypeGroup>[typeGroup],
       );
@@ -457,128 +508,146 @@ class _SourceCardState extends State<_SourceCard> {
   PluginSource get source => widget.source;
   bool isExpanded = false;
 
+  bool get _enabled =>
+      PluginRuntimeController.instance.isSourceEnabled(source.key);
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-      ),
-      child: Column(
-        children: [
-          InkWell(
-            borderRadius: BorderRadius.circular(24),
-            onTap: () {
-              setState(() {
-                isExpanded = !isExpanded;
-              });
-            },
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                source.name,
-                                style: theme.textTheme.titleLarge?.copyWith(
-                                  fontWeight: FontWeight.w700,
+    return Opacity(
+      opacity: _enabled ? 1.0 : 0.55,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: theme.colorScheme.outlineVariant),
+        ),
+        child: Column(
+          children: [
+            InkWell(
+              borderRadius: BorderRadius.circular(24),
+              onTap: () {
+                setState(() {
+                  isExpanded = !isExpanded;
+                });
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 16,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  source.name,
+                                  style: theme.textTheme.titleLarge?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
                               ),
-                            ),
-                            Chip(label: Text(source.version)),
-                            const SizedBox(width: 8),
-                            Icon(
-                              isExpanded
-                                  ? Icons.expand_less
-                                  : Icons.expand_more,
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: _capabilities(
-                            source,
-                          ).map((label) => Chip(label: Text(label))).toList(),
-                        ),
-                      ],
+                              // 使用开关：默认开启；关闭后该源从分类/聚合搜索
+                              // 中隐藏（管理页仍可见以便重新开启）。
+                              Switch(
+                                value: _enabled,
+                                onChanged: (value) async {
+                                  await PluginRuntimeController.instance
+                                      .setSourceEnabled(source.key, value);
+                                },
+                              ),
+                              Chip(label: Text(source.version)),
+                              const SizedBox(width: 8),
+                              Icon(
+                                isExpanded
+                                    ? Icons.expand_less
+                                    : Icons.expand_more,
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: _capabilities(
+                              source,
+                            ).map((label) => Chip(label: Text(label))).toList(),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
-          ClipRect(
-            child: AnimatedAlign(
-              alignment: Alignment.topCenter,
-              duration: const Duration(milliseconds: 180),
-              curve: Curves.easeOut,
-              heightFactor: isExpanded ? 1 : 0,
-              child: Column(
-                children: [
-                  const Divider(height: 1),
-                  if (source.settings.isNotEmpty) ...[
-                    _SectionTitle(title: l10n.sourcesSettings),
-                    ...source.settings.entries.map((entry) {
-                      return _SourceSettingTile(
-                        source: source,
-                        setting: entry.value,
-                        onChanged: () {
-                          setState(() {});
-                        },
-                      );
-                    }),
-                  ],
-                  if (source.account != null) ...[
-                    _SectionTitle(title: l10n.sourcesAccount),
-                    _SourceAccountTile(source: source),
-                  ],
-                  ListTile(
-                    title: Text(l10n.sourcesPath),
-                    subtitle: Text(
-                      source.filePath,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+            ClipRect(
+              child: AnimatedAlign(
+                alignment: Alignment.topCenter,
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOut,
+                heightFactor: isExpanded ? 1 : 0,
+                child: Column(
+                  children: [
+                    const Divider(height: 1),
+                    if (source.settings.isNotEmpty) ...[
+                      _SectionTitle(title: l10n.sourcesSettings),
+                      ...source.settings.entries.map((entry) {
+                        return _SourceSettingTile(
+                          source: source,
+                          setting: entry.value,
+                          onChanged: () {
+                            setState(() {});
+                          },
+                        );
+                      }),
+                    ],
+                    if (source.account != null) ...[
+                      _SectionTitle(title: l10n.sourcesAccount),
+                      _SourceAccountTile(source: source),
+                    ],
+                    ListTile(
+                      title: Text(l10n.sourcesPath),
+                      subtitle: Text(
+                        source.filePath,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                    child: Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: [
-                        OutlinedButton.icon(
-                          onPressed: source.updateUrl.isEmpty
-                              ? null
-                              : () => _updateSource(context, source),
-                          icon: const Icon(Icons.update),
-                          label: Text(l10n.sourcesUpdate),
-                        ),
-                        OutlinedButton.icon(
-                          onPressed: () => _deleteSource(context, source),
-                          icon: const Icon(Icons.delete_outline),
-                          label: Text(l10n.sourcesDelete),
-                        ),
-                      ],
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      child: Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: source.updateUrl.isEmpty
+                                ? null
+                                : () => _updateSource(context, source),
+                            icon: const Icon(Icons.update),
+                            label: Text(l10n.sourcesUpdate),
+                          ),
+                          OutlinedButton.icon(
+                            onPressed: () => _deleteSource(context, source),
+                            icon: const Icon(Icons.delete_outline),
+                            label: Text(l10n.sourcesDelete),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

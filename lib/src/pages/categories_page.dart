@@ -7,6 +7,7 @@ import '../plugin_runtime/models.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
 import '../settings/settings_controller.dart';
 import '../state/app_state_controller.dart';
+import '../widgets/eink_source_tab.dart';
 import 'category_comics_page.dart';
 
 class CategoriesPage extends StatefulWidget {
@@ -25,7 +26,8 @@ class _CategoriesPageState extends State<CategoriesPage>
   int _einkIndex = 0;
 
   List<PluginSource> get _sources {
-    return PluginRuntimeController.instance.sources
+    final controller = PluginRuntimeController.instance;
+    return controller.enabledSources
         .where((source) => source.category != null)
         .toList();
   }
@@ -91,8 +93,7 @@ class _CategoriesPageState extends State<CategoriesPage>
                     runSpacing: 4,
                     children: [
                       for (var i = 0; i < sources.length; i++)
-                        _einkSourceTab(
-                          context,
+                        EinkSourceTab(
                           label: sources[i].category!.title.isEmpty
                               ? sources[i].name
                               : sources[i].category!.title,
@@ -138,54 +139,6 @@ class _CategoriesPageState extends State<CategoriesPage>
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _einkSourceTab(
-    BuildContext context, {
-    required String label,
-    required bool selected,
-    required VoidCallback onTap,
-  }) {
-    final theme = Theme.of(context);
-    // E-Ink high-contrast themes are pure black/white: a filled selected
-    // state would turn the label solid black and unreadable. Selected tabs
-    // therefore "float" via a drop shadow plus a stronger outline instead
-    // of a color fill.
-    return InkWell(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
-          border: Border.all(
-            color: selected
-                ? theme.colorScheme.onSurface
-                : theme.colorScheme.outlineVariant,
-            width: selected ? 1.4 : 1,
-          ),
-          boxShadow: selected
-              ? [
-                  BoxShadow(
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
-                    blurRadius: 4,
-                    offset: const Offset(0, 3),
-                  ),
-                ]
-              : const <BoxShadow>[],
-        ),
-        child: Text(
-          label,
-          style: theme.textTheme.labelLarge?.copyWith(
-            fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
-            color: selected
-                ? theme.colorScheme.onSurface
-                : theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
       ),
     );
   }

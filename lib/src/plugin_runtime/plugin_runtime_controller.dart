@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import '../network/network_client_factory.dart';
+import '../state/app_state_controller.dart';
 import 'models.dart';
 import 'plugin_runtime.dart';
 
@@ -14,6 +15,10 @@ class PluginRuntimeController extends ChangeNotifier {
 
   final PluginRuntime _runtime = PluginRuntime.instance;
 
+  /// Per-source enable flag ("使用开关") storage key prefix. Sources default
+  /// to enabled; the stored value marks explicitly disabled sources.
+  static const _disabledSourceKeyPrefix = 'sources.disabled.';
+
   bool _initialized = false;
   bool _busy = false;
   String? _errorMessage;
@@ -22,6 +27,26 @@ class PluginRuntimeController extends ChangeNotifier {
   bool get isBusy => _busy;
   String? get errorMessage => _errorMessage;
   List<PluginSource> get sources => _runtime.sources;
+
+  /// Sources the user has not disabled — the browsing/search-facing list.
+  /// The management page shows every source (including disabled ones).
+  List<PluginSource> get enabledSources =>
+      _runtime.sources.where((source) => isSourceEnabled(source.key)).toList();
+
+  bool isSourceEnabled(String sourceKey) {
+    return AppStateController.instance.getString(
+          '$_disabledSourceKeyPrefix$sourceKey',
+        ) !=
+        '1';
+  }
+
+  Future<void> setSourceEnabled(String sourceKey, bool enabled) async {
+    await AppStateController.instance.setString(
+      '$_disabledSourceKeyPrefix$sourceKey',
+      enabled ? '0' : '1',
+    );
+    notifyListeners();
+  }
 
   PluginSource? find(String key) => _runtime.find(key);
 

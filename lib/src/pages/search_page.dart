@@ -302,7 +302,9 @@ class _SearchPageState extends State<SearchPage> {
   }
 
   List<PluginSource> get _searchSources {
-    return controller.sources.where((source) => source.search != null).toList();
+    return controller.enabledSources
+        .where((source) => source.search != null)
+        .toList();
   }
 
   bool get _canLoadMore {
@@ -330,7 +332,7 @@ class _SearchPageState extends State<SearchPage> {
       return;
     }
 
-    final source = controller.sources
+    final source = controller.enabledSources
         .where((item) => item.key == sourceKey)
         .firstOrNull;
     if (source == null) {
@@ -491,7 +493,12 @@ class _SearchPageState extends State<SearchPage> {
         }
 
         try {
-          final response = await _runSearchRequest(search, keyword, source, l10n);
+          final response = await _runSearchRequest(
+            search,
+            keyword,
+            source,
+            l10n,
+          );
           if (response.isError) {
             throw StateError(response.errorMessage ?? 'Unknown error');
           }
@@ -566,10 +573,16 @@ class _SearchPageState extends State<SearchPage> {
     AppLocalizations l10n,
   ) {
     final response = switch (search) {
-      PluginSearchCapability(loadPage: final loadPage?) =>
-        loadPage(keyword, 1, _defaultOptionsFor(source)),
-      PluginSearchCapability(loadNext: final loadNext?) =>
-        loadNext(keyword, null, _defaultOptionsFor(source)),
+      PluginSearchCapability(loadPage: final loadPage?) => loadPage(
+        keyword,
+        1,
+        _defaultOptionsFor(source),
+      ),
+      PluginSearchCapability(loadNext: final loadNext?) => loadNext(
+        keyword,
+        null,
+        _defaultOptionsFor(source),
+      ),
       _ => throw StateError(l10n.searchLoaderMissing),
     };
     return response.timeout(
