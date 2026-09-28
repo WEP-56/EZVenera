@@ -1,9 +1,39 @@
 import '../state/app_state_controller.dart';
 
+/// How the chapter section of the details page lays out chapters.
+enum ChapterDisplayMode { list, grid }
+
 String _chapterOrderKey(String sourceKey, String comicId) {
   final source = Uri.encodeComponent(sourceKey);
   final comic = Uri.encodeComponent(comicId);
   return 'reader.chapterOrder.$source.$comic.reversed';
+}
+
+String _chapterDisplayKey(String sourceKey, String comicId) {
+  final source = Uri.encodeComponent(sourceKey);
+  final comic = Uri.encodeComponent(comicId);
+  return 'reader.chapterDisplay.$source.$comic.mode';
+}
+
+/// Per-comic chapter display mode; defaults to list (the historical look)
+/// for comics that never had it toggled.
+ChapterDisplayMode chapterDisplayModeFor(String sourceKey, String comicId) {
+  return AppStateController.instance
+              .getString(_chapterDisplayKey(sourceKey, comicId)) ==
+          'grid'
+      ? ChapterDisplayMode.grid
+      : ChapterDisplayMode.list;
+}
+
+Future<void> setChapterDisplayModeFor(
+  String sourceKey,
+  String comicId,
+  ChapterDisplayMode mode,
+) {
+  return AppStateController.instance.setString(
+    _chapterDisplayKey(sourceKey, comicId),
+    mode.name,
+  );
 }
 
 bool isChapterOrderReversedFor(String sourceKey, String comicId) {

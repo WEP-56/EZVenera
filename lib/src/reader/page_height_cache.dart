@@ -56,7 +56,7 @@ class PageHeightCache {
   final Map<String, double> _ratios = <String, double>{};
   final List<String> _order = <String>[];
   JsonFileStore? _store;
-  bool _initializing = false;
+  Future<void>? _initFuture;
   bool _initialized = false;
   bool _dirty = false;
   Timer? _flushTimer;
@@ -95,12 +95,11 @@ class PageHeightCache {
     return _ratios[key];
   }
 
-  /// Starts loading the persisted table. Cheap to call repeatedly.
-  Future<void> initialize() async {
-    if (_initialized || _initializing) {
-      return;
-    }
-    _initializing = true;
+  /// Starts loading the persisted table. Cheap to call repeatedly; concurrent
+  /// callers await the same initialization instead of racing a flag.
+  Future<void> initialize() => _initFuture ??= _initialize();
+
+  Future<void> _initialize() async {
     try {
       final supportDirectory = await getApplicationSupportDirectory();
       final root = Directory(p.join(supportDirectory.path, 'reader_cache'));
@@ -121,11 +120,10 @@ class PageHeightCache {
         _order.add(entry.key);
       }
       _trimToLimit();
+      _initialized = true;
     } catch (_) {
       // A missing or unreadable height file only costs us one session of
       // estimated heights; it must never block the reader.
-    } finally {
-      _initializing = false;
       _initialized = true;
     }
   }

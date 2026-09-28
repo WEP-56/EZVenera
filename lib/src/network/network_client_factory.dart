@@ -145,10 +145,12 @@ class NetworkClientFactory {
       _sharedConfig = config;
       if (previous != null) {
         // Gracefully retire the previous client after a grace period:
-        // in-flight requests finish and pooled idle sockets close. Switching
-        // back inside the window simply builds a fresh client (cheap).
+        // in-flight requests finish and pooled idle sockets close. The
+        // window must outlive the longest plausible clone-held request
+        // (e.g. an in-progress APK download across a proxy switch), since a
+        // closed adapter makes any further request on it throw.
         unawaited(
-          Future<void>.delayed(const Duration(seconds: 30)).then((_) {
+          Future<void>.delayed(const Duration(minutes: 2)).then((_) {
             try {
               previous.httpClientAdapter.close(force: false);
             } catch (_) {
