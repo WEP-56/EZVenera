@@ -313,8 +313,6 @@ class _AppearanceSettingsPageState extends State<_AppearanceSettingsPage> {
       child: ListView(
         padding: const EdgeInsets.all(24),
         children: [
-          const _EinkSection(),
-          const SizedBox(height: 20),
           _SettingsGroup(
             title: l10n.settingsAppearance,
             icon: Icons.palette_outlined,
@@ -390,6 +388,8 @@ class _AppearanceSettingsPageState extends State<_AppearanceSettingsPage> {
               ),
             ],
           ),
+          const SizedBox(height: 20),
+          const _EinkSection(),
         ],
       ),
     );
