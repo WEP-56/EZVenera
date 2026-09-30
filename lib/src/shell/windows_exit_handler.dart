@@ -29,17 +29,32 @@ class WindowsExitHandler with WindowListener {
 
   /// Long enough for a stalled WebDAV/JS task to notice, short enough that a
   /// hung subsystem cannot freeze the window on its way out.
-  static const Duration _stepTimeout = Duration(seconds: 2);
+  ///
+  /// Must stay strictly above every deadline a step imposes on itself: the
+  /// outer [AppShutdown] timer and an inner timer of equal length race, and the
+  /// outer one always wins because it starts first. When that happens the step
+  /// is abandoned as "did not drain in time" before the inner handler can run
+  /// its own last resort, and the runner is torn down with that work still
+  /// live - the exact condition this class exists to prevent.
+  static const Duration stepTimeout = Duration(seconds: 5);
+
+  /// How long an engine isolate may take to drain its queue and exit on its
+  /// own before the pool kills it. Kept below [stepTimeout] so the kill is
+  /// always requested before the step is given up on.
+  static const Duration jsPoolGrace = Duration(seconds: 2);
 
   bool _exitRequested = false;
 
   final AppShutdown _shutdown = AppShutdown(
-    stepTimeout: _stepTimeout,
+    stepTimeout: stepTimeout,
     steps: [
       // Producers first: nothing below may gain new in-flight work halfway
       // through the drain.
       ShutdownStep(name: 'webdav-auto-sync', run: WebDavAutoSync.instance.stop),
-      ShutdownStep(name: 'plugin-js-pool', run: PluginJsPool.instance.shutdown),
+      ShutdownStep(
+        name: 'plugin-js-pool',
+        run: () => PluginJsPool.instance.shutdown(grace: jsPoolGrace),
+      ),
       ShutdownStep(
         name: 'plugin-runtime',
         run: PluginRuntime.instance.shutdown,
@@ -100,7 +115,9 @@ class WindowsExitHandler with WindowListener {
       );
       await AppLogger.instance.flush();
     } finally {
-      await _quitRunner();
+      if (!await _quitRunner()) {
+        await _rearmForRetry();
+      }
     }
   }
 
@@ -139,13 +156,41 @@ class WindowsExitHandler with WindowListener {
     }
   }
 
-  Future<void> _quitRunner() async {
+  Future<bool> _quitRunner() async {
     try {
       await windowManager.destroy();
+      return true;
     } catch (error, stackTrace) {
       unawaited(
         AppLogger.instance.error(
           '[exit] windowManager.destroy() failed',
+          error,
+          stackTrace,
+        ),
+      );
+      return false;
+    }
+  }
+
+  /// Last resort when the runner refuses to quit. The window is hidden and
+  /// `preventClose` is still armed, so leaving it that way means every later
+  /// close attempt hits the `_exitRequested` latch and the user is left with a
+  /// live, invisible process that only Task Manager can stop - with the network
+  /// layer, the JS pool and the cookie database already torn down. Give the
+  /// window back and disarm the intercept: the next close goes through the
+  /// native path.
+  Future<void> _rearmForRetry() async {
+    _exitRequested = false;
+    try {
+      await windowManager.setPreventClose(false);
+      await windowManager.show();
+      await AppLogger.instance.warning(
+        '[exit] runner refused to quit; window restored, close again to force exit',
+      );
+    } catch (error, stackTrace) {
+      unawaited(
+        AppLogger.instance.error(
+          '[exit] could not restore the window after a failed quit',
           error,
           stackTrace,
         ),

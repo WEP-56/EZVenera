@@ -1517,11 +1517,13 @@ class _ChaptersView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ranks = canonicalChapterRanks(chapters);
+    final readRank = ranks[readChapterId];
     if (chapters.isGrouped) {
       return Column(
         children: orderedChapterGroups(chapters.groupedChapters!, reversed).map(
           (entry) {
-            final rows = _rowsFor(entry.value);
+            final rows = _rowsFor(entry.value, ranks, readRank);
             return ExpansionTile(
               tilePadding: EdgeInsets.zero,
               childrenPadding: const EdgeInsets.only(bottom: 8),
@@ -1537,23 +1539,27 @@ class _ChaptersView extends StatelessWidget {
       );
     }
 
-    final rows = _rowsFor(chapters.chapters!);
+    final rows = _rowsFor(chapters.chapters!, ranks, readRank);
     return mode == ChapterDisplayMode.grid
         ? _buildGrid(context, rows)
         : _buildList(context, rows);
   }
 
-  List<_ChapterRow> _rowsFor(Map<String, String> chapters) {
+  List<_ChapterRow> _rowsFor(
+    Map<String, String> chapters,
+    Map<String, int> ranks,
+    int? readRank,
+  ) {
     final rows = orderedChapterEntries(chapters, reversed)
         .map(_ChapterRow.new)
         .toList();
-    final readIndex = rows.indexWhere(
-      (row) => row.entry.key == readChapterId,
-    );
-    for (var i = 0; i < rows.length; i++) {
-      rows[i]
-        ..isCurrent = rows[i].entry.key == readChapterId
-        ..isRead = readIndex >= 0 && i < readIndex;
+    for (final row in rows) {
+      row
+        ..isCurrent = row.entry.key == readChapterId
+        ..isRead = chapterIsRead(
+          rank: ranks[row.entry.key],
+          readRank: readRank,
+        );
     }
     return rows;
   }
@@ -1611,7 +1617,7 @@ class _ChaptersView extends StatelessWidget {
 }
 
 /// One ordered chapter entry plus its read-state, computed once per build
-/// against the current (possibly reversed) ordering.
+/// against the canonical chapter order so it survives a reversed display.
 class _ChapterRow {
   _ChapterRow(this.entry);
 

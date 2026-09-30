@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ezvenera/src/lifecycle/app_shutdown.dart';
+import 'package:ezvenera/src/shell/windows_exit_handler.dart';
 
 /// Covers the teardown ordering guarantees that keep the Windows process from
 /// being killed while native subsystems still hold live work (fast-fail
@@ -90,5 +91,44 @@ void main() {
     );
 
     expect(reported, ['ok:clean', 'bad:dirty']);
+  });
+
+  group('exit budgets', () {
+    test(
+      'every step may finish its own deadline before the step is abandoned',
+      () {
+        // Two timers of the same length race, and the outer one always wins
+        // because AppShutdown starts it before the step can start its own. The
+        // step then looks hung to the coordinator while the subsystem was never
+        // allowed to reach its last resort.
+        expect(
+          WindowsExitHandler.jsPoolGrace,
+          lessThan(WindowsExitHandler.stepTimeout),
+          reason:
+              'the js pool must get its kill requested before the step ends',
+        );
+      },
+    );
+
+    test(
+      'a step that settles inside its own deadline is not reported as hung',
+      () async {
+        final shutdown = AppShutdown(
+          stepTimeout: const Duration(milliseconds: 100),
+          steps: [
+            ShutdownStep(
+              name: 'inner-deadline',
+              run: () => Future<void>.delayed(
+                const Duration(milliseconds: 30),
+              ).timeout(const Duration(milliseconds: 30), onTimeout: () {}),
+            ),
+          ],
+        );
+
+        final result = (await shutdown.run()).single;
+        expect(result.isClean, isTrue);
+        expect(result.timedOut, isFalse);
+      },
+    );
   });
 }
