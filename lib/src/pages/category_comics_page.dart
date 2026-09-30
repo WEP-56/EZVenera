@@ -351,6 +351,12 @@ class _CategoryComicsPageState extends State<CategoryComicsPage> {
       }
 
       final loadedComics = result.data;
+      if (!mounted) {
+        // The page was popped while the request was in flight; writing into a
+        // disposed element is what showed up as "Null check operator used on a
+        // null value" inside setState.
+        return;
+      }
       setState(() {
         comics = replace ? loadedComics : [...comics, ...loadedComics];
         if (isRanking && widget.ranking?.loadNext != null) {
@@ -364,9 +370,11 @@ class _CategoryComicsPageState extends State<CategoryComicsPage> {
         _restoreScrollOffset(scrollOffset);
       }
     } catch (err) {
-      setState(() {
-        error = err.toString();
-      });
+      if (mounted) {
+        setState(() {
+          error = err.toString();
+        });
+      }
     } finally {
       if (mounted) {
         setState(() {
