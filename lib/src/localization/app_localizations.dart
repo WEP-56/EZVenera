@@ -178,6 +178,7 @@ class AppLocalizations {
       'settings.downloads': 'Downloads',
       'settings.app': 'App',
       'settings.about': 'About / Debug',
+      'settings.version': 'Version',
       'settings.language': 'Language',
       'settings.languageSubtitle': 'Choose the app display language.',
       'settings.themeMode': 'Theme Mode',
@@ -275,6 +276,7 @@ class AppLocalizations {
       'settings.downloads': '下载',
       'settings.app': '应用',
       'settings.about': '关于 / 调试',
+      'settings.version': '版本',
       'settings.language': '语言',
       'settings.languageSubtitle': '选择应用界面显示语言。',
       'settings.themeMode': '主题模式',
@@ -639,6 +641,7 @@ class AppLocalizations {
   String get settingsDownloads => _value('settings.downloads');
   String get settingsApp => _value('settings.app');
   String get settingsAbout => _value('settings.about');
+  String get settingsVersion => _value('settings.version');
   String get settingsLanguage => _value('settings.language');
   String get settingsLanguageSubtitle => _value('settings.languageSubtitle');
   String get settingsThemeMode => _value('settings.themeMode');

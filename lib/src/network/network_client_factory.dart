@@ -55,6 +55,11 @@ class NetworkClientFactory {
 
   Dio? _sharedDio;
   ProxyConfig? _sharedConfig;
+  bool _shutdown = false;
+
+  /// Pending "retire the old shared client" timers, kept so shutdown can
+  /// cancel them instead of letting a post-exit callback touch a dead client.
+  final Set<Timer> _retirementTimers = <Timer>{};
 
   /// TLS trust store built from the bundled Mozilla root bundle
   /// (assets/certs/cacert.pem — the same set curl/Python certifi ship).
@@ -138,6 +143,9 @@ class NetworkClientFactory {
     List<Interceptor>? interceptors,
     bool logSuccessResponses = false,
   }) {
+    if (_shutdown) {
+      throw StateError('NetworkClientFactory is shut down.');
+    }
     final config = resolveProxyConfig();
     if (_sharedDio == null || _sharedConfig != config) {
       final previous = _sharedDio;
@@ -145,17 +153,20 @@ class NetworkClientFactory {
       _sharedConfig = config;
       if (previous != null) {
         // Gracefully retire the previous client after a grace period:
-        // in-flight requests finish and pooled idle sockets close. Switching
-        // back inside the window simply builds a fresh client (cheap).
-        unawaited(
-          Future<void>.delayed(const Duration(seconds: 30)).then((_) {
-            try {
-              previous.httpClientAdapter.close(force: false);
-            } catch (_) {
-              // Already closed or adapter-specific failure; nothing to do.
-            }
-          }),
-        );
+        // in-flight requests finish and pooled idle sockets close. The
+        // window must outlive the longest plausible clone-held request
+        // (e.g. an in-progress APK download across a proxy switch), since a
+        // closed adapter makes any further request on it throw.
+        late final Timer timer;
+        timer = Timer(const Duration(minutes: 2), () {
+          _retirementTimers.remove(timer);
+          try {
+            previous.httpClientAdapter.close(force: false);
+          } catch (_) {
+            // Already closed or adapter-specific failure; nothing to do.
+          }
+        });
+        _retirementTimers.add(timer);
       }
     }
     final shared = _sharedDio!;
@@ -218,6 +229,26 @@ class NetworkClientFactory {
         return client;
       },
     );
+  }
+
+  /// Forces every pooled socket closed so no dart:io request is still
+  /// outstanding while the engine tears down. Runs after the request callers
+  /// have been drained (see the AppShutdown step order).
+  Future<void> shutdown() async {
+    _shutdown = true;
+    for (final timer in _retirementTimers.toList()) {
+      timer.cancel();
+    }
+    _retirementTimers.clear();
+
+    final dio = _sharedDio;
+    _sharedDio = null;
+    _sharedConfig = null;
+    try {
+      dio?.httpClientAdapter.close(force: true);
+    } catch (_) {
+      // Already closed; nothing left to do during exit.
+    }
   }
 }
 

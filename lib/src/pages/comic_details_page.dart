@@ -11,6 +11,7 @@ import '../plugin_runtime/models.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
 import '../plugin_runtime/services/plugin_image_loader.dart';
 import '../reader/chapter_order.dart';
+import '../settings/settings_controller.dart';
 import 'categories_page.dart';
 import 'category_comics_page.dart';
 import 'reader_page.dart';
@@ -90,6 +91,11 @@ class _ComicDetailsPageState extends State<ComicDetailsPage> {
             widget.comic.id,
           );
 
+          final chapterDisplayMode = chapterDisplayModeFor(
+            widget.comic.sourceKey,
+            widget.comic.id,
+          );
+
           final hasHistory =
               HistoryController.instance.find(
                 widget.comic.sourceKey,
@@ -102,6 +108,7 @@ class _ComicDetailsPageState extends State<ComicDetailsPage> {
             summary: widget.comic,
             details: details,
             chaptersReversed: chaptersReversed,
+            chapterDisplayMode: chapterDisplayMode,
             hasHistory: hasHistory,
             onRead: () => _openReader(
               _resolveReadChapter(details, chaptersReversed),
@@ -110,6 +117,7 @@ class _ComicDetailsPageState extends State<ComicDetailsPage> {
             onDownload: () => _downloadComic(details),
             onFavorite: () => _toggleFavorite(details),
             onToggleChapterOrder: () => _toggleChapterOrder(chaptersReversed),
+            onToggleChapterDisplayMode: _toggleChapterDisplayMode,
             isFavorite: favoriteController.contains(
               widget.comic.sourceKey,
               widget.comic.id,
@@ -473,6 +481,18 @@ class _ComicDetailsPageState extends State<ComicDetailsPage> {
     }
   }
 
+  Future<void> _toggleChapterDisplayMode() async {
+    final next =
+        chapterDisplayModeFor(widget.comic.sourceKey, widget.comic.id) ==
+            ChapterDisplayMode.grid
+        ? ChapterDisplayMode.list
+        : ChapterDisplayMode.grid;
+    await setChapterDisplayModeFor(widget.comic.sourceKey, widget.comic.id, next);
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
   void _onFavoriteChanged() {
     if (mounted) {
       setState(() {});
@@ -545,11 +565,13 @@ class _ComicDetailsBody extends StatelessWidget {
     required this.summary,
     required this.details,
     required this.chaptersReversed,
+    required this.chapterDisplayMode,
     required this.hasHistory,
     required this.onRead,
     required this.onDownload,
     required this.onFavorite,
     required this.onToggleChapterOrder,
+    required this.onToggleChapterDisplayMode,
     required this.isFavorite,
     required this.onChapterSelected,
     required this.onPreviewPage,
@@ -560,11 +582,13 @@ class _ComicDetailsBody extends StatelessWidget {
   final PluginComic summary;
   final PluginComicDetails details;
   final bool chaptersReversed;
+  final ChapterDisplayMode chapterDisplayMode;
   final bool hasHistory;
   final VoidCallback onRead;
   final VoidCallback onDownload;
   final VoidCallback onFavorite;
   final VoidCallback onToggleChapterOrder;
+  final VoidCallback onToggleChapterDisplayMode;
   final bool isFavorite;
   final ValueChanged<_ChapterSelection> onChapterSelected;
   final ValueChanged<int> onPreviewPage;
@@ -607,8 +631,10 @@ class _ComicDetailsBody extends StatelessWidget {
             if (description.isNotEmpty)
               Padding(
                 padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 0),
-                child: _SectionCard(
+                child: _CollapsibleCard(
                   title: 'Description',
+                  // E-Ink mode starts collapsed to reduce page refreshes.
+                  initiallyExpanded: !SettingsController.instance.einkMode,
                   child: GestureDetector(
                     onLongPress: () =>
                         _copyToClipboard(context, description, 'Description'),
@@ -625,8 +651,9 @@ class _ComicDetailsBody extends StatelessWidget {
               const SizedBox(height: 16),
               Padding(
                 padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 0),
-                child: _SectionCard(
+                child: _CollapsibleCard(
                   title: 'Tags',
+                  initiallyExpanded: !SettingsController.instance.einkMode,
                   child: _TagsBlock(
                     tags: details.tags,
                     canSearchTags: source?.comic?.onClickTag != null,
@@ -657,14 +684,32 @@ class _ComicDetailsBody extends StatelessWidget {
                 padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 0),
                 child: _SectionCard(
                   title: 'Chapters',
-                  trailing: TextButton.icon(
-                    onPressed: onToggleChapterOrder,
-                    icon: const Icon(Icons.swap_vert, size: 18),
-                    label: Text(chaptersReversed ? 'Original' : 'Reverse'),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        tooltip: 'Display mode',
+                        onPressed: onToggleChapterDisplayMode,
+                        icon: Icon(
+                          chapterDisplayMode == ChapterDisplayMode.grid
+                              ? Icons.view_list
+                              : Icons.grid_view,
+                        ),
+                      ),
+                      TextButton.icon(
+                        onPressed: onToggleChapterOrder,
+                        icon: const Icon(Icons.swap_vert, size: 18),
+                        label: Text(chaptersReversed ? 'Original' : 'Reverse'),
+                      ),
+                    ],
                   ),
                   child: _ChaptersView(
                     chapters: details.chapters!,
                     reversed: chaptersReversed,
+                    mode: chapterDisplayMode,
+                    readChapterId: HistoryController.instance
+                        .find(summary.sourceKey, summary.id)
+                        ?.chapterId,
                     onChapterSelected: onChapterSelected,
                   ),
                 ),
@@ -1366,11 +1411,20 @@ class _CoverCardState extends State<_CoverCard> {
 }
 
 class _SectionCard extends StatelessWidget {
-  const _SectionCard({required this.title, required this.child, this.trailing});
+  const _SectionCard({
+    required this.title,
+    required this.child,
+    this.trailing,
+    this.showChild = true,
+  });
 
   final String title;
   final Widget child;
   final Widget? trailing;
+
+  /// When false the card renders only its title row (used by the
+  /// collapsible wrapper in its collapsed state).
+  final bool showChild;
 
   @override
   Widget build(BuildContext context) {
@@ -1399,10 +1453,46 @@ class _SectionCard extends StatelessWidget {
               ?trailing,
             ],
           ),
-          const SizedBox(height: 16),
-          child,
+          if (showChild) ...[const SizedBox(height: 16), child],
         ],
       ),
+    );
+  }
+}
+
+/// Section card that collapses to its title row. The toggle button sits at
+/// the right edge of the title row; E-Ink mode defaults to collapsed and
+/// toggles instantly (no animation, per e-ink display constraints).
+class _CollapsibleCard extends StatefulWidget {
+  const _CollapsibleCard({
+    required this.title,
+    required this.child,
+    this.initiallyExpanded = true,
+  });
+
+  final String title;
+  final Widget child;
+  final bool initiallyExpanded;
+
+  @override
+  State<_CollapsibleCard> createState() => _CollapsibleCardState();
+}
+
+class _CollapsibleCardState extends State<_CollapsibleCard> {
+  late bool _expanded = widget.initiallyExpanded;
+
+  @override
+  Widget build(BuildContext context) {
+    return _SectionCard(
+      title: widget.title,
+      showChild: _expanded,
+      trailing: IconButton(
+        visualDensity: VisualDensity.compact,
+        icon: Icon(_expanded ? Icons.expand_less : Icons.expand_more),
+        tooltip: _expanded ? 'Collapse' : 'Expand',
+        onPressed: () => setState(() => _expanded = !_expanded),
+      ),
+      child: widget.child,
     );
   }
 }
@@ -1411,90 +1501,270 @@ class _ChaptersView extends StatelessWidget {
   const _ChaptersView({
     required this.chapters,
     required this.reversed,
+    required this.mode,
+    required this.readChapterId,
     required this.onChapterSelected,
   });
 
   final PluginComicChapters chapters;
   final bool reversed;
+  final ChapterDisplayMode mode;
+
+  /// The chapter the reader last stopped at (from history), used for the
+  /// "reading here" highlight and the read/unread split. Null when unknown.
+  final String? readChapterId;
   final ValueChanged<_ChapterSelection> onChapterSelected;
 
   @override
   Widget build(BuildContext context) {
+    final ranks = canonicalChapterRanks(chapters);
+    final readRank = ranks[readChapterId];
     if (chapters.isGrouped) {
       return Column(
         children: orderedChapterGroups(chapters.groupedChapters!, reversed).map(
           (entry) {
+            final rows = _rowsFor(entry.value, ranks, readRank);
             return ExpansionTile(
               tilePadding: EdgeInsets.zero,
               childrenPadding: const EdgeInsets.only(bottom: 8),
               title: Text(entry.key),
-              children: orderedChapterEntries(entry.value, reversed).map((
-                chapter,
-              ) {
-                return _ChapterTile(
-                  id: chapter.key,
-                  title: chapter.value,
-                  onTap: () {
-                    onChapterSelected(
-                      _ChapterSelection(id: chapter.key, title: chapter.value),
-                    );
-                  },
-                );
-              }).toList(),
+              children: [
+                mode == ChapterDisplayMode.grid
+                    ? _buildGrid(context, rows)
+                    : _buildList(context, rows),
+              ],
             );
           },
         ).toList(),
       );
     }
 
-    return Column(
-      children: orderedChapterEntries(chapters.chapters!, reversed).map((
-        entry,
-      ) {
+    final rows = _rowsFor(chapters.chapters!, ranks, readRank);
+    return mode == ChapterDisplayMode.grid
+        ? _buildGrid(context, rows)
+        : _buildList(context, rows);
+  }
+
+  List<_ChapterRow> _rowsFor(
+    Map<String, String> chapters,
+    Map<String, int> ranks,
+    int? readRank,
+  ) {
+    final rows = orderedChapterEntries(chapters, reversed)
+        .map(_ChapterRow.new)
+        .toList();
+    for (final row in rows) {
+      row
+        ..isCurrent = row.entry.key == readChapterId
+        ..isRead = chapterIsRead(
+          rank: ranks[row.entry.key],
+          readRank: readRank,
+        );
+    }
+    return rows;
+  }
+
+  Widget _buildList(BuildContext context, List<_ChapterRow> rows) {
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.only(bottom: 8),
+      itemCount: rows.length,
+      itemBuilder: (context, index) {
+        final row = rows[index];
         return _ChapterTile(
-          id: entry.key,
-          title: entry.value,
+          id: row.entry.key,
+          title: row.entry.value,
+          isRead: row.isRead,
+          isCurrent: row.isCurrent,
           onTap: () {
             onChapterSelected(
-              _ChapterSelection(id: entry.key, title: entry.value),
+              _ChapterSelection(id: row.entry.key, title: row.entry.value),
             );
           },
         );
-      }).toList(),
+      },
     );
   }
+
+  Widget _buildGrid(BuildContext context, List<_ChapterRow> rows) {
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.only(bottom: 8),
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 120,
+        childAspectRatio: 1.5,
+        mainAxisSpacing: 8,
+        crossAxisSpacing: 8,
+      ),
+      itemCount: rows.length,
+      itemBuilder: (context, index) {
+        final row = rows[index];
+        return _ChapterGridTile(
+          title: row.entry.value,
+          isRead: row.isRead,
+          isCurrent: row.isCurrent,
+          onTap: () {
+            onChapterSelected(
+              _ChapterSelection(id: row.entry.key, title: row.entry.value),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+/// One ordered chapter entry plus its read-state, computed once per build
+/// against the canonical chapter order so it survives a reversed display.
+class _ChapterRow {
+  _ChapterRow(this.entry);
+
+  final MapEntry<String, String> entry;
+  bool isRead = false;
+  bool isCurrent = false;
 }
 
 class _ChapterTile extends StatelessWidget {
   const _ChapterTile({
     required this.id,
     required this.title,
+    required this.isRead,
+    required this.isCurrent,
     required this.onTap,
   });
 
   final String id;
   final String title;
+  final bool isRead;
+  final bool isCurrent;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // E-Ink: grayed-out text alone has poor contrast on a 1-bit panel, so a
+    // check/reading icon carries the state instead.
+    final isEink = SettingsController.instance.einkMode;
+    final titleColor = isRead
+        ? theme.colorScheme.onSurfaceVariant.withValues(
+            alpha: isEink ? 0.75 : 0.6,
+          )
+        : theme.colorScheme.onSurface;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Material(
         color: theme.colorScheme.surfaceContainerHighest.withValues(
           alpha: 0.38,
         ),
-        borderRadius: BorderRadius.circular(12),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: isCurrent
+              ? BorderSide(color: theme.colorScheme.primary, width: 1.5)
+              : BorderSide(color: theme.colorScheme.outlineVariant),
+        ),
         child: ListTile(
           dense: true,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
-          title: Text(title),
+          title: Text(title, style: TextStyle(color: titleColor)),
           subtitle: Text(id),
-          trailing: const Icon(Icons.chevron_right),
+          trailing: _trailingIcon(theme, isEink),
           onTap: onTap,
+        ),
+      ),
+    );
+  }
+
+  Widget _trailingIcon(ThemeData theme, bool isEink) {
+    if (isCurrent) {
+      return Icon(
+        Icons.play_circle_outline,
+        color: theme.colorScheme.primary,
+      );
+    }
+    if (isRead && isEink) {
+      return Icon(
+        Icons.check,
+        size: 18,
+        color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
+      );
+    }
+    return const Icon(Icons.chevron_right);
+  }
+}
+
+/// Compact grid cell for chapter mode "grid": chapter name centered, with
+/// the same read-state language as [_ChapterTile].
+class _ChapterGridTile extends StatelessWidget {
+  const _ChapterGridTile({
+    required this.title,
+    required this.isRead,
+    required this.isCurrent,
+    required this.onTap,
+  });
+
+  final String title;
+  final bool isRead;
+  final bool isCurrent;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isEink = SettingsController.instance.einkMode;
+    final titleColor = isRead
+        ? theme.colorScheme.onSurfaceVariant.withValues(
+            alpha: isEink ? 0.75 : 0.6,
+          )
+        : theme.colorScheme.onSurface;
+    return Material(
+      color: theme.colorScheme.surfaceContainerHighest.withValues(
+        alpha: 0.38,
+      ),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: isCurrent
+            ? BorderSide(color: theme.colorScheme.primary, width: 1.5)
+            : BorderSide(color: theme.colorScheme.outlineVariant),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Flexible(
+                child: Text(
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: titleColor,
+                  ),
+                ),
+              ),
+              if (isCurrent)
+                Icon(
+                  Icons.play_circle_outline,
+                  size: 14,
+                  color: theme.colorScheme.primary,
+                )
+              else if (isRead && isEink)
+                Icon(
+                  Icons.check,
+                  size: 14,
+                  color: theme.colorScheme.onSurfaceVariant.withValues(
+                    alpha: 0.75,
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );

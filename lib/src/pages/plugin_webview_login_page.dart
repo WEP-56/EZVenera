@@ -14,6 +14,11 @@ class PluginWebviewLoginPage extends StatefulWidget {
 
   final PluginSource source;
 
+  /// Releases the process-wide WebView2 environment created for logins, so
+  /// WebView2 is gone before the Flutter engine tears down at exit.
+  static Future<void> disposeEnvironment() =>
+      _PluginWebviewLoginPageState.disposeEnvironment();
+
   @override
   State<PluginWebviewLoginPage> createState() => _PluginWebviewLoginPageState();
 }
@@ -273,6 +278,19 @@ class _PluginWebviewLoginPageState extends State<PluginWebviewLoginPage> {
       settings: WebViewEnvironmentSettings(userDataFolder: userDataFolder),
     );
     return _webViewEnvironment;
+  }
+
+  /// Releases the process-wide WebView2 environment. Its COM threads and the
+  /// msedgewebview.exe child survive the Dart VM, and losing the handle meant
+  /// the environment was still alive when the engine tore down at exit.
+  static Future<void> disposeEnvironment() async {
+    final environment = _webViewEnvironment;
+    _webViewEnvironment = null;
+    _environmentFuture = null;
+    if (environment == null) {
+      return;
+    }
+    await environment.dispose();
   }
 
   void _reload() {

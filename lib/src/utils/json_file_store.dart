@@ -64,6 +64,11 @@ class JsonFileStore {
     return next;
   }
 
+  /// Awaits every queued write, including failures (which are swallowed the
+  /// same way the queue swallows them). Used before exit so a fire-and-forget
+  /// persist cannot be cut off mid-rename.
+  Future<void> flush() => _writeQueue.catchError((Object _) {});
+
   /// Reads a JSON array document. Missing, corrupted, or wrong-shape files
   /// yield an empty list (with a warning log) — same contract as [read].
   Future<List<dynamic>> readList() async {

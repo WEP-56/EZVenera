@@ -15,11 +15,13 @@ class JsonStore {
 
   final String fileName;
   JsonFileStore? _store;
+  Future<void>? _initFuture;
 
-  Future<void> initialize() async {
-    if (_store != null) {
-      return;
-    }
+  /// Cached initialization: concurrent first callers share the same future
+  /// instead of each building their own store (and write queue).
+  Future<void> initialize() => _initFuture ??= _initialize();
+
+  Future<void> _initialize() async {
     final supportDirectory = await getApplicationSupportDirectory();
     final root = Directory(p.join(supportDirectory.path, 'library_state'));
     await root.create(recursive: true);

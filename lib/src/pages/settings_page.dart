@@ -21,6 +21,7 @@ import '../network/network_client_factory.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
 import '../reader/reader_image_cache.dart';
 import '../settings/settings_controller.dart';
+import '../shell/windows_exit_handler.dart';
 import '../utils/platform_directory.dart';
 import 'sources_page.dart';
 
@@ -313,8 +314,6 @@ class _AppearanceSettingsPageState extends State<_AppearanceSettingsPage> {
       child: ListView(
         padding: const EdgeInsets.all(24),
         children: [
-          const _EinkSection(),
-          const SizedBox(height: 20),
           _SettingsGroup(
             title: l10n.settingsAppearance,
             icon: Icons.palette_outlined,
@@ -390,6 +389,8 @@ class _AppearanceSettingsPageState extends State<_AppearanceSettingsPage> {
               ),
             ],
           ),
+          const SizedBox(height: 20),
+          const _EinkSection(),
         ],
       ),
     );
@@ -1655,6 +1656,26 @@ class _AboutSettingsPage extends StatefulWidget {
 class _AboutSettingsPageState extends State<_AboutSettingsPage> {
   static final _githubUri = Uri.parse('https://github.com/WEP-56/EZVenera');
 
+  String? _versionLabel;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadVersion());
+  }
+
+  /// The same `version+build` the startup log line prints, so the About page
+  /// can be matched against app.log when reporting a build.
+  Future<void> _loadVersion() async {
+    final packageInfo = await PackageInfo.fromPlatform();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _versionLabel = '${packageInfo.version}+${packageInfo.buildNumber}';
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -1672,6 +1693,11 @@ class _AboutSettingsPageState extends State<_AboutSettingsPage> {
                 title: const Text('EZVenera'),
                 subtitle: Text(l10n.settingsAboutDescription),
               ),
+              if (_versionLabel case final versionLabel?)
+                ListTile(
+                  title: Text(l10n.settingsVersion),
+                  subtitle: Text(versionLabel),
+                ),
               ListTile(
                 title: Text(l10n.settingsSourceRepository),
                 subtitle: Text(l10n.settingsSourceRepositorySubtitle),
@@ -2068,7 +2094,12 @@ class _AboutSettingsPageState extends State<_AboutSettingsPage> {
         }
       }
       await Future<void>.delayed(const Duration(milliseconds: 800));
-      exit(0);
+      // Leave through the window-close path, not dart:io exit(): exit() runs
+      // the CRT teardown while the engine threads and the plugin isolates are
+      // still live, which is what turned "quit after installing an update"
+      // into an aborted process.
+      await WindowsExitHandler.instance.requestExit();
+      return;
     }
 
     if (Platform.isAndroid) {
