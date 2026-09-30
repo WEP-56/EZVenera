@@ -737,7 +737,7 @@ class _NetworkSettingsPageState extends State<_NetworkSettingsPage> {
                         decoration: InputDecoration(
                           border: const OutlineInputBorder(),
                           labelText: _text(l10n, '代理地址', 'Proxy URL'),
-                          hintText: 'http://192.168.2.153:16492',
+                          hintText: 'http://xxx.xxx.xxx.xxx:xxxx',
                         ),
                         keyboardType: TextInputType.url,
                         onSubmitted: (_) => _saveProxy(),
