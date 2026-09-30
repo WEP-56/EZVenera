@@ -290,12 +290,24 @@ class _NetworkLogInterceptor extends Interceptor {
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) {
     final request = err.requestOptions;
-    unawaited(
-      AppLogger.instance.warning(
-        '[network] ${request.method} ${request.uri} failed: '
-        '${err.type.name} ${err.message ?? ''}',
-      ),
-    );
+    if (err.response?.statusCode == 407) {
+      // Same story as the onResponse branch, for throwOnError clones where
+      // a 407 surfaces as an error instead of a response.
+      unawaited(
+        AppLogger.instance.warning(
+          '[network] ${request.method} ${request.uri} -> 407: proxy '
+          'requires authentication; proxy credentials are currently only '
+          'applied to WebDAV (rhttp) requests (ADR-NW-2)',
+        ),
+      );
+    } else {
+      unawaited(
+        AppLogger.instance.warning(
+          '[network] ${request.method} ${request.uri} failed: '
+          '${err.type.name} ${err.message ?? ''}',
+        ),
+      );
+    }
     handler.next(err);
   }
 }

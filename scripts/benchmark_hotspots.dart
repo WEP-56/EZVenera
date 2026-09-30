@@ -47,7 +47,7 @@ Future<void> main(List<String> args) async {
   });
 
   // H2 — disk cache trim scan: create a realistic cache tree (2000 files,
-  // 256 subdirs), then replicate _trimDiskCacheIfNeeded's scan+stat+sort.
+  // 64 subdirs), then replicate _trimDiskCacheIfNeeded's scan+stat+sort.
   final cacheDir =
       await Directory.systemTemp.createTemp('ezv_bench_cache');
   try {
