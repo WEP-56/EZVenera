@@ -8,6 +8,7 @@ class PluginCookieStore {
 
   final String path;
   late final Database _db = sqlite3.open(path);
+  bool _isOpen = false;
 
   void initialize() {
     _db.execute('''
@@ -22,6 +23,18 @@ class PluginCookieStore {
         PRIMARY KEY (name, domain, path)
       );
     ''');
+    _isOpen = true;
+  }
+
+  /// Closes the native handle so sqlite has no open database left when the
+  /// process exits. Every write is a synchronous `execute`, so nothing is
+  /// buffered that a close could lose.
+  void close() {
+    if (!_isOpen) {
+      return;
+    }
+    _isOpen = false;
+    _db.dispose();
   }
 
   void saveFromResponse(Uri uri, List<Cookie> cookies) {

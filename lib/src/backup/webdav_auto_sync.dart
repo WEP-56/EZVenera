@@ -23,6 +23,7 @@ class WebDavAutoSync extends ChangeNotifier {
   static const Duration _uploadDebounce = Duration(seconds: 3);
 
   bool _started = false;
+  bool _stopped = false;
   bool _isDownloading = false;
   bool _isUploading = false;
   bool _haveWaitingTask = false;
@@ -55,8 +56,26 @@ class WebDavAutoSync extends ChangeNotifier {
     }
   }
 
+  /// Stops the debounced uploads and waits for an in-flight transfer, so the
+  /// rhttp (Rust) request threads are idle before the window is destroyed.
+  /// The caller bounds this wait; a stalled WebDAV request must not be able
+  /// to hold the exit open.
+  Future<void> stop() async {
+    _stopped = true;
+    _uploadDebounceTimer?.cancel();
+    _uploadDebounceTimer = null;
+
+    FavoriteController.instance.removeListener(_onDataChanged);
+    HistoryController.instance.removeListener(_onDataChanged);
+    PluginRuntimeController.instance.removeListener(_onDataChanged);
+
+    while (_isDownloading || _isUploading) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
+  }
+
   void _onDataChanged() {
-    if (!isEnabled) {
+    if (_stopped || !isEnabled) {
       return;
     }
     _uploadDebounceTimer?.cancel();

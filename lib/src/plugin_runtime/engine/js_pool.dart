@@ -10,13 +10,21 @@ class PluginJsPool {
   static const _maxInstances = 4;
 
   final List<_IsolateJsEngine> _instances = [];
+  bool _shutdown = false;
 
   /// Cached initialization future: concurrent callers await the same
   /// initialization instead of polling a flag. A failure clears the cache
   /// so the next call retries instead of hanging forever.
   Future<void>? _initFuture;
 
-  Future<void> ensureInitialized() => _initFuture ??= _initialize();
+  Future<void> ensureInitialized() {
+    if (_shutdown) {
+      return Future<void>.error(
+        StateError('PluginJsPool is shut down; refusing to spawn engines.'),
+      );
+    }
+    return _initFuture ??= _initialize();
+  }
 
   Future<void> _initialize() async {
     try {
@@ -47,6 +55,20 @@ class PluginJsPool {
     }
     return selected.execute(jsFunction, args);
   }
+
+  /// Asks every engine isolate to finish its queued tasks and exit on its own,
+  /// so no QuickJS call is still on the stack when the window is destroyed.
+  /// An isolate that outlives [grace] is killed as a last resort.
+  Future<void> shutdown({Duration grace = const Duration(seconds: 2)}) async {
+    if (_shutdown) {
+      return;
+    }
+    _shutdown = true;
+    final instances = List<_IsolateJsEngine>.of(_instances);
+    _instances.clear();
+    _initFuture = null;
+    await Future.wait(instances.map((engine) => engine.shutdown(grace)));
+  }
 }
 
 class _IsolateJsEngineInitParams {
@@ -60,10 +82,13 @@ class _IsolateJsEngine {
   _IsolateJsEngine._(this.jsInit) {
     _receivePort = ReceivePort();
     _receivePort!.listen(_onMessage);
-    _spawnFuture = Isolate.spawn(
-      _run,
-      _IsolateJsEngineInitParams(_receivePort!.sendPort, jsInit),
-    );
+    _spawnFuture =
+        Isolate.spawn(
+          _run,
+          _IsolateJsEngineInitParams(_receivePort!.sendPort, jsInit),
+        ).then((isolate) {
+          _isolate = isolate;
+        });
   }
 
   /// Creates the engine and surfaces spawn failures at pool initialization
@@ -79,14 +104,23 @@ class _IsolateJsEngine {
   late final Future<void> _spawnFuture;
   ReceivePort? _receivePort;
   SendPort? _sendPort;
+  Isolate? _isolate;
   int _counter = 0;
   final Map<int, Completer<dynamic>> _tasks = {};
+  final Completer<void> _exited = Completer<void>();
 
   int get pendingTasks => _tasks.length;
 
   void _onMessage(dynamic message) {
     if (message is SendPort) {
       _sendPort = message;
+      return;
+    }
+
+    if (message is _ShutdownAck) {
+      if (!_exited.isCompleted) {
+        _exited.complete();
+      }
       return;
     }
 
@@ -103,6 +137,37 @@ class _IsolateJsEngine {
     }
   }
 
+  /// Completes once the child isolate has drained its queue and returned.
+  Future<void> shutdown(Duration grace) async {
+    final sendPort = _sendPort;
+    final isolate = _isolate;
+    if (sendPort == null || isolate == null) {
+      // Handshake never finished, so the isolate cannot be holding a task.
+      _kill();
+      _closePort();
+      return;
+    }
+
+    sendPort.send(const _Shutdown());
+    await _exited.future.timeout(grace, onTimeout: _kill);
+    _closePort();
+  }
+
+  void _kill() {
+    try {
+      // beforeNextEvent, not immediate: interrupting QuickJS mid-call is the
+      // abort this whole shutdown path exists to avoid.
+      _isolate?.kill(priority: Isolate.beforeNextEvent);
+    } catch (_) {
+      // Already terminated.
+    }
+  }
+
+  void _closePort() {
+    _receivePort?.close();
+    _receivePort = null;
+  }
+
   static Future<void> _run(_IsolateJsEngineInitParams params) async {
     final port = ReceivePort();
     params.sendPort.send(port.sendPort);
@@ -114,6 +179,9 @@ class _IsolateJsEngine {
     engine.evaluate(String.fromCharCodes(params.jsInit), name: '<init>');
 
     await for (final message in port) {
+      if (message is _Shutdown) {
+        break;
+      }
       if (message is! _Task) {
         continue;
       }
@@ -137,6 +205,12 @@ class _IsolateJsEngine {
         jsFunc?.free();
       }
     }
+
+    // Stop the JS event loop and let the isolate return by itself; the
+    // shutdown ack is sent last so the parent only stops waiting once this
+    // isolate is provably out of native code.
+    engine.port.close();
+    params.sendPort.send(const _ShutdownAck());
   }
 
   Future<dynamic> execute(String jsFunction, List<dynamic> args) async {
@@ -166,4 +240,14 @@ class _TaskResult {
   final int id;
   final Object? result;
   final String? error;
+}
+
+/// Parent -> isolate: answer the tasks you already have, then return.
+class _Shutdown {
+  const _Shutdown();
+}
+
+/// Isolate -> parent: this isolate is out of native code and about to exit.
+class _ShutdownAck {
+  const _ShutdownAck();
 }

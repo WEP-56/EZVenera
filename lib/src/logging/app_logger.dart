@@ -68,6 +68,10 @@ class AppLogger {
     return file.readAsString();
   }
 
+  /// Awaits the write queue so nothing logged while shutting down is lost when
+  /// the process exits.
+  Future<void> flush() => _pendingWrite.catchError((Object _) {});
+
   Future<void> clear() async {
     final file = await logFile;
     await file.writeAsString('');

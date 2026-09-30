@@ -21,6 +21,7 @@ import '../network/network_client_factory.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
 import '../reader/reader_image_cache.dart';
 import '../settings/settings_controller.dart';
+import '../shell/windows_exit_handler.dart';
 import '../utils/platform_directory.dart';
 import 'sources_page.dart';
 
@@ -2068,7 +2069,12 @@ class _AboutSettingsPageState extends State<_AboutSettingsPage> {
         }
       }
       await Future<void>.delayed(const Duration(milliseconds: 800));
-      exit(0);
+      // Leave through the window-close path, not dart:io exit(): exit() runs
+      // the CRT teardown while the engine threads and the plugin isolates are
+      // still live, which is what turned "quit after installing an update"
+      // into an aborted process.
+      await WindowsExitHandler.instance.requestExit();
+      return;
     }
 
     if (Platform.isAndroid) {

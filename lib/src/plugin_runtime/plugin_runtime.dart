@@ -74,6 +74,16 @@ class PluginRuntime {
     _initialized = true;
   }
 
+  /// Releases the native handles the runtime owns. The JS engines need no
+  /// teardown here: they run on the main isolate, which by construction
+  /// cannot be inside a native call while this runs.
+  Future<void> shutdown() async {
+    if (!_initialized) {
+      return;
+    }
+    cookieStore.close();
+  }
+
   Future<void> reload() async {
     engine.resetSources();
     _sources

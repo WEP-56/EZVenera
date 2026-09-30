@@ -89,4 +89,8 @@ class AppStateController extends ChangeNotifier {
   Future<void> _persist() async {
     await _store?.write(_state);
   }
+
+  /// Awaits queued persistence; called on the way out so the last window
+  /// bounds / toggle state survives the exit.
+  Future<void> flush() => _store?.flush() ?? Future<void>.value();
 }

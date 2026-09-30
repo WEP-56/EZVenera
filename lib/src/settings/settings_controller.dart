@@ -692,6 +692,10 @@ class SettingsController extends ChangeNotifier {
     await _store?.write(toBackupJson());
   }
 
+  /// Awaits queued persistence; called on the way out so a fire-and-forget
+  /// setting change is not lost.
+  Future<void> flush() => _store?.flush() ?? Future<void>.value();
+
   ThemeMode _parseThemeMode(String? value) {
     return switch (value) {
       'light' => ThemeMode.light,

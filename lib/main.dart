@@ -8,6 +8,7 @@ import 'package:window_manager/window_manager.dart';
 import 'src/app.dart';
 import 'src/logging/app_logger.dart';
 import 'src/network/network_client_factory.dart';
+import 'src/shell/windows_exit_handler.dart';
 import 'src/state/app_state_controller.dart';
 
 Future<void> main() async {
@@ -41,6 +42,9 @@ Future<void> main() async {
   if (Platform.isWindows) {
     await windowManager.ensureInitialized();
     await AppStateController.instance.initialize();
+    // Claims the native close message so every exit drains the subsystems
+    // before the engine shuts down (a raw window close aborts the process).
+    await WindowsExitHandler.instance.install();
   }
   runApp(const EZVeneraApp());
   if (Platform.isWindows) {
