@@ -52,3 +52,7 @@ handoff.md
 .workbuddy/
 # Rust / cargo build artifacts
 **/target/
+
+# Local build products & tool directories
+/android/build/
+.cline/
