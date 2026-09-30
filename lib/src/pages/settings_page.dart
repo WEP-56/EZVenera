@@ -1678,15 +1678,16 @@ class _AboutSettingsPageState extends State<_AboutSettingsPage> {
     unawaited(_loadVersion());
   }
 
-  /// The same `version+build` the startup log line prints, so the About page
-  /// can be matched against app.log when reporting a build.
+  /// The release version as published, without the build suffix — the same
+  /// string the release artifacts are named after. The build number stays in
+  /// the app.log startup line for anyone who needs to pin an exact build.
   Future<void> _loadVersion() async {
     final packageInfo = await PackageInfo.fromPlatform();
     if (!mounted) {
       return;
     }
     setState(() {
-      _versionLabel = '${packageInfo.version}+${packageInfo.buildNumber}';
+      _versionLabel = packageInfo.version;
     });
   }
 
