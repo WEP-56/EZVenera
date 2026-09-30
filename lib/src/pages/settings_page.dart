@@ -1656,6 +1656,26 @@ class _AboutSettingsPage extends StatefulWidget {
 class _AboutSettingsPageState extends State<_AboutSettingsPage> {
   static final _githubUri = Uri.parse('https://github.com/WEP-56/EZVenera');
 
+  String? _versionLabel;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadVersion());
+  }
+
+  /// The same `version+build` the startup log line prints, so the About page
+  /// can be matched against app.log when reporting a build.
+  Future<void> _loadVersion() async {
+    final packageInfo = await PackageInfo.fromPlatform();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _versionLabel = '${packageInfo.version}+${packageInfo.buildNumber}';
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -1673,6 +1693,11 @@ class _AboutSettingsPageState extends State<_AboutSettingsPage> {
                 title: const Text('EZVenera'),
                 subtitle: Text(l10n.settingsAboutDescription),
               ),
+              if (_versionLabel case final versionLabel?)
+                ListTile(
+                  title: Text(l10n.settingsVersion),
+                  subtitle: Text(versionLabel),
+                ),
               ListTile(
                 title: Text(l10n.settingsSourceRepository),
                 subtitle: Text(l10n.settingsSourceRepositorySubtitle),
