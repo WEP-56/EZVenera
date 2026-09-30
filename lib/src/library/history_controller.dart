@@ -37,7 +37,17 @@ class HistoryController extends ChangeNotifier {
 
   Future<void> record(ReadingHistoryEntry entry) async {
     await initialize();
-    _entries = [entry, ..._entries.where((item) => item.key != entry.key)];
+    ReadingHistoryEntry? previous;
+    for (final item in _entries) {
+      if (item.key == entry.key) {
+        previous = item;
+        break;
+      }
+    }
+    _entries = [
+      _accumulate(entry, previous),
+      ..._entries.where((item) => item.key != entry.key),
+    ];
     await _persist();
     notifyListeners();
   }
@@ -56,14 +66,38 @@ class HistoryController extends ChangeNotifier {
     };
     for (final entry in entries) {
       final current = merged[entry.key];
-      if (current == null || entry.timestamp.isAfter(current.timestamp)) {
+      if (current == null) {
         merged[entry.key] = entry;
+        continue;
       }
+      // Whichever side was opened last wins the bookmark, but both sides'
+      // read chapters survive: losing one device must not unread its chapters.
+      final newer = entry.timestamp.isAfter(current.timestamp)
+          ? entry
+          : current;
+      final older = identical(newer, entry) ? current : entry;
+      merged[entry.key] = _accumulate(newer, older);
     }
     _entries = merged.values.toList()
       ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
     await _persist();
     notifyListeners();
+  }
+
+  /// A read record only carries the chapter the reader is in, so the chapters
+  /// already remembered for the same comic have to be folded in on every write.
+  static ReadingHistoryEntry _accumulate(
+    ReadingHistoryEntry entry,
+    ReadingHistoryEntry? previous,
+  ) {
+    return entry.copyWith(
+      readChapterIds: <String>{
+        ...?previous?.readChapterIds,
+        if ((previous?.chapterId ?? '').isNotEmpty) previous!.chapterId!,
+        ...entry.readChapterIds,
+        if ((entry.chapterId ?? '').isNotEmpty) entry.chapterId!,
+      },
+    );
   }
 
   Future<void> replaceEntries(List<ReadingHistoryEntry> entries) async {

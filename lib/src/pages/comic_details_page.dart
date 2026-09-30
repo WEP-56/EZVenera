@@ -210,13 +210,13 @@ class _ComicDetailsPageState extends State<ComicDetailsPage> {
     });
   }
 
-  _ChapterSelection _firstChapter(
+  ChapterSelection _firstChapter(
     PluginComicDetails details,
     bool chaptersReversed,
   ) {
     final chapters = details.chapters;
     if (chapters == null) {
-      return const _ChapterSelection(id: null, title: 'Read');
+      return const ChapterSelection(id: null, title: 'Read');
     }
 
     if (chapters.isGrouped) {
@@ -228,21 +228,21 @@ class _ComicDetailsPageState extends State<ComicDetailsPage> {
         firstGroup.value,
         chaptersReversed,
       ).first;
-      return _ChapterSelection(id: firstChapter.key, title: firstChapter.value);
+      return ChapterSelection(id: firstChapter.key, title: firstChapter.value);
     }
 
     final firstChapter = orderedChapterEntries(
       chapters.chapters!,
       chaptersReversed,
     ).first;
-    return _ChapterSelection(id: firstChapter.key, title: firstChapter.value);
+    return ChapterSelection(id: firstChapter.key, title: firstChapter.value);
   }
 
   /// Prefer the last reading position when the user taps Read/Continue.
   ///
   /// Previously Read always opened the first chapter. That both ignored
   /// progress and immediately overwrote history once the reader loaded.
-  _ChapterSelection _resolveReadChapter(
+  ChapterSelection _resolveReadChapter(
     PluginComicDetails details,
     bool chaptersReversed,
   ) {
@@ -254,7 +254,7 @@ class _ComicDetailsPageState extends State<ComicDetailsPage> {
     return fromHistory ?? _firstChapter(details, chaptersReversed);
   }
 
-  _ChapterSelection? _chapterFromHistory(
+  ChapterSelection? _chapterFromHistory(
     PluginComicDetails details,
     ReadingHistoryEntry? history,
   ) {
@@ -267,7 +267,7 @@ class _ComicDetailsPageState extends State<ComicDetailsPage> {
       if (history.chapterId == null && history.chapterTitle == null) {
         return null;
       }
-      return _ChapterSelection(
+      return ChapterSelection(
         id: history.chapterId,
         title: history.chapterTitle ?? 'Read',
       );
@@ -284,19 +284,19 @@ class _ComicDetailsPageState extends State<ComicDetailsPage> {
 
     for (final entry in flattened) {
       if (history.chapterId != null && entry.key == history.chapterId) {
-        return _ChapterSelection(id: entry.key, title: entry.value);
+        return ChapterSelection(id: entry.key, title: entry.value);
       }
     }
     for (final entry in flattened) {
       if (history.chapterTitle != null && entry.value == history.chapterTitle) {
-        return _ChapterSelection(id: entry.key, title: entry.value);
+        return ChapterSelection(id: entry.key, title: entry.value);
       }
     }
     return null;
   }
 
   void _openReader(
-    _ChapterSelection chapter,
+    ChapterSelection chapter,
     PluginComicDetails details, {
     int? initialPage,
   }) {
@@ -590,7 +590,7 @@ class _ComicDetailsBody extends StatelessWidget {
   final VoidCallback onToggleChapterOrder;
   final VoidCallback onToggleChapterDisplayMode;
   final bool isFavorite;
-  final ValueChanged<_ChapterSelection> onChapterSelected;
+  final ValueChanged<ChapterSelection> onChapterSelected;
   final ValueChanged<int> onPreviewPage;
   final void Function(String namespace, String tag) onTagTap;
 
@@ -601,6 +601,10 @@ class _ComicDetailsBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final description = (details.description ?? summary.description).trim();
+    final historyEntry = HistoryController.instance.find(
+      summary.sourceKey,
+      summary.id,
+    );
     final source = PluginRuntimeController.instance.find(summary.sourceKey);
     final showPreview =
         (details.thumbnails != null && details.thumbnails!.isNotEmpty) ||
@@ -703,13 +707,13 @@ class _ComicDetailsBody extends StatelessWidget {
                       ),
                     ],
                   ),
-                  child: _ChaptersView(
+                  child: ChaptersView(
                     chapters: details.chapters!,
                     reversed: chaptersReversed,
                     mode: chapterDisplayMode,
-                    readChapterId: HistoryController.instance
-                        .find(summary.sourceKey, summary.id)
-                        ?.chapterId,
+                    readChapterId: historyEntry?.chapterId,
+                    readChapterIds:
+                        historyEntry?.readChapterIds ?? const <String>{},
                     onChapterSelected: onChapterSelected,
                   ),
                 ),
@@ -1497,33 +1501,40 @@ class _CollapsibleCardState extends State<_CollapsibleCard> {
   }
 }
 
-class _ChaptersView extends StatelessWidget {
-  const _ChaptersView({
+/// The chapter list of the details page. Public so a widget test can mount it
+/// against a fake chapter map and assert the read marks directly; the page
+/// itself is the only caller.
+class ChaptersView extends StatelessWidget {
+  const ChaptersView({
+    super.key,
     required this.chapters,
     required this.reversed,
     required this.mode,
-    required this.readChapterId,
     required this.onChapterSelected,
+    this.readChapterId,
+    this.readChapterIds = const <String>{},
   });
 
   final PluginComicChapters chapters;
   final bool reversed;
   final ChapterDisplayMode mode;
 
-  /// The chapter the reader last stopped at (from history), used for the
-  /// "reading here" highlight and the read/unread split. Null when unknown.
+  /// The chapter the reader last stopped at, for the "reading here" highlight.
   final String? readChapterId;
-  final ValueChanged<_ChapterSelection> onChapterSelected;
+
+  /// Every chapter the reader has opened, recorded per chapter. Read state is
+  /// set membership: a single pointer cannot describe jumping around, or
+  /// reading backwards, without marking chapters that were never opened.
+  final Set<String> readChapterIds;
+  final ValueChanged<ChapterSelection> onChapterSelected;
 
   @override
   Widget build(BuildContext context) {
-    final ranks = canonicalChapterRanks(chapters);
-    final readRank = ranks[readChapterId];
     if (chapters.isGrouped) {
       return Column(
         children: orderedChapterGroups(chapters.groupedChapters!, reversed).map(
           (entry) {
-            final rows = _rowsFor(entry.value, ranks, readRank);
+            final rows = _rowsFor(entry.value);
             return ExpansionTile(
               tilePadding: EdgeInsets.zero,
               childrenPadding: const EdgeInsets.only(bottom: 8),
@@ -1539,27 +1550,20 @@ class _ChaptersView extends StatelessWidget {
       );
     }
 
-    final rows = _rowsFor(chapters.chapters!, ranks, readRank);
+    final rows = _rowsFor(chapters.chapters!);
     return mode == ChapterDisplayMode.grid
         ? _buildGrid(context, rows)
         : _buildList(context, rows);
   }
 
-  List<_ChapterRow> _rowsFor(
-    Map<String, String> chapters,
-    Map<String, int> ranks,
-    int? readRank,
-  ) {
+  List<_ChapterRow> _rowsFor(Map<String, String> chapters) {
     final rows = orderedChapterEntries(chapters, reversed)
         .map(_ChapterRow.new)
         .toList();
     for (final row in rows) {
       row
         ..isCurrent = row.entry.key == readChapterId
-        ..isRead = chapterIsRead(
-          rank: ranks[row.entry.key],
-          readRank: readRank,
-        );
+        ..isRead = readChapterIds.contains(row.entry.key);
     }
     return rows;
   }
@@ -1579,7 +1583,7 @@ class _ChaptersView extends StatelessWidget {
           isCurrent: row.isCurrent,
           onTap: () {
             onChapterSelected(
-              _ChapterSelection(id: row.entry.key, title: row.entry.value),
+              ChapterSelection(id: row.entry.key, title: row.entry.value),
             );
           },
         );
@@ -1607,7 +1611,7 @@ class _ChaptersView extends StatelessWidget {
           isCurrent: row.isCurrent,
           onTap: () {
             onChapterSelected(
-              _ChapterSelection(id: row.entry.key, title: row.entry.value),
+              ChapterSelection(id: row.entry.key, title: row.entry.value),
             );
           },
         );
@@ -1616,8 +1620,8 @@ class _ChaptersView extends StatelessWidget {
   }
 }
 
-/// One ordered chapter entry plus its read-state, computed once per build
-/// against the canonical chapter order so it survives a reversed display.
+/// One ordered chapter entry plus its read-state, taken from the chapters the
+/// reader actually opened rather than from its position in the displayed list.
 class _ChapterRow {
   _ChapterRow(this.entry);
 
@@ -1771,8 +1775,8 @@ class _ChapterGridTile extends StatelessWidget {
   }
 }
 
-class _ChapterSelection {
-  const _ChapterSelection({required this.id, required this.title});
+class ChapterSelection {
+  const ChapterSelection({required this.id, required this.title});
 
   final String? id;
   final String title;
