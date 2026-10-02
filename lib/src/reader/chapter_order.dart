@@ -1,4 +1,3 @@
-import '../plugin_runtime/models.dart';
 import '../settings/settings_controller.dart';
 import '../state/app_state_controller.dart';
 
@@ -75,30 +74,4 @@ List<MapEntry<String, Map<String, String>>> orderedChapterGroups(
 ) {
   final entries = groups.entries.toList();
   return reversed ? entries.reversed.toList() : entries;
-}
-
-/// Each chapter's position in the story's own order: group order first, then
-/// insertion order inside the group.
-///
-/// Read state must be judged against this rather than against the displayed
-/// list: the displayed list is reversed on demand, which would flip the
-/// before/after comparison, and a grouped comic is rendered one group at a
-/// time, which would hide every chapter read before the current group.
-Map<String, int> canonicalChapterRanks(PluginComicChapters chapters) {
-  final groups = chapters.isGrouped
-      ? chapters.groupedChapters!.values
-      : [chapters.chapters!];
-  final ranks = <String, int>{};
-  for (final group in groups) {
-    for (final id in group.keys) {
-      ranks[id] = ranks.length;
-    }
-  }
-  return ranks;
-}
-
-/// A chapter is read when it comes before the chapter the reader last stopped
-/// at. Unknown either side means nothing is marked read.
-bool chapterIsRead({int? rank, required int? readRank}) {
-  return rank != null && readRank != null && rank < readRank;
 }

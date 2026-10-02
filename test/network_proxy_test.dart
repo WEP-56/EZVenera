@@ -29,7 +29,7 @@ void main() {
 
   group('SettingsController.isValidProxyUrl', () {
     test('accepts http(s) URLs with host', () {
-      expect(SettingsController.isValidProxyUrl('http://192.168.2.153:16492'),
+      expect(SettingsController.isValidProxyUrl('http://192.0.2.1:8080'),
           isTrue);
       expect(
         SettingsController.isValidProxyUrl('https://proxy.example.com'),
@@ -49,8 +49,8 @@ void main() {
   group('SettingsController.customProxyAuthority', () {
     test('keeps explicit port', () {
       expect(
-        SettingsController.customProxyAuthority('http://192.168.2.153:16492'),
-        '192.168.2.153:16492',
+        SettingsController.customProxyAuthority('http://192.0.2.1:8080'),
+        '192.0.2.1:8080',
       );
     });
 
@@ -82,15 +82,15 @@ void main() {
     test('credentials are stripped from persisted settings and backups', () async {
       final controller = SettingsController.instance;
       await controller.setProxyMode(ProxyMode.custom);
-      await controller.setProxyUrl('http://user:secret@192.168.2.153:16492');
+      await controller.setProxyUrl('http://user:secret@192.0.2.1:8080');
 
       // The in-memory value keeps the credentials for the current session.
-      expect(controller.proxyUrl, 'http://user:secret@192.168.2.153:16492');
+      expect(controller.proxyUrl, 'http://user:secret@192.0.2.1:8080');
 
       // Backups never contain them.
       final backup = controller.toBackupJson();
       expect(backup['proxyMode'], 'custom');
-      expect(backup['proxyUrl'], 'http://192.168.2.153:16492');
+      expect(backup['proxyUrl'], 'http://192.0.2.1:8080');
 
       // The on-disk settings file never contains them either.
       final file = File(
@@ -98,7 +98,7 @@ void main() {
       );
       final onDisk = jsonDecode(await file.readAsString()) as Map<String,
           dynamic>;
-      expect(onDisk['proxyUrl'], 'http://192.168.2.153:16492');
+      expect(onDisk['proxyUrl'], 'http://192.0.2.1:8080');
       expect(await file.readAsString(), isNot(contains('secret')));
 
       await controller.setProxyMode(ProxyMode.system);
@@ -141,11 +141,11 @@ void main() {
     test('custom mode exposes the proxy authority', () async {
       final controller = SettingsController.instance;
       await controller.setProxyMode(ProxyMode.custom);
-      await controller.setProxyUrl('http://192.168.2.153:16492');
+      await controller.setProxyUrl('http://192.0.2.1:8080');
       final config = NetworkClientFactory.instance.resolveProxyConfig();
       expect(config.mode, ProxyMode.custom);
       expect(config.usesCustomProxy, isTrue);
-      expect(config.customAuthority, '192.168.2.153:16492');
+      expect(config.customAuthority, '192.0.2.1:8080');
 
       await controller.setProxyMode(ProxyMode.system);
       await controller.setProxyUrl('');

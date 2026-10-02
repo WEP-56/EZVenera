@@ -119,5 +119,49 @@ void main() {
         isFalse,
       );
     });
+
+    test('resolvedLocalPath rejects traversal and absolute escapes', () {
+      SourceIndexEntry entryWith(String fileName) =>
+          SourceIndexEntry.fromMap({'key': 'e', 'fileName': fileName});
+
+      // `..` sequences must not escape the index directory.
+      expect(
+        entryWith('../../etc/passwd.js')
+            .resolvedLocalPath('/device/Download/sources'),
+        isNull,
+      );
+      expect(
+        entryWith('sub/../../outside.js')
+            .resolvedLocalPath('/device/Download/sources'),
+        isNull,
+      );
+      // Absolute file names must not replace the directory.
+      expect(
+        entryWith('/etc/evil.js').resolvedLocalPath('/device/Download/sources'),
+        isNull,
+      );
+      // Windows-style absolute and traversal forms, for completeness.
+      expect(
+        entryWith(r'C:\Windows\evil.js')
+            .resolvedLocalPath(r'C:\Users\me\sources'),
+        isNull,
+      );
+      expect(
+        entryWith(r'..\..\outside.js')
+            .resolvedLocalPath(r'C:\Users\me\sources'),
+        isNull,
+      );
+      // Legitimate subdirectory entries stay allowed.
+      expect(
+        entryWith('sub/nested.js')
+            .resolvedLocalPath('/device/Download/sources'),
+        '/device/Download/sources/sub/nested.js',
+      );
+      // Dot-normalized plain names still resolve.
+      expect(
+        entryWith('./plain.js').resolvedLocalPath('/device/Download/sources'),
+        '/device/Download/sources/plain.js',
+      );
+    });
   });
 }

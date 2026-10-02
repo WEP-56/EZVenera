@@ -390,7 +390,7 @@ class _AppearanceSettingsPageState extends State<_AppearanceSettingsPage> {
             ],
           ),
           const SizedBox(height: 20),
-          const _EinkSection(),
+          const EinkSettingsSection(),
         ],
       ),
     );
@@ -403,57 +403,71 @@ class _AppearanceSettingsPageState extends State<_AppearanceSettingsPage> {
   }
 }
 
-class _EinkSection extends StatelessWidget {
-  const _EinkSection();
+/// The E-Ink switches. Public only so a widget test can mount it directly:
+/// the section must keep updating when [SettingsController] notifies, and that
+/// used to depend on the enclosing page rebuilding, which a `const` child
+/// never gets.
+class EinkSettingsSection extends StatelessWidget {
+  const EinkSettingsSection({super.key});
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final controller = SettingsController.instance;
 
-    return _SettingsGroup(
-      title: _text(l10n, 'E-Ink 模式', 'E-Ink mode'),
-      icon: Icons.contrast,
-      children: [
-        SwitchListTile(
-          title: Text(_text(l10n, 'E-Ink 模式', 'E-Ink mode')),
-          subtitle: Text(
-            _text(
-              l10n,
-              '为电子墨水屏优化：禁用翻页与界面动画，减少闪屏和残影。',
-              'Optimized for E-Ink: disables page and UI animations to reduce flashing and ghosting.',
-            ),
-          ),
-          value: controller.einkMode,
-          onChanged: controller.setEinkMode,
-        ),
-        if (controller.einkMode) ...[
-          SwitchListTile(
-            title: Text(_text(l10n, '高对比度主题', 'High-contrast theme')),
-            subtitle: Text(
-              _text(
-                l10n,
-                '纯黑/纯白配色，去除灰阶表面色。',
-                'Pure black/white colors without gray surface tones.',
+    // Subscribed here rather than left to the enclosing page: this section is
+    // inserted as a `const` child, and Element.update skips a child whose new
+    // and old widgets are the same instance, so an ancestor rebuild alone
+    // never re-runs the build below. Without the listener the two sub-switches
+    // only showed up after restarting the app.
+    return ListenableBuilder(
+      listenable: controller,
+      builder: (context, _) {
+        return _SettingsGroup(
+          title: _text(l10n, 'E-Ink 模式', 'E-Ink mode'),
+          icon: Icons.contrast,
+          children: [
+            SwitchListTile(
+              title: Text(_text(l10n, 'E-Ink 模式', 'E-Ink mode')),
+              subtitle: Text(
+                _text(
+                  l10n,
+                  '为电子墨水屏优化：禁用翻页与界面动画，减少闪屏和残影。',
+                  'Optimized for E-Ink: disables page and UI animations to reduce flashing and ghosting.',
+                ),
               ),
+              value: controller.einkMode,
+              onChanged: controller.setEinkMode,
             ),
-            value: controller.einkHighContrast,
-            onChanged: controller.setEinkHighContrast,
-          ),
-          SwitchListTile(
-            title: Text(_text(l10n, '切章刷新提示', 'Chapter refresh flash')),
-            subtitle: Text(
-              _text(
-                l10n,
-                '切换章节时全屏闪烁一次，促使设备全局刷新以清除残影。',
-                'Flash the screen once per chapter switch to prompt a full refresh that clears ghosting.',
+            if (controller.einkMode) ...[
+              SwitchListTile(
+                title: Text(_text(l10n, '高对比度主题', 'High-contrast theme')),
+                subtitle: Text(
+                  _text(
+                    l10n,
+                    '纯黑/纯白配色，去除灰阶表面色。',
+                    'Pure black/white colors without gray surface tones.',
+                  ),
+                ),
+                value: controller.einkHighContrast,
+                onChanged: controller.setEinkHighContrast,
               ),
-            ),
-            value: controller.einkFullRefreshHint,
-            onChanged: controller.setEinkFullRefreshHint,
-          ),
-        ],
-      ],
+              SwitchListTile(
+                title: Text(_text(l10n, '切章刷新提示', 'Chapter refresh flash')),
+                subtitle: Text(
+                  _text(
+                    l10n,
+                    '切换章节时全屏闪烁一次，促使设备全局刷新以清除残影。',
+                    'Flash the screen once per chapter switch to prompt a full refresh that clears ghosting.',
+                  ),
+                ),
+                value: controller.einkFullRefreshHint,
+                onChanged: controller.setEinkFullRefreshHint,
+              ),
+            ],
+          ],
+        );
+      },
     );
   }
 }
@@ -723,7 +737,7 @@ class _NetworkSettingsPageState extends State<_NetworkSettingsPage> {
                         decoration: InputDecoration(
                           border: const OutlineInputBorder(),
                           labelText: _text(l10n, '代理地址', 'Proxy URL'),
-                          hintText: 'http://192.168.2.153:16492',
+                          hintText: 'http://xxx.xxx.xxx.xxx:xxxx',
                         ),
                         keyboardType: TextInputType.url,
                         onSubmitted: (_) => _saveProxy(),
@@ -1664,15 +1678,16 @@ class _AboutSettingsPageState extends State<_AboutSettingsPage> {
     unawaited(_loadVersion());
   }
 
-  /// The same `version+build` the startup log line prints, so the About page
-  /// can be matched against app.log when reporting a build.
+  /// The release version as published, without the build suffix — the same
+  /// string the release artifacts are named after. The build number stays in
+  /// the app.log startup line for anyone who needs to pin an exact build.
   Future<void> _loadVersion() async {
     final packageInfo = await PackageInfo.fromPlatform();
     if (!mounted) {
       return;
     }
     setState(() {
-      _versionLabel = '${packageInfo.version}+${packageInfo.buildNumber}';
+      _versionLabel = packageInfo.version;
     });
   }
 
