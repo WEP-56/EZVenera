@@ -84,7 +84,11 @@ class _SourcesPageState extends State<SourcesPage> {
     List<PluginSource> sources,
   ) {
     final theme = Theme.of(context);
-    final selected = _selectedSourceKey ?? sources.firstOrNull?.key;
+    // The remembered selection may point at a since-deleted source; fall
+    // back to the first tab so the card area is never blank.
+    final selected = sources.any((source) => source.key == _selectedSourceKey)
+        ? _selectedSourceKey
+        : sources.firstOrNull?.key;
     final selectedSource = sources
         .where((source) => source.key == selected)
         .firstOrNull;
