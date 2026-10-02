@@ -67,7 +67,15 @@ class HistoryController extends ChangeNotifier {
     for (final entry in entries) {
       final current = merged[entry.key];
       if (current == null) {
-        merged[entry.key] = entry;
+        // Legacy Venera import entries only carry a bookmark chapterId with
+        // an empty readChapterIds: seed the per-chapter read set from it so
+        // the details page marks the chapter as read right after import.
+        merged[entry.key] = entry.copyWith(
+          readChapterIds: <String>{
+            ...entry.readChapterIds,
+            if ((entry.chapterId ?? '').isNotEmpty) entry.chapterId!,
+          },
+        );
         continue;
       }
       // Whichever side was opened last wins the bookmark, but both sides'

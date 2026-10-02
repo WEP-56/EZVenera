@@ -38,9 +38,9 @@ Future<Uint8List?> fetchImageWithRetry(
       // Fixed backoff ladder (1s, 2s, 4s, capped at 8s) — avoids the
       // `1 << attempt` shift that would overflow for large retry counts.
       const backoffLadder = [1, 2, 4, 8];
-      final seconds =
-          backoffLadder[attempt.clamp(0, backoffLadder.length - 1)];
-      final backoff = Duration(seconds: seconds);
+      final backoffIndex =
+          attempt.clamp(0, backoffLadder.length - 1).toInt();
+      final backoff = Duration(seconds: backoffLadder[backoffIndex]);
       unawaited(
         AppLogger.instance.warning(
           '[download] Attempt ${attempt + 1} failed'

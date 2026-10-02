@@ -126,6 +126,27 @@ void main() {
     );
 
     test(
+      'legacy Venera import seeds the read set from the bookmark chapter',
+      () async {
+        // Imported legacy entries arrive without readChapterIds (the old
+        // format only knew a bookmark); the imported chapter must still be
+        // marked as read on the details page.
+        final legacy = _entry('legacy-import', 'c7', at: 30)
+            .copyWith(readChapterIds: const <String>{});
+        expect(legacy.readChapterIds, isEmpty);
+
+        await HistoryController.instance.mergeEntries([legacy]);
+
+        final stored = HistoryController.instance.find(
+          'src',
+          'legacy-import',
+        )!;
+        expect(stored.readChapterIds, unorderedEquals(['c7']));
+        expect(stored.chapterId, 'c7');
+      },
+    );
+
+    test(
       'accumulated chapters are persisted, not just held in memory',
       () async {
         await HistoryController.instance.record(
