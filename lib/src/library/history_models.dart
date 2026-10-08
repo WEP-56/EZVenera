@@ -12,6 +12,7 @@ class ReadingHistoryEntry {
     this.isLocal = false,
     this.localComicPath,
     this.localFolderId,
+    this.readChapterIds = const <String>{},
   });
 
   final String sourceKey;
@@ -27,7 +28,31 @@ class ReadingHistoryEntry {
   final String? localComicPath;
   final String? localFolderId;
 
+  /// Every chapter the reader has opened, in no particular order. Read state
+  /// has to be recorded per chapter: the previous scheme inferred it from a
+  /// single "last read" pointer, which marked chapters read that were never
+  /// opened and vice versa, and flipped entirely for reverse-order reading.
+  final Set<String> readChapterIds;
+
   String get key => '$sourceKey@$comicId';
+
+  ReadingHistoryEntry copyWith({Set<String>? readChapterIds}) {
+    return ReadingHistoryEntry(
+      sourceKey: sourceKey,
+      comicId: comicId,
+      title: title,
+      subtitle: subtitle,
+      cover: cover,
+      chapterId: chapterId,
+      chapterTitle: chapterTitle,
+      page: page,
+      timestamp: timestamp,
+      isLocal: isLocal,
+      localComicPath: localComicPath,
+      localFolderId: localFolderId,
+      readChapterIds: readChapterIds ?? this.readChapterIds,
+    );
+  }
 
   Map<String, dynamic> toJson() {
     return <String, dynamic>{
@@ -43,6 +68,7 @@ class ReadingHistoryEntry {
       'isLocal': isLocal,
       'localComicPath': localComicPath,
       'localFolderId': localFolderId,
+      'readChapterIds': readChapterIds.toList(),
     };
   }
 
@@ -62,6 +88,21 @@ class ReadingHistoryEntry {
       isLocal: json['isLocal'] == true,
       localComicPath: json['localComicPath']?.toString(),
       localFolderId: json['localFolderId']?.toString(),
+      readChapterIds: _readChapterIds(json),
     );
+  }
+
+  /// Entries written by older builds carry no such list; the chapter they
+  /// point at was certainly opened, so that alone becomes the seeded history.
+  static Set<String> _readChapterIds(Map<String, dynamic> json) {
+    final stored = (json['readChapterIds'] as List?)?.map((e) => '$e').toSet();
+    if (stored != null && stored.isNotEmpty) {
+      return stored;
+    }
+    final chapterId = json['chapterId']?.toString();
+    if (chapterId == null || chapterId.isEmpty) {
+      return const <String>{};
+    }
+    return <String>{chapterId};
   }
 }

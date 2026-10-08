@@ -52,12 +52,26 @@ class SourceIndexEntry {
   /// file; null when the entry has no fileName to resolve. The convention is
   /// that a locally distributed index ships its `.js` files in the same
   /// directory as the index document itself.
+  ///
+  /// The file name comes from an untrusted index document. Validation is
+  /// host-independent: separators are unified to `/`, then absolute forms
+  /// (POSIX, Windows drive-letter) and any `..` segment are rejected — so a
+  /// crafted name can never resolve outside [indexDirectory], regardless of
+  /// which platform this code runs on.
   String? resolvedLocalPath(String indexDirectory) {
     final f = fileName;
     if (f == null || f.isEmpty) {
       return null;
     }
-    return p.normalize(p.join(indexDirectory, f));
+    final unified = f.replaceAll('\\', '/');
+    if (p.isAbsolute(unified) || RegExp(r'^[A-Za-z]:/').hasMatch(unified)) {
+      return null;
+    }
+    final segments = unified.split('/');
+    if (segments.any((segment) => segment == '..')) {
+      return null;
+    }
+    return p.normalize(p.joinAll([indexDirectory, ...segments]));
   }
 }
 

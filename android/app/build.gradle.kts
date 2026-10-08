@@ -51,6 +51,12 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Local test builds coexist with the store build so testing
+            // never touches the user's installed data. Release builds keep
+            // the plain application id so users can upgrade in place.
+            applicationIdSuffix = ".devtest"
+        }
         release {
             signingConfig = if (hasReleaseKeystore) {
                 signingConfigs.getByName("release")

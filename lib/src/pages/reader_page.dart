@@ -506,16 +506,18 @@ class _ReaderPageState extends State<ReaderPage> {
     }
 
     if (error != null) {
-      return _ReaderError(
+      return ReaderError(
         message: error!,
         onRetry: () => _loadChapter(initialPage: currentPage),
+        onBack: () => Navigator.of(context).maybePop(),
       );
     }
 
     if (images.isEmpty || !_hasImageViewportController) {
-      return _ReaderError(
+      return ReaderError(
         message: 'No images returned for this chapter.',
         onRetry: () => _loadChapter(initialPage: currentPage),
+        onBack: () => Navigator.of(context).maybePop(),
       );
     }
 
@@ -2590,11 +2592,19 @@ class _ReaderPageErrorCard extends StatelessWidget {
   }
 }
 
-class _ReaderError extends StatelessWidget {
-  const _ReaderError({required this.message, required this.onRetry});
+/// Full-screen reader error with both ways out: retry the chapter, or leave.
+/// Public so a widget test can assert the exit button without a plugin runtime.
+class ReaderError extends StatelessWidget {
+  const ReaderError({
+    super.key,
+    required this.message,
+    required this.onRetry,
+    required this.onBack,
+  });
 
   final String message;
   final VoidCallback onRetry;
+  final VoidCallback onBack;
 
   @override
   Widget build(BuildContext context) {
@@ -2608,10 +2618,26 @@ class _ReaderError extends StatelessWidget {
             const SizedBox(height: 16),
             Text(message, textAlign: TextAlign.center),
             const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
+            // This state replaces the whole body, so the in-page top bar (which
+            // holds the reader's only back button and appears on tap) is gone —
+            // and the system AppBar is deliberately zero-height. Retry alone
+            // strands the user on a dead chapter (HTTP 410 and friends).
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              alignment: WrapAlignment.center,
+              children: [
+                FilledButton.icon(
+                  onPressed: onRetry,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Retry'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: onBack,
+                  icon: const Icon(Icons.arrow_back),
+                  label: const Text('Back'),
+                ),
+              ],
             ),
           ],
         ),

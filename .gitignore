@@ -52,3 +52,9 @@ handoff.md
 .workbuddy/
 # Rust / cargo build artifacts
 **/target/
+
+# Local build products & tool directories
+/android/build/
+.cline/
+# Independent review/handover reports stay local, not in the repo
+/docs/EZVenera_项目审查*.md
