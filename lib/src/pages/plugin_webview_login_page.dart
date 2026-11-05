@@ -6,6 +6,7 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../widgets/app_progress_indicator.dart';
 import '../plugin_runtime/models.dart';
 import '../plugin_runtime/plugin_runtime.dart';
 
@@ -54,7 +55,7 @@ class _PluginWebviewLoginPageState extends State<PluginWebviewLoginPage> {
             body: const Center(
               child: SizedBox.square(
                 dimension: 32,
-                child: CircularProgressIndicator(strokeWidth: 2.5),
+                child: AppProgressIndicator(strokeWidth: 2.5),
               ),
             ),
           );
@@ -145,7 +146,7 @@ class _PluginWebviewLoginPageState extends State<PluginWebviewLoginPage> {
               if (progress < 1)
                 const Positioned.fill(
                   child: IgnorePointer(
-                    child: Center(child: CircularProgressIndicator()),
+                    child: Center(child: AppProgressIndicator()),
                   ),
                 ),
               if (isCompleting)
@@ -155,7 +156,7 @@ class _PluginWebviewLoginPageState extends State<PluginWebviewLoginPage> {
                     child: Center(
                       child: SizedBox.square(
                         dimension: 32,
-                        child: CircularProgressIndicator(strokeWidth: 2.5),
+                        child: AppProgressIndicator(strokeWidth: 2.5),
                       ),
                     ),
                   ),

@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../widgets/app_progress_indicator.dart';
 import '../downloads/download_models.dart';
 import '../downloads/download_controller.dart';
 import '../library/history_controller.dart';
@@ -500,7 +501,7 @@ class _ReaderPageState extends State<ReaderPage> {
       return const Center(
         child: SizedBox.square(
           dimension: 32,
-          child: CircularProgressIndicator(strokeWidth: 2.5),
+          child: AppProgressIndicator(strokeWidth: 2.5),
         ),
       );
     }
@@ -2256,7 +2257,7 @@ class _ReaderImageState extends State<_ReaderImage>
         if (snapshot.connectionState != ConnectionState.done) {
           return SizedBox(
             height: widget.reservedHeight ?? 160,
-            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+            child: Center(child: AppProgressIndicator(strokeWidth: 2)),
           );
         }
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/app_progress_indicator.dart';
 import '../library/history_models.dart';
 import '../plugin_runtime/models.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
@@ -28,7 +29,7 @@ class _NetworkResumePageState extends State<NetworkResumePage> {
             body: const Center(
               child: SizedBox.square(
                 dimension: 32,
-                child: CircularProgressIndicator(strokeWidth: 2.5),
+                child: AppProgressIndicator(strokeWidth: 2.5),
               ),
             ),
           );

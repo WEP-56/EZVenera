@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import '../widgets/app_progress_indicator.dart';
 import '../localization/app_localizations.dart';
 import '../plugin_runtime/models.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
@@ -130,7 +131,7 @@ class _SearchPageState extends State<SearchPage> {
                   icon: isLoadingMore
                       ? const SizedBox.square(
                           dimension: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                          child: AppProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.expand_more),
                   label: Text(isLoadingMore ? 'Loading...' : 'Load More'),
@@ -1401,7 +1402,7 @@ class _AggregateComicCoverState extends State<_AggregateComicCover> {
                 return const Center(
                   child: SizedBox.square(
                     dimension: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: AppProgressIndicator(strokeWidth: 2),
                   ),
                 );
               },

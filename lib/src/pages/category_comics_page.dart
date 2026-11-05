@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/app_progress_indicator.dart';
 import '../plugin_runtime/models.dart';
 import '../plugin_runtime/result.dart';
 import '../settings/settings_controller.dart';
@@ -170,7 +171,7 @@ class _CategoryComicsPageState extends State<CategoryComicsPage> {
 
   Widget _buildBody() {
     if (isLoading && comics.isEmpty) {
-      return const Center(child: CircularProgressIndicator(strokeWidth: 2.5));
+      return const Center(child: AppProgressIndicator(strokeWidth: 2.5));
     }
 
     if (error != null && comics.isEmpty) {
@@ -229,7 +230,7 @@ class _CategoryComicsPageState extends State<CategoryComicsPage> {
                 icon: isLoadingMore
                     ? const SizedBox.square(
                         dimension: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: AppProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.expand_more),
                 label: Text(isLoadingMore ? 'Loading...' : 'Load More'),

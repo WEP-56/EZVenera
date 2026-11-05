@@ -11,6 +11,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../widgets/app_progress_indicator.dart';
 import '../backup/backup_service.dart';
 import '../backup/webdav_auto_sync.dart';
 import '../downloads/download_controller.dart';
@@ -2258,7 +2259,7 @@ class _LogSettingsPageState extends State<_LogSettingsPage> {
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: isLoading
-                      ? const Center(child: CircularProgressIndicator())
+                      ? const Center(child: AppProgressIndicator())
                       : SingleChildScrollView(
                           scrollDirection: Axis.horizontal,
                           child: SelectableText(
@@ -2673,7 +2674,7 @@ Future<void> _runBusyDialog(
         child: Center(
           child: SizedBox.square(
             dimension: 36,
-            child: CircularProgressIndicator(strokeWidth: 2.6),
+            child: AppProgressIndicator(strokeWidth: 2.6),
           ),
         ),
       );
