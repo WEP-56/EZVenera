@@ -148,6 +148,9 @@ class PageHeightCache {
     }
     _ratios[key] = ratio;
     _order.add(key);
+    // The cached median was computed from a different population; keep it
+    // honest as the table grows.
+    _globalMedian = null;
     _trimToLimit();
     _dirty = true;
     _scheduleFlush();
@@ -201,6 +204,7 @@ class PageHeightCache {
     while (_order.length > _maxEntries) {
       final dropped = _order.removeAt(0);
       _ratios.remove(dropped);
+      _globalMedian = null;
       _dirty = true;
     }
   }
