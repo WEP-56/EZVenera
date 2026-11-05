@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../localization/app_localizations.dart';
 import '../widgets/app_progress_indicator.dart';
 import '../plugin_runtime/models.dart';
 import '../plugin_runtime/result.dart';
@@ -209,6 +210,18 @@ class _CategoryComicsPageState extends State<CategoryComicsPage> {
                 ),
               );
             },
+          ),
+        if (comics.isEmpty && !isLoading && error == null)
+          Padding(
+            padding: const EdgeInsets.only(top: 24),
+            child: Center(
+              child: Text(
+                AppLocalizations.of(context).searchNoResults,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
           ),
         if (error != null)
           Padding(
