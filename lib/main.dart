@@ -49,18 +49,31 @@ Future<void> main() async {
   runApp(const EZVeneraApp());
   if (Platform.isWindows) {
     windowManager.waitUntilReadyToShow().then((_) async {
-      await windowManager.setTitleBarStyle(TitleBarStyle.hidden);
-      await windowManager.setMinimumSize(const Size(720, 560));
-      final windowState = AppStateController.instance.getSection(
-        'window.bounds',
-      );
-      final width = (windowState['width'] as num?)?.toDouble();
-      final height = (windowState['height'] as num?)?.toDouble();
-      if (width != null && height != null && width >= 720 && height >= 560) {
-        await windowManager.setSize(Size(width, height));
+      try {
+        await windowManager.setTitleBarStyle(TitleBarStyle.hidden);
+        await windowManager.setMinimumSize(const Size(720, 560));
+        final windowState = AppStateController.instance.getSection(
+          'window.bounds',
+        );
+        final width = (windowState['width'] as num?)?.toDouble();
+        final height = (windowState['height'] as num?)?.toDouble();
+        if (width != null && height != null && width >= 720 && height >= 560) {
+          await windowManager.setSize(Size(width, height));
+        }
+      } catch (error, stackTrace) {
+        // Sizing/restore failure must not leave the window invisible with an
+        // unhandled async error and nothing on screen.
+        unawaited(
+          AppLogger.instance.error('Window setup failed', error, stackTrace),
+        );
+      } finally {
+        try {
+          await windowManager.show();
+          await windowManager.focus();
+        } catch (_) {
+          // Nothing else to try during startup teardown.
+        }
       }
-      await windowManager.show();
-      await windowManager.focus();
     });
   }
 }

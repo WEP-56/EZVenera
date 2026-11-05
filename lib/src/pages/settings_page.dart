@@ -84,7 +84,7 @@ class _SettingsPageState extends State<SettingsPage> {
           _SettingsMenuCard(
             title: l10n.settingsAppearance,
             subtitle:
-                '${l10n.languageLabel(controller.language)} 路 ${l10n.themePresetLabel(controller.themePreset)}',
+                '${l10n.languageLabel(controller.language)} · ${l10n.themePresetLabel(controller.themePreset)}',
             icon: Icons.palette_outlined,
             onTap: () => _openSection(context, const _AppearanceSettingsPage()),
           ),
@@ -117,7 +117,7 @@ class _SettingsPageState extends State<SettingsPage> {
           _SettingsMenuCard(
             title: l10n.settingsApp,
             subtitle:
-                '${_formatBytes(cacheSizeBytes)} 路 ${l10n.settingsInstalledSourcesCount(PluginRuntimeController.instance.sources.length)}',
+                '${_formatBytes(cacheSizeBytes)} · ${l10n.settingsInstalledSourcesCount(PluginRuntimeController.instance.sources.length)}',
             icon: Icons.apps_outlined,
             onTap: () => _openSection(context, const _AppSettingsPage()),
           ),
@@ -2028,6 +2028,8 @@ class _AboutSettingsPageState extends State<_AboutSettingsPage> {
     }
 
     final progressNotifier = ValueNotifier<double?>(null);
+    // Capture before any await: this page's context is dead once disposed.
+    final rootNavigator = Navigator.of(context, rootNavigator: true);
     showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -2043,7 +2045,10 @@ class _AboutSettingsPageState extends State<_AboutSettingsPage> {
                 children: [
                   Text(l10n.settingsDownloadingUpdate),
                   const SizedBox(height: 12),
-                  LinearProgressIndicator(value: progress),
+                  LinearProgressIndicator(
+                    value: progress ??
+                        (SettingsController.instance.einkMode ? 0.0 : null),
+                  ),
                   const SizedBox(height: 8),
                   Text(
                     progress == null
@@ -2057,6 +2062,10 @@ class _AboutSettingsPageState extends State<_AboutSettingsPage> {
         );
       },
     );
+    // Let the dialog route land before the download can touch its notifier:
+    // a cache hit or instant failure used to dispose the notifier while the
+    // dialog was still mounting.
+    await WidgetsBinding.instance.endOfFrame;
 
     try {
       await NetworkClientFactory.instance.httpClient(throwOnError: true).download(
@@ -2070,10 +2079,12 @@ class _AboutSettingsPageState extends State<_AboutSettingsPage> {
         },
       );
     } finally {
-      progressNotifier.dispose();
-      if (mounted) {
-        Navigator.of(context, rootNavigator: true).pop();
+      // Pop first: disposing the notifier while the dialog is still mounted
+      // trips ChangeNotifier asserts during the pop animation.
+      if (rootNavigator.canPop()) {
+        rootNavigator.pop();
       }
+      progressNotifier.dispose();
     }
 
     return file;
