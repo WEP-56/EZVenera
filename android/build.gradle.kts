@@ -1,11 +1,11 @@
 allprojects {
     repositories {
-        // LOCAL BUILD ONLY (not for upstream): CN mirrors first, direct
-        // connection; original repos kept as fallback below.
-        maven("https://maven.aliyun.com/repository/google")
-        maven("https://maven.aliyun.com/repository/central")
+        // Official repos first (CI resolves them reliably); CN mirrors are
+        // the fallback for local builds behind the GFW.
         google()
         mavenCentral()
+        maven("https://maven.aliyun.com/repository/google")
+        maven("https://maven.aliyun.com/repository/central")
     }
 }
 
