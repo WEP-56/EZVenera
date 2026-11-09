@@ -22,8 +22,10 @@ class _CategoriesPageState extends State<CategoriesPage>
   TabController? _controller;
 
   /// Selected source for the E-Ink layout (multi-row tab labels, no
-  /// TabBarView swiping).
-  int _einkIndex = 0;
+  /// TabBarView swiping). Tracked by key, not index: sources can be
+  /// installed/disabled while this page is alive and an absolute index
+  /// drifts onto the wrong source.
+  String? _einkSelectedKey;
 
   List<PluginSource> get _sources {
     final controller = PluginRuntimeController.instance;
@@ -37,7 +39,9 @@ class _CategoriesPageState extends State<CategoriesPage>
     super.initState();
     PluginRuntimeController.instance.addListener(_onSourcesChanged);
     _resetController();
-    _einkIndex = _restoredIndex(_sources);
+    _einkSelectedKey = AppStateController.instance.getString(
+      'categories.selectedSourceKey',
+    );
   }
 
   @override
@@ -78,7 +82,10 @@ class _CategoriesPageState extends State<CategoriesPage>
     // into multiple rows; tapping switches instantly (no TabBarView, no
     // indicator/page animations).
     if (SettingsController.instance.einkMode) {
-      final index = _einkIndex.clamp(0, sources.length - 1);
+      final selectedIndex = sources.indexWhere(
+        (source) => source.key == _einkSelectedKey,
+      );
+      final index = selectedIndex >= 0 ? selectedIndex : 0;
       return SafeArea(
         child: Column(
           children: [
@@ -148,7 +155,7 @@ class _CategoriesPageState extends State<CategoriesPage>
     if (index < 0 || index >= sources.length) {
       return;
     }
-    setState(() => _einkIndex = index);
+    setState(() => _einkSelectedKey = sources[index].key);
     unawaited(
       AppStateController.instance.setString(
         'categories.selectedSourceKey',
@@ -205,12 +212,22 @@ class _CategoriesPageState extends State<CategoriesPage>
   }
 }
 
-class _CategorySourcePage extends StatelessWidget {
+class _CategorySourcePage extends StatefulWidget {
   const _CategorySourcePage({required this.source});
 
   final PluginSource source;
 
-  PluginCategoryCapability get category => source.category!;
+  @override
+  State<_CategorySourcePage> createState() => _CategorySourcePageState();
+}
+
+class _CategorySourcePageState extends State<_CategorySourcePage> {
+  /// Seed for random category parts; the refresh button bumps it so the
+  /// sample actually changes (the old `markNeedsBuild` on the Builder's own
+  /// element only rebuilt the button).
+  int _randomSeed = 0;
+
+  PluginCategoryCapability get category => widget.source.category!;
 
   @override
   Widget build(BuildContext context) {
@@ -226,15 +243,15 @@ class _CategorySourcePage extends StatelessWidget {
             children: [
               FilledButton.tonal(
                 onPressed: () {
-                  if (source.categoryComics?.ranking == null) {
+                  if (widget.source.categoryComics?.ranking == null) {
                     return;
                   }
                   Navigator.of(context).push(
                     MaterialPageRoute<void>(
                       builder: (context) => CategoryComicsPage(
-                        source: source,
-                        pageTitle: '${source.name} Ranking',
-                        ranking: source.categoryComics!.ranking,
+                        source: widget.source,
+                        pageTitle: '${widget.source.name} Ranking',
+                        ranking: widget.source.categoryComics!.ranking,
                       ),
                     ),
                   );
@@ -258,15 +275,9 @@ class _CategorySourcePage extends StatelessWidget {
         _PartSection(
           title: part.name,
           trailing: part.type == PluginCategoryPartType.random
-              ? Builder(
-                  builder: (context) {
-                    return IconButton(
-                      onPressed: () {
-                        (context as Element).markNeedsBuild();
-                      },
-                      icon: const Icon(Icons.refresh),
-                    );
-                  },
+              ? IconButton(
+                  onPressed: () => setState(() => _randomSeed++),
+                  icon: const Icon(Icons.refresh),
                 )
               : null,
           child: Wrap(
@@ -276,7 +287,8 @@ class _CategorySourcePage extends StatelessWidget {
               for (final item in items)
                 ActionChip(
                   label: Text(item.label),
-                  onPressed: () => _openTarget(context, source, item.target),
+                  onPressed: () =>
+                      _openTarget(context, widget.source, item.target),
                 ),
             ],
           ),
@@ -291,11 +303,14 @@ class _CategorySourcePage extends StatelessWidget {
     List<PluginCategoryItem> items,
     int randomNumber,
   ) {
-    if (randomNumber >= items.length) {
+    if (items.isEmpty || randomNumber >= items.length) {
       return items;
     }
-    final start = math.Random().nextInt(items.length - randomNumber);
-    return items.sublist(start, start + randomNumber);
+    // randomNumber comes from the plugin and may be zero or negative; clamp
+    // before using it in nextInt/sublist.
+    final count = randomNumber.clamp(1, items.length - 1).toInt();
+    final start = math.Random(_randomSeed).nextInt(items.length - count);
+    return items.sublist(start, start + count);
   }
 
   void _openTarget(

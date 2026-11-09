@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../widgets/app_progress_indicator.dart';
 import '../downloads/download_models.dart';
 import '../downloads/download_controller.dart';
 import '../library/history_controller.dart';
@@ -118,6 +119,11 @@ class _ReaderPageState extends State<ReaderPage> {
   Timer? _pendingTapTimer;
   final Map<int, GlobalKey<_ReaderImageState>> _imageKeys =
       <int, GlobalKey<_ReaderImageState>>{};
+
+  /// Bumped on every [_loadChapter] call; every await inside re-checks that
+  /// this call is still the newest one so a slow first load can never clobber
+  /// a chapter the user switched to in the meantime.
+  int _loadGeneration = 0;
 
   static const _doubleTapMaxDelay = Duration(milliseconds: 150);
   static const _doubleTapMaxDistanceSquared = 24.0 * 24.0;
@@ -500,7 +506,7 @@ class _ReaderPageState extends State<ReaderPage> {
       return const Center(
         child: SizedBox.square(
           dimension: 32,
-          child: CircularProgressIndicator(strokeWidth: 2.5),
+          child: AppProgressIndicator(strokeWidth: 2.5),
         ),
       );
     }
@@ -1047,9 +1053,13 @@ class _ReaderPageState extends State<ReaderPage> {
                 child: image,
               ),
               if (hasSeparator)
-                const SizedBox(
+                SizedBox(
                   width: 2,
-                  child: ColoredBox(color: Colors.black),
+                  // onSurface instead of hardcoded black: invisible against
+                  // the pure-black E-Ink dark theme otherwise.
+                  child: ColoredBox(
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
                 ),
             ],
           ),
@@ -1165,6 +1175,10 @@ class _ReaderPageState extends State<ReaderPage> {
     required int initialPage,
     bool preferContextLoad = false,
   }) async {
+    final generation = ++_loadGeneration;
+    if (!mounted) {
+      return;
+    }
     setState(() {
       isLoading = true;
       error = null;
@@ -1191,12 +1205,18 @@ class _ReaderPageState extends State<ReaderPage> {
 
         if (preferContextLoad) {
           await _ensureContext(comicCapability);
+          if (!mounted || generation != _loadGeneration) {
+            return;
+          }
         }
 
         PluginResult<List<String>> response = await comicCapability.loadEpisode(
           widget.comicId,
           currentChapterId,
         );
+        if (!mounted || generation != _loadGeneration) {
+          return;
+        }
 
         if (response.isError && !_attemptedContextLoad) {
           await _ensureContext(comicCapability);
@@ -1205,6 +1225,9 @@ class _ReaderPageState extends State<ReaderPage> {
             widget.comicId,
             currentChapterId,
           );
+          if (!mounted || generation != _loadGeneration) {
+            return;
+          }
         }
 
         if (response.isError) {
@@ -1236,7 +1259,14 @@ class _ReaderPageState extends State<ReaderPage> {
       // page read in an earlier session already has a persisted ratio.
       _chapterRatioCache = null;
       _reservedHeights.clear();
+      // Old GlobalKeys point at disposed image States after a chapter switch;
+      // keeping them around made double-tap zoom silently no-op and grew the
+      // map without bound across a long session.
+      _imageKeys.clear();
       await PageHeightCache.instance.initialize();
+      if (!mounted || generation != _loadGeneration) {
+        return;
+      }
       unawaited(_primePageHeights());
 
       final mode = SettingsController.instance.readerPageMode;
@@ -1269,16 +1299,28 @@ class _ReaderPageState extends State<ReaderPage> {
       _isCurrentImageZoomed = false;
       _prefetchAround(currentPage);
       await _recordHistory();
-      if (_isEink && SettingsController.instance.einkFullRefreshHint) {
-        _flashEinkRefresh();
-      }
     } catch (err) {
+      if (!mounted || generation != _loadGeneration) {
+        return;
+      }
       error = err.toString();
     } finally {
-      if (mounted) {
+      // Only the newest generation owns the loading flag and the flash: a
+      // superseded call must not reset state of the chapter that replaced it.
+      if (mounted && generation == _loadGeneration) {
         setState(() {
           isLoading = false;
         });
+        if (_isEink && SettingsController.instance.einkFullRefreshHint) {
+          // Fire after the new chapter's first frame is actually on screen —
+          // triggering earlier lands the global-refresh flash on the loading
+          // frame and burns part of the 220ms window (REQ-004).
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && generation == _loadGeneration) {
+              _flashEinkRefresh();
+            }
+          });
+        }
       }
     }
   }
@@ -2162,13 +2204,21 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   Future<void> _prefetchOne(PluginSource source, int index) async {
+    // Snapshot before the await: a chapter switch replaces [images] and
+    // [currentChapterId] while prefetches are still in flight.
+    final url = images[index];
+    final chapterId = currentChapterId ?? '0';
     final bytes = await ReaderImageCache.instance.load(
       source: source,
       comicId: widget.comicId,
-      episodeId: currentChapterId ?? '0',
-      imageUrl: images[index],
+      episodeId: chapterId,
+      imageUrl: url,
     );
-    if (!mounted) {
+    if (!mounted ||
+        !context.mounted ||
+        currentChapterId != chapterId ||
+        index >= images.length ||
+        images[index] != url) {
       return;
     }
     await precacheImage(MemoryImage(bytes), context);
@@ -2256,7 +2306,7 @@ class _ReaderImageState extends State<_ReaderImage>
         if (snapshot.connectionState != ConnectionState.done) {
           return SizedBox(
             height: widget.reservedHeight ?? 160,
-            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+            child: Center(child: AppProgressIndicator(strokeWidth: 2)),
           );
         }
 
@@ -2716,8 +2766,13 @@ class _ReaderTopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // Opaque surfaces in E-Ink mode: 92% surface over comic pages reads as a
+    // permanent gray band on a 1-bit panel.
+    final eink = SettingsController.instance.einkMode;
     return Material(
-      color: theme.colorScheme.surface.withValues(alpha: 0.92),
+      color: eink
+          ? theme.colorScheme.surface
+          : theme.colorScheme.surface.withValues(alpha: 0.92),
       child: SafeArea(
         bottom: false,
         child: SizedBox(
@@ -2843,10 +2898,14 @@ class _ReaderChapterEndButton extends StatelessWidget {
     return Tooltip(
       message: tooltip,
       child: Material(
-        color: theme.colorScheme.surface.withValues(alpha: 0.92),
+        color: SettingsController.instance.einkMode
+            ? theme.colorScheme.surface
+            : theme.colorScheme.surface.withValues(alpha: 0.92),
         borderRadius: BorderRadius.circular(999),
         elevation: 2,
-        shadowColor: theme.colorScheme.shadow.withValues(alpha: 0.18),
+        shadowColor: SettingsController.instance.einkMode
+            ? Colors.transparent
+            : theme.colorScheme.shadow.withValues(alpha: 0.18),
         child: InkWell(
           borderRadius: BorderRadius.circular(999),
           onTap: onPressed,
@@ -2856,7 +2915,9 @@ class _ReaderChapterEndButton extends StatelessWidget {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(999),
               border: Border.all(
-                color: theme.colorScheme.primary.withValues(alpha: 0.38),
+                color: SettingsController.instance.einkMode
+                    ? theme.colorScheme.onSurface
+                    : theme.colorScheme.primary.withValues(alpha: 0.38),
               ),
             ),
             child: Row(
@@ -2885,7 +2946,9 @@ class _ReaderCollapsedProgressPill extends StatelessWidget {
         width: 96,
         height: 26,
         child: Material(
-          color: theme.colorScheme.surface.withValues(alpha: 0.58),
+          color: SettingsController.instance.einkMode
+              ? theme.colorScheme.surface
+              : theme.colorScheme.surface.withValues(alpha: 0.58),
           borderRadius: BorderRadius.circular(999),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -2893,7 +2956,9 @@ class _ReaderCollapsedProgressPill extends StatelessWidget {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(999),
               border: Border.all(
-                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.18),
+                color: SettingsController.instance.einkMode
+                    ? theme.colorScheme.outlineVariant
+                    : theme.colorScheme.outlineVariant.withValues(alpha: 0.18),
               ),
             ),
             child: Text(
@@ -2901,7 +2966,9 @@ class _ReaderCollapsedProgressPill extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.labelMedium?.copyWith(
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.88),
+                color: SettingsController.instance.einkMode
+                    ? theme.colorScheme.onSurface
+                    : theme.colorScheme.onSurface.withValues(alpha: 0.88),
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -2953,7 +3020,9 @@ class _ReaderBottomPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Material(
-      color: theme.colorScheme.surface.withValues(alpha: 0.92),
+      color: SettingsController.instance.einkMode
+          ? theme.colorScheme.surface
+          : theme.colorScheme.surface.withValues(alpha: 0.92),
       borderRadius: BorderRadius.circular(24),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
@@ -3098,7 +3167,9 @@ class _ReaderTapGuide extends StatelessWidget {
         opacity: visible ? 1 : 0,
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: theme.colorScheme.surface.withValues(alpha: 0.86),
+            color: SettingsController.instance.einkMode
+                ? theme.colorScheme.surface
+                : theme.colorScheme.surface.withValues(alpha: 0.86),
             borderRadius: BorderRadius.circular(999),
             border: Border.all(color: theme.colorScheme.outlineVariant),
           ),

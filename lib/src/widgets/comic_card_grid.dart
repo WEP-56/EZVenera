@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import 'app_progress_indicator.dart';
 import '../plugin_runtime/models.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
 import '../plugin_runtime/services/plugin_image_loader.dart';
@@ -483,7 +484,7 @@ class _ComicCoverState extends State<_ComicCover> {
                 return const Center(
                   child: SizedBox.square(
                     dimension: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2.2),
+                    child: AppProgressIndicator(strokeWidth: 2.2),
                   ),
                 );
               },

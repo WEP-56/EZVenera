@@ -104,12 +104,51 @@ void main() {
         final background = brightness == Brightness.dark
             ? Colors.black
             : Colors.white;
+        final foreground = brightness == Brightness.dark
+            ? Colors.white
+            : Colors.black;
         expect(theme.colorScheme.surfaceContainerHighest, background);
         expect(theme.colorScheme.surfaceContainerHigh, background);
         expect(theme.colorScheme.surfaceContainer, background);
         expect(theme.colorScheme.surfaceContainerLow, background);
         expect(theme.colorScheme.surfaceContainerLowest, background);
+        // Borders and tinted containers must be opaque: low-alpha ink
+        // thresholds into invisible dithered noise on 1-bit panels.
+        expect(theme.colorScheme.outline, foreground);
+        expect(theme.colorScheme.outlineVariant, foreground);
+        expect(theme.colorScheme.primaryContainer, background);
+        expect(theme.colorScheme.onPrimaryContainer, foreground);
+        expect(theme.colorScheme.secondaryContainer, background);
+        expect(theme.colorScheme.onSecondaryContainer, foreground);
+        expect(theme.colorScheme.tertiaryContainer, background);
+        expect(theme.colorScheme.onTertiaryContainer, foreground);
       }
+    });
+  });
+
+  group('applyEinkMotion (REQ-002)', () {
+    test('disables ink splashes and page transitions', () {
+      final theme = applyEinkMotion(ThemeData(useMaterial3: true));
+      expect(theme.splashFactory, NoSplash.splashFactory);
+      expect(theme.splashColor, Colors.transparent);
+      expect(theme.highlightColor, Colors.transparent);
+      expect(theme.hoverColor, Colors.transparent);
+      expect(
+        theme.pageTransitionsTheme.builders[TargetPlatform.android],
+        isA<EinkNoPageTransitionsBuilder>(),
+      );
+      expect(
+        theme.pageTransitionsTheme.builders[TargetPlatform.windows],
+        isA<EinkNoPageTransitionsBuilder>(),
+      );
+    });
+
+    test('high-contrast theme ships with the motion gating applied', () {
+      // The app applies applyEinkMotion on top of buildEinkThemeData whenever
+      // E-Ink mode is on; assert the composition end state.
+      final theme = applyEinkMotion(buildEinkThemeData(Brightness.light));
+      expect(theme.splashFactory, NoSplash.splashFactory);
+      expect(theme.colorScheme.outline, Colors.black);
     });
   });
 }

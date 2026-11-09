@@ -5,6 +5,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
+import '../widgets/app_progress_indicator.dart';
 import '../localization/app_localizations.dart';
 import '../logging/app_logger.dart';
 import '../network/network_client_factory.dart';
@@ -923,7 +924,7 @@ class _SourceAccountTileState extends State<_SourceAccountTile> {
             trailing: isLoading
                 ? const SizedBox.square(
                     dimension: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: AppProgressIndicator(strokeWidth: 2),
                   )
                 : null,
           ),

@@ -6,6 +6,7 @@ import '../pages/categories_page.dart';
 import '../pages/local_page.dart';
 import '../pages/search_page.dart';
 import '../pages/settings_page.dart';
+import '../settings/settings_controller.dart';
 import '../state/app_state_controller.dart';
 
 class MainShell extends StatefulWidget {
@@ -207,6 +208,11 @@ class _MobileShell extends StatelessWidget {
       bottomNavigationBar: NavigationBar(
         selectedIndex: selectedIndex,
         onDestinationSelected: onSelect,
+        // The 500ms indicator slide is a full-screen refresh per tap on a
+        // 1-bit panel (REQ-002).
+        animationDuration: SettingsController.instance.einkMode
+            ? Duration.zero
+            : null,
         destinations: [
           for (final item in AppDestination.values)
             NavigationDestination(

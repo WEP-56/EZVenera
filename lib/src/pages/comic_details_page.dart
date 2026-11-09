@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../widgets/app_progress_indicator.dart';
 import '../downloads/download_controller.dart';
 import '../downloads/download_models.dart';
 import '../library/favorite_controller.dart';
@@ -64,7 +65,7 @@ class _ComicDetailsPageState extends State<ComicDetailsPage> {
             return const Center(
               child: SizedBox.square(
                 dimension: 32,
-                child: CircularProgressIndicator(strokeWidth: 2.5),
+                child: AppProgressIndicator(strokeWidth: 2.5),
               ),
             );
           }
@@ -1120,7 +1121,7 @@ class _PreviewGridState extends State<_PreviewGrid> {
         child: Center(
           child: SizedBox.square(
             dimension: 28,
-            child: CircularProgressIndicator(strokeWidth: 2.4),
+            child: AppProgressIndicator(strokeWidth: 2.4),
           ),
         ),
       );
@@ -1187,7 +1188,7 @@ class _PreviewGridState extends State<_PreviewGrid> {
           const Center(
             child: SizedBox.square(
               dimension: 22,
-              child: CircularProgressIndicator(strokeWidth: 2.2),
+              child: AppProgressIndicator(strokeWidth: 2.2),
             ),
           ),
         ],
@@ -1289,7 +1290,7 @@ class _PreviewThumbState extends State<_PreviewThumb> {
                   return const Center(
                     child: SizedBox.square(
                       dimension: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                      child: AppProgressIndicator(strokeWidth: 2),
                     ),
                   );
                 },
@@ -1391,7 +1392,7 @@ class _CoverCardState extends State<_CoverCard> {
                 return const Center(
                   child: SizedBox.square(
                     dimension: 26,
-                    child: CircularProgressIndicator(strokeWidth: 2.2),
+                    child: AppProgressIndicator(strokeWidth: 2.2),
                   ),
                 );
               },

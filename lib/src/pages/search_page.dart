@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import '../widgets/app_progress_indicator.dart';
 import '../localization/app_localizations.dart';
 import '../plugin_runtime/models.dart';
 import '../plugin_runtime/plugin_runtime_controller.dart';
@@ -45,10 +46,15 @@ class _SearchPageState extends State<SearchPage> {
   String lastKeyword = '';
   bool searchFormExpanded = false;
 
-  /// E-Ink defaults the aggregate toggle on: the source-labeled result view
-  /// (one rounded tag per source, tap to see that source's hits) is the most
-  /// readable shape on a 1-bit panel.
-  bool aggregatedSearch = SettingsController.instance.einkMode;
+  /// The user's explicit aggregate toggle choice; null means "follow the
+  /// E-Ink default" (aggregated on E-Ink: the source-tag view is the most
+  /// readable shape on a 1-bit panel). An override — not an eagerly
+  /// initialized flag — so toggling E-Ink mode re-evaluates live instead of
+  /// freezing whatever the field initializer captured at State creation.
+  bool? _aggregatedSearchOverride;
+  bool get aggregatedSearch =>
+      _aggregatedSearchOverride ?? SettingsController.instance.einkMode;
+  set aggregatedSearch(bool value) => _aggregatedSearchOverride = value;
   int searchRun = 0;
   List<String> searchHistory = const <String>[];
   bool searchHistoryPointerActive = false;
@@ -130,7 +136,7 @@ class _SearchPageState extends State<SearchPage> {
                   icon: isLoadingMore
                       ? const SizedBox.square(
                           dimension: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                          child: AppProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.expand_more),
                   label: Text(isLoadingMore ? 'Loading...' : 'Load More'),
@@ -637,6 +643,9 @@ class _SearchPageState extends State<SearchPage> {
         if (response.isError) {
           throw StateError(response.errorMessage!);
         }
+        if (!mounted) {
+          return;
+        }
         setState(() {
           results = [...results, ...response.data];
           currentPage = nextPage;
@@ -652,6 +661,9 @@ class _SearchPageState extends State<SearchPage> {
         if (response.isError) {
           throw StateError(response.errorMessage!);
         }
+        if (!mounted) {
+          return;
+        }
         setState(() {
           results = [...results, ...response.data];
           nextToken = response.subData?.toString();
@@ -659,6 +671,9 @@ class _SearchPageState extends State<SearchPage> {
         _restoreScrollOffset(scrollOffset);
       }
     } catch (error) {
+      if (!mounted) {
+        return;
+      }
       setState(() {
         searchError = error.toString();
       });
@@ -668,8 +683,8 @@ class _SearchPageState extends State<SearchPage> {
           isLoadingMore = false;
         });
         _restoreScrollOffset(scrollOffset);
+        unawaited(_persistState());
       }
-      unawaited(_persistState());
     }
   }
 
@@ -759,7 +774,10 @@ class _SearchPageState extends State<SearchPage> {
 
     keywordController.text = state['keyword']?.toString() ?? '';
     lastKeyword = state['lastKeyword']?.toString() ?? keywordController.text;
-    aggregatedSearch = state['aggregatedSearch'] == true;
+    // A stored bool is an explicit choice (the toggle writes one); anything
+    // else falls back to following the current E-Ink mode.
+    final storedAggregate = state['aggregatedSearch'];
+    _aggregatedSearchOverride = storedAggregate is bool ? storedAggregate : null;
     currentPage = (state['currentPage'] as num?)?.toInt() ?? 1;
     maxPage = (state['maxPage'] as num?)?.toInt();
     nextToken = state['nextToken']?.toString();
@@ -844,7 +862,9 @@ class _SearchPageState extends State<SearchPage> {
   Future<void> _persistState() {
     return appState.setSection('search.page', <String, dynamic>{
       'selectedSourceKey': selectedSource?.key,
-      'aggregatedSearch': aggregatedSearch,
+      // Persist the override, not the effective value: an eink-mode default
+      // must not be mistaken for a user decision.
+      'aggregatedSearch': _aggregatedSearchOverride,
       'keyword': keywordController.text,
       'lastKeyword': lastKeyword,
       'optionValues': optionValues,
@@ -1223,6 +1243,9 @@ class _AggregateLoadingRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // Alpha fills are invisible on a 1-bit panel; outline the placeholders
+    // instead so the loading row reads at all in high-contrast mode.
+    final eink = SettingsController.instance.einkMode;
 
     return SizedBox(
       height: _AggregateSearchResultsView._rowHeight,
@@ -1238,10 +1261,15 @@ class _AggregateLoadingRow extends StatelessWidget {
                 width: _AggregateSearchResultsView._coverWidth,
                 height: _AggregateSearchResultsView._coverHeight,
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest.withValues(
-                    alpha: 0.52,
-                  ),
+                  color: eink
+                      ? null
+                      : theme.colorScheme.surfaceContainerHighest.withValues(
+                          alpha: 0.52,
+                        ),
                   borderRadius: BorderRadius.circular(8),
+                  border: eink
+                      ? Border.all(color: theme.colorScheme.outlineVariant)
+                      : null,
                 ),
               ),
               const SizedBox(height: 8),
@@ -1249,10 +1277,15 @@ class _AggregateLoadingRow extends StatelessWidget {
                 width: 82,
                 height: 12,
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest.withValues(
-                    alpha: 0.48,
-                  ),
+                  color: eink
+                      ? null
+                      : theme.colorScheme.surfaceContainerHighest.withValues(
+                          alpha: 0.48,
+                        ),
                   borderRadius: BorderRadius.circular(99),
+                  border: eink
+                      ? Border.all(color: theme.colorScheme.outlineVariant)
+                      : null,
                 ),
               ),
             ],
@@ -1401,7 +1434,7 @@ class _AggregateComicCoverState extends State<_AggregateComicCover> {
                 return const Center(
                   child: SizedBox.square(
                     dimension: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: AppProgressIndicator(strokeWidth: 2),
                   ),
                 );
               },

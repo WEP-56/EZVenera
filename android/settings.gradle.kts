@@ -11,13 +11,15 @@ pluginManagement {
     includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
 
     repositories {
-        // LOCAL BUILD ONLY (not for upstream): CN mirrors first.
-        maven("https://maven.aliyun.com/repository/google")
-        maven("https://maven.aliyun.com/repository/central")
-        maven("https://maven.aliyun.com/repository/gradle-plugin")
+        // Official repos first: GitHub CI (overseas) resolves directly and
+        // fast; a hard aliyun 502 used to disable the repo and kill the build.
+        // CN mirrors stay as fallback for local (China) builds.
         google()
         mavenCentral()
         gradlePluginPortal()
+        maven("https://maven.aliyun.com/repository/google")
+        maven("https://maven.aliyun.com/repository/central")
+        maven("https://maven.aliyun.com/repository/gradle-plugin")
     }
 }
 

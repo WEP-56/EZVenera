@@ -30,6 +30,7 @@ class _EZVeneraAppState extends State<EZVeneraApp> {
 
   @override
   Widget build(BuildContext context) {
+    final eink = settings.einkMode;
     return MaterialApp(
       title: 'EZVenera',
       debugShowCheckedModeBanner: false,
@@ -42,27 +43,41 @@ class _EZVeneraAppState extends State<EZVeneraApp> {
           child: WindowsWindowFrame(child: child ?? const SizedBox.shrink()),
         );
       },
-      theme: settings.einkMode && settings.einkHighContrast
-          ? buildEinkThemeData(Brightness.light)
-          : ThemeData(
-              colorScheme: ColorScheme.fromSeed(
-                seedColor: settings.themeSeedColor,
-                brightness: Brightness.light,
-              ),
-              scaffoldBackgroundColor: const Color(0xFFF7F4EC),
-              useMaterial3: true,
-            ),
-      darkTheme: settings.einkMode && settings.einkHighContrast
-          ? buildEinkThemeData(Brightness.dark)
-          : ThemeData(
-              colorScheme: ColorScheme.fromSeed(
-                seedColor: settings.themeSeedColor,
-                brightness: Brightness.dark,
-              ),
-              useMaterial3: true,
-            ),
+      // Toggling E-Ink mode repaints the whole shell; a 200ms cross-fade on a
+      // 1-bit panel is one more full-screen refresh for nothing.
+      themeAnimationDuration: eink ? Duration.zero : kThemeAnimationDuration,
+      theme: _themeFor(eink, Brightness.light),
+      darkTheme: _themeFor(eink, Brightness.dark),
       home: const AppBootstrap(),
     );
+  }
+
+  ThemeData _themeFor(bool eink, Brightness brightness) {
+    final ThemeData base;
+    if (eink && settings.einkHighContrast) {
+      base = buildEinkThemeData(brightness);
+    } else if (brightness == Brightness.dark) {
+      base = ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: settings.themeSeedColor,
+          brightness: Brightness.dark,
+        ),
+        useMaterial3: true,
+      );
+    } else {
+      base = ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: settings.themeSeedColor,
+          brightness: Brightness.light,
+        ),
+        scaffoldBackgroundColor: const Color(0xFFF7F4EC),
+        useMaterial3: true,
+      );
+    }
+    // Framework-level motion (ink ripples, page transitions, theme fades) is
+    // driven by the theme, not by the per-widget durations the pages zero
+    // out — it must be gated here to apply at all (REQ-002).
+    return eink ? applyEinkMotion(base) : base;
   }
 
   void _onSettingsChanged() {
@@ -94,8 +109,19 @@ ThemeData buildEinkThemeData(Brightness brightness) {
     surface: background,
     onSurface: foreground,
     onSurfaceVariant: foreground,
-    outline: foreground.withValues(alpha: 0.6),
-    outlineVariant: foreground.withValues(alpha: 0.25),
+    // 1-bit panels threshold low-alpha ink into invisible dithered noise, so
+    // borders/containers must be opaque; hierarchy comes from stroke width
+    // and weight, not from alpha.
+    outline: foreground,
+    outlineVariant: foreground,
+    primaryContainer: background,
+    onPrimaryContainer: foreground,
+    secondaryContainer: background,
+    onSecondaryContainer: foreground,
+    tertiaryContainer: background,
+    onTertiaryContainer: foreground,
+    errorContainer: background,
+    onErrorContainer: foreground,
     surfaceContainerHighest: background,
     surfaceContainerHigh: background,
     surfaceContainer: background,
@@ -115,6 +141,45 @@ ThemeData buildEinkThemeData(Brightness brightness) {
     scaffoldBackgroundColor: background,
     useMaterial3: true,
   );
+}
+
+/// Framework-level motion gating for E-Ink (REQ-002).
+///
+/// Ink splashes, page transitions and theme fades are driven by the theme,
+/// not by the per-widget durations the pages zero out; on a 1-bit panel every
+/// animated frame costs a refresh cycle and leaves ghosting. Applied on top
+/// of both the high-contrast E-Ink theme and the regular themes whenever
+/// E-Ink mode is on. Public so widget tests can assert the gating.
+ThemeData applyEinkMotion(ThemeData theme) {
+  return theme.copyWith(
+    splashFactory: NoSplash.splashFactory,
+    splashColor: Colors.transparent,
+    highlightColor: Colors.transparent,
+    hoverColor: Colors.transparent,
+    pageTransitionsTheme: PageTransitionsTheme(
+      builders: {
+        for (final platform in TargetPlatform.values)
+          platform: const EinkNoPageTransitionsBuilder(),
+      },
+    ),
+  );
+}
+
+/// Page transition builder that shows the destination page immediately —
+/// an animated push is several full-screen refreshes on E-Ink hardware.
+class EinkNoPageTransitionsBuilder extends PageTransitionsBuilder {
+  const EinkNoPageTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    return child;
+  }
 }
 
 /// Keeps status/navigation bars transparent and disables the system nav-bar

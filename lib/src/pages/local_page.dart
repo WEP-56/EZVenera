@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import '../widgets/app_progress_indicator.dart';
 import '../downloads/download_controller.dart';
 import '../downloads/download_models.dart';
 import '../library/favorite_controller.dart';
@@ -432,7 +433,7 @@ class _LocalPageState extends State<LocalPage> {
     if (loading && comics.isEmpty) {
       return const Padding(
         padding: EdgeInsets.all(32),
-        child: Center(child: CircularProgressIndicator()),
+        child: Center(child: AppProgressIndicator()),
       );
     }
 
@@ -984,7 +985,7 @@ class _LocalSidebar extends StatelessWidget {
                                   ? const SizedBox(
                                       width: 18,
                                       height: 18,
-                                      child: CircularProgressIndicator(
+                                      child: AppProgressIndicator(
                                         strokeWidth: 2,
                                       ),
                                     )
@@ -1671,7 +1672,7 @@ class _LocalComicCoverState extends State<_LocalComicCover> {
           return const Center(
             child: SizedBox.square(
               dimension: 24,
-              child: CircularProgressIndicator(strokeWidth: 2.2),
+              child: AppProgressIndicator(strokeWidth: 2.2),
             ),
           );
         },

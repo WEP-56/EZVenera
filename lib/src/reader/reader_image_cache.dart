@@ -128,6 +128,9 @@ class ReaderImageCache {
   Future<void> clearDiskCache() async {
     _memory.clear();
     _memoryOrder.clear();
+    // In-flight loads would otherwise write their result back after the
+    // wipe (into a root that is about to be recreated).
+    _pending.clear();
     final root = await _resolveRoot();
     if (await root.exists()) {
       await root.delete(recursive: true);
@@ -139,6 +142,9 @@ class ReaderImageCache {
   Future<void> reloadConfiguration() async {
     _memory.clear();
     _memoryOrder.clear();
+    // In-flight loads still target the previous cache root; drop them so
+    // nothing writes into the old directory after the switch.
+    _pending.clear();
     _cacheRoot = null;
     await _resolveRoot();
     await _trimDiskCacheIfNeeded();

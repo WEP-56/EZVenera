@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/app_progress_indicator.dart';
 import '../backup/webdav_auto_sync.dart';
 import '../downloads/download_controller.dart';
 import '../library/favorite_controller.dart';
@@ -62,7 +63,7 @@ class _BootstrapLoading extends StatelessWidget {
       body: Center(
         child: SizedBox.square(
           dimension: 32,
-          child: CircularProgressIndicator(strokeWidth: 2.5),
+          child: AppProgressIndicator(strokeWidth: 2.5),
         ),
       ),
     );
